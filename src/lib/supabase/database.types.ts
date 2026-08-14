@@ -377,6 +377,28 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      claim_ingestion_jobs: {
+        Args: { batch_size: number }
+        Returns: {
+          attempts: number
+          created_at: string
+          id: number
+          kind: Database["public"]["Enums"]["job_kind"]
+          last_error: string | null
+          max_attempts: number
+          priority: number
+          run_after: string
+          status: Database["public"]["Enums"]["job_status"]
+          target_mbid: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "ingestion_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
     }
