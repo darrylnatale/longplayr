@@ -71,10 +71,15 @@ npm run verify                       # exactly what CI runs — run before pushi
 
 `npm run verify` covers format, lint, typecheck, unit and component tests, and build. Integration and end-to-end tests need the database and run separately: `npm run test:integration`, `npm run test:e2e`.
 
+**Always verify from a clean build.** `rm -rf .next && npm run verify`. This is a standing requirement, not a suggestion: `PageProps` and `LayoutProps` are generated into `.next/types`, so a stale directory can make typecheck pass locally while failing in CI. That exact discrepancy has already put a red commit on `main` once.
+
+**There is no branch protection.** GitHub gates it behind a paid plan for private repositories, and paying or going public purely for that has been declined. Nothing mechanically prevents a red commit landing on `main`, so the clean-build check above is the actual safety net. Treat it accordingly.
+
 ### Conventions established in Phase 0
 
 - **Every new table needs explicit `grant` statements** for `anon`, `authenticated` and `service_role`, alongside its RLS policies. Grants are evaluated _before_ RLS — without them you get `permission denied` no matter how permissive the policies are. This is easy to forget and the failure looks like an RLS bug.
 - **Migrations are the only way to change schema.** After changing one, run `npm run db:reset` then `npm run db:types`. Never hand-edit `database.types.ts`.
+- **Embedding `releases` from `albums` must name the foreign key**: `releases!releases_album_id_fkey(...)`. There are two relationships between those tables — `releases.album_id` and `albums.representative_release_id` — so a bare `releases(...)` embed fails with "more than one relationship was found". The same applies to any future table with two paths to the same relation.
 - **Expected failures return `Result`, not exceptions** (`src/services/result.ts`). A taken handle is an outcome the UI renders. Genuinely unexpected failures still throw.
 - **Auth goes through `src/services/auth/`**, never directly to Supabase — auth is the most expensive thing here to migrate.
 - **Styling is provisional.** `globals.css` holds neutral placeholder tokens, deliberately not a design system. The real palette, type scale and grid come from the design-foundation track before Phase 2.

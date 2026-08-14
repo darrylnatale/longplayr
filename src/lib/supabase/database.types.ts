@@ -168,6 +168,77 @@ export type Database = {
         }
         Relationships: []
       }
+      catalogue_additions: {
+        Row: {
+          album_mbid: string
+          created_at: string
+          id: number
+          user_id: string | null
+        }
+        Insert: {
+          album_mbid: string
+          created_at?: string
+          id?: never
+          user_id?: string | null
+        }
+        Update: {
+          album_mbid?: string
+          created_at?: string
+          id?: never
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "catalogue_additions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ingestion_jobs: {
+        Row: {
+          attempts: number
+          created_at: string
+          id: number
+          kind: Database["public"]["Enums"]["job_kind"]
+          last_error: string | null
+          max_attempts: number
+          priority: number
+          run_after: string
+          status: Database["public"]["Enums"]["job_status"]
+          target_mbid: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          id?: never
+          kind: Database["public"]["Enums"]["job_kind"]
+          last_error?: string | null
+          max_attempts?: number
+          priority?: number
+          run_after?: string
+          status?: Database["public"]["Enums"]["job_status"]
+          target_mbid: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          id?: never
+          kind?: Database["public"]["Enums"]["job_kind"]
+          last_error?: string | null
+          max_attempts?: number
+          priority?: number
+          run_after?: string
+          status?: Database["public"]["Enums"]["job_status"]
+          target_mbid?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -324,6 +395,8 @@ export type Database = {
       album_type: "album" | "ep" | "other"
       artwork_status: "pending" | "found" | "absent"
       date_precision: "day" | "month" | "year"
+      job_kind: "ingest_release_group" | "fetch_artwork" | "fetch_releases"
+      job_status: "pending" | "running" | "succeeded" | "failed"
       user_status: "active" | "suspended" | "banned"
     }
     CompositeTypes: {
@@ -470,6 +543,8 @@ export const Constants = {
       album_type: ["album", "ep", "other"],
       artwork_status: ["pending", "found", "absent"],
       date_precision: ["day", "month", "year"],
+      job_kind: ["ingest_release_group", "fetch_artwork", "fetch_releases"],
+      job_status: ["pending", "running", "succeeded", "failed"],
       user_status: ["active", "suspended", "banned"],
     },
   },

@@ -23,21 +23,28 @@ Both mechanisms were attempted via the API and **both returned 403**:
 | Repository rulesets (newer) | Same message                                           |
 
 GitHub gates branch protection on **private** repositories behind a paid plan.
-The account is on Free, so neither works today. Three ways forward:
 
-1. **GitHub Pro** — a few dollars a month, keeps the repo private, and enables
-   both mechanisms immediately.
-2. **Make the repository public** — protection becomes free. Note `transcript.md`
-   is in the commit history; it is a publicly available talk rather than paid
-   material, but it is still someone else's content sitting in the repo.
-3. **Accept no enforcement for now** — rely on running `npm run verify` before
-   pushing. CI still reports failures on every push and pull request; nothing
-   stops a red commit from landing on `main`.
+**Decision: not paying for GitHub Pro, and not making the repository public,
+solely to obtain branch protection.** The supervised workflow is accepted for
+now.
 
-The intended configuration, ready to apply the moment the plan allows, is:
-require both CI jobs to pass, require a pull request (with zero approvals, so a
-solo developer isn't blocked), and forbid force pushes and branch deletion —
-with no admin bypass.
+What that means in practice: CI still runs on every push and pull request and
+still reports failures, but **nothing mechanically prevents a red commit landing
+on `main`**. The compensating control is running a clean-tree verification
+before pushing:
+
+```bash
+rm -rf .next && npm run verify
+```
+
+The clean tree matters. `PageProps` and `LayoutProps` are generated into
+`.next/types`, so a stale directory can make typecheck pass locally and fail in
+CI — which has already happened once.
+
+The intended protection configuration, ready to apply if the plan ever changes:
+require both CI jobs to pass, require a pull request with zero approvals so a
+solo developer isn't blocked, and forbid force pushes and branch deletion, with
+no admin bypass.
 
 `.github/workflows/ci.yml` runs on push to `main` and on every pull request. It
 has two jobs:
