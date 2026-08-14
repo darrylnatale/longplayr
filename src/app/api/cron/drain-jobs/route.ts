@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
+import { authoriseCronRequest } from '@/services/catalogue/cron-auth';
 import { drainJobs, queueDepth } from '@/services/catalogue/jobs';
 
 /**
@@ -19,23 +20,17 @@ export const maxDuration = 60;
 
 const DEFAULT_BATCH_SIZE = 10;
 
-/**
- * Vercel signs cron requests with CRON_SECRET. Without it this endpoint would
- * let anyone drive our MusicBrainz budget.
- */
-function isAuthorised(request: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET;
-
-  // No secret configured: allow only outside production, so local development
-  // works while a misconfigured deployment fails closed rather than open.
-  if (!secret) return process.env.NODE_ENV !== 'production';
-
-  return request.headers.get('authorization') === `Bearer ${secret}`;
-}
-
 export async function GET(request: NextRequest) {
-  if (!isAuthorised(request)) {
-    return NextResponse.json({ error: 'Unauthorised' }, { status: 401 });
+  // Rule lives in the service layer so it can be tested directly — see
+  // cron-auth.test.ts. Vercel signs cron requests with CRON_SECRET.
+  const auth = authoriseCronRequest({
+    authorizationHeader: request.headers.get('authorization'),
+    secret: process.env.CRON_SECRET,
+    isProduction: process.env.NODE_ENV === 'production',
+  });
+
+  if (!auth.authorised) {
+    return NextResponse.json({ error: 'Unauthorised', reason: auth.reason }, { status: 401 });
   }
 
   const batchSize = Number(request.nextUrl.searchParams.get('batch') ?? DEFAULT_BATCH_SIZE);
