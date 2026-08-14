@@ -48,3 +48,6 @@ next-env.d.ts
 
 # supabase
 /supabase/.temp
+
+# Source material — kept locally, not tracked
+transcript.md

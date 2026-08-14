@@ -112,6 +112,29 @@ Phases 0–2 constitute the product's spine. If work stopped after Phase 2, long
 
 **Definition of done.** Search for a well-known album, land on its page with artwork, tracklist and editions available, click through to the artist, browse their discography. Search for something not yet in the catalogue, add it from the MusicBrainz fallback, and reach its page within seconds. The seed job has populated a browsable catalogue.
 
+### Phase 1 is not verified until the real-data smoke test passes
+
+All Phase 1 work is built and tested **against fixtures**. Live MusicBrainz calls are blocked in code while `MUSICBRAINZ_CONTACT` is a placeholder, which is deliberate — an unidentified client risks getting longplayr blocked for every user at once.
+
+Fixtures prove the logic; they cannot prove that our reading of MusicBrainz's actual response shapes is correct. **Phase 1 stays unverified until a small controlled ingest runs in a deployed environment with the genuine contact value.**
+
+The smoke test must cover a representative set, chosen so each case that has caused a modelling decision is exercised at least once:
+
+| Case                             | Why it matters                                                             |
+| -------------------------------- | -------------------------------------------------------------------------- |
+| Single-artist studio album       | The baseline path                                                          |
+| Multi-artist collaboration       | `album_artists` must place it on every credited artist's page              |
+| "Various Artists" compilation    | A special MusicBrainz artist, and a secondary type we accept               |
+| EP and mixtape                   | In scope, and mixtapes may arrive with no primary type at all              |
+| Single                           | Must be **rejected** — the one case where success means nothing is written |
+| Live album or soundtrack         | Secondary types that must not exclude an otherwise in-scope album          |
+| Year-only and full-date releases | Precision must round-trip without inventing a day                          |
+| Album with many releases         | Representative-release selection, including no Official release present    |
+| Album with no cover art          | `artwork_status = 'absent'` and the placeholder rendering                  |
+| Album with cover art             | `artwork_status = 'found'`                                                 |
+
+Keep the run small — a few dozen requests at one per second — and check the resulting rows directly rather than trusting the absence of errors.
+
 ---
 
 ## Design foundation _(parallel track, begins when screenshots arrive)_

@@ -8,14 +8,36 @@ production and CI enforcement.
 
 ---
 
-## 1. GitHub — done
+## 1. GitHub — done, except branch protection
 
 **Repository: <https://github.com/darrylnatale/longplayr> (private).**
 `origin` is configured and `main` is pushed.
 
-Still to do: protect `main` in Settings → Branches so both CI jobs must pass
-before merge. Without that rule CI reports failures but doesn't prevent
-anything.
+### Branch protection is blocked — needs a decision
+
+Both mechanisms were attempted via the API and **both returned 403**:
+
+| Attempt                     | Result                                                 |
+| --------------------------- | ------------------------------------------------------ |
+| Classic branch protection   | `Upgrade to GitHub Pro or make this repository public` |
+| Repository rulesets (newer) | Same message                                           |
+
+GitHub gates branch protection on **private** repositories behind a paid plan.
+The account is on Free, so neither works today. Three ways forward:
+
+1. **GitHub Pro** — a few dollars a month, keeps the repo private, and enables
+   both mechanisms immediately.
+2. **Make the repository public** — protection becomes free. Note `transcript.md`
+   is in the commit history; it is a publicly available talk rather than paid
+   material, but it is still someone else's content sitting in the repo.
+3. **Accept no enforcement for now** — rely on running `npm run verify` before
+   pushing. CI still reports failures on every push and pull request; nothing
+   stops a red commit from landing on `main`.
+
+The intended configuration, ready to apply the moment the plan allows, is:
+require both CI jobs to pass, require a pull request (with zero approvals, so a
+solo developer isn't blocked), and forbid force pushes and branch deletion —
+with no admin bypass.
 
 `.github/workflows/ci.yml` runs on push to `main` and on every pull request. It
 has two jobs:
