@@ -82,11 +82,10 @@ Phases 0–2 constitute the product's spine. If work stopped after Phase 2, long
 
 **Dependencies.** Phase 0.
 
-**Blocked by verification tasks only** _(every product decision for this phase is settled)_
+**Verification complete** — see `architecture.md` §18. Outcomes that changed the plan:
 
-- Apple/iTunes terms — determines the artwork fallback source (`architecture.md` §18)
-- MusicBrainz rate-limit policy confirmation
-- ListenBrainz endpoint shapes
+- **No artwork fallback source.** Both candidates were rejected on their terms, so Cover Art Archive is the only source. Ingestion records whether art was found, making coverage measurable rather than assumed.
+- **ListenBrainz MBIDs are optional**, so seed lists must filter to entries carrying one — the usable seed is smaller than the raw response.
 
 **Architectural decisions settled here**
 

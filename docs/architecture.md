@@ -31,7 +31,7 @@ Notation: **[DECIDED]** = explicitly chosen. **[INFERRED]** = follows necessaril
               ▼
       ┌───────────────────────────────────────────────┐
       │  MusicBrainz   — catalogue truth              │
-      │  Cover Art Archive → iTunes  — artwork        │
+      │  Cover Art Archive  — artwork (by MBID)       │
       │  ListenBrainz  — popularity signal            │
       └───────────────────────────────────────────────┘
 ```
@@ -119,16 +119,36 @@ _Risk, stated plainly._ **This is the most expensive decision in the project to 
 
 ### Sources
 
-| Purpose            | Source                | Notes                                                                                                                                                               |
-| ------------------ | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Metadata truth     | **MusicBrainz**       | Release groups, releases, artists, credits                                                                                                                          |
-| Artwork (primary)  | **Cover Art Archive** | Exact MBID match, same ecosystem                                                                                                                                    |
-| Artwork (fallback) | **iTunes Search API** | **[VERIFY]** Apple's current terms and permitted use must be confirmed before implementation. **If they don't permit our use, fall back to the Deezer API instead** |
-| Popularity         | **ListenBrainz**      | MBID-native, open data                                                                                                                                              |
+| Purpose        | Source                | Notes                                                            |
+| -------------- | --------------------- | ---------------------------------------------------------------- |
+| Metadata truth | **MusicBrainz**       | Release groups, releases, artists, credits                       |
+| Artwork        | **Cover Art Archive** | `/release-group/{mbid}/front-{250,500,1200}`. No rate limit      |
+| Popularity     | **ListenBrainz**      | `/1/stats/sitewide/release-groups`. Public, MBID-native, no auth |
+
+### Artwork: one source, no fallback **[DECIDED — verified]**
+
+Both candidate fallbacks were rejected on verification:
+
+- **iTunes Search API** — terms permit album art _"only to promote store content and not for entertainment purposes"_ and require assets be _"proximate to a store badge."_ Album art as the visual backbone of a collection grid is neither. Its ~20 requests/minute limit would also have become the binding constraint on catalogue growth, three times tighter than MusicBrainz.
+- **Deezer API** — their developer FAQ states plainly that _"images are not allowed to be stored for legal reasons,"_ which is incompatible with our decision to fetch and store rather than hotlink.
+
+So artwork comes from Cover Art Archive alone. This is a better fit than it first appears:
+
+- **Keyed by MBID**, so a cover can never be attached to the wrong album. Both rejected options relied on fuzzy name matching, which produces exactly that class of bug.
+- **No rate limit**, unlike every alternative.
+- Release-group endpoints match our Album entity directly, needing no extra lookup.
+
+The cost is coverage gaps on obscure releases. Rather than guess at the size of that gap, **ingestion records whether artwork was found**, so coverage is a number we can query after seeding and revisit with evidence. The placeholder is a real design deliverable, not a grey box.
 
 ### Rate limiting
 
-MusicBrainz asks for approximately **one request per second** from anonymous clients, with a descriptive User-Agent identifying the application. **[VERIFY — confirm current policy before implementation.]** This constraint shapes the entire ingestion design; it is not a detail to discover later.
+MusicBrainz allows **one request per second per IP**, averaged. Exceeding it returns `503` for _all_ requests from that address until the rate drops — not just the excess. A `User-Agent` identifying the application and carrying contact details is mandatory:
+
+```
+longplayr/<version> ( <contact-url> )
+```
+
+Cover Art Archive imposes no rate limit, so artwork fetching does not compete with metadata for the same budget.
 
 ### Ingestion paths
 
@@ -312,10 +332,12 @@ None of these need addressing before launch. All are listed so that when somethi
 
 Claims in this document that must be confirmed against current documentation rather than assumed:
 
-| Item                                                    | Why                                                                                            |
-| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| **Apple / iTunes Search API terms**                     | Determines whether the artwork fallback is iTunes or Deezer. **Blocks artwork implementation** |
-| **MusicBrainz rate limit and User-Agent policy**        | The entire ingestion design rests on it                                                        |
-| **ListenBrainz statistics endpoints**                   | Popularity implementation depends on the shape of what's available                             |
-| **Supabase Auth capabilities**                          | Confirm email/password + Google OAuth cover the requirement as specified                       |
-| **Next.js caching semantics** for the installed version | Defaults have changed across versions and are easy to get wrong                                |
+| Item                                             | Status                                                                                                                                                                          |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Apple / iTunes Search API terms**              | ✅ **Resolved.** Terms do not permit our use, and ~20 req/min is too tight. Rejected — see §7                                                                                   |
+| **Deezer API terms**                             | ✅ **Resolved.** Prohibits storing images. Rejected — see §7                                                                                                                    |
+| **MusicBrainz rate limit and User-Agent policy** | ✅ **Confirmed.** 1 req/sec per IP; `503` on all requests when exceeded; User-Agent with contact details mandatory                                                              |
+| **Cover Art Archive**                            | ✅ **Confirmed.** Release-group front endpoints at 250/500/1200px, `404` when absent, no rate limit                                                                             |
+| **ListenBrainz statistics endpoints**            | ✅ **Confirmed.** `/1/stats/sitewide/release-groups`, public, `range` and `count` parameters. ⚠️ **MBIDs are optional in responses** — entries without one must be filtered out |
+| **Supabase Auth capabilities**                   | ✅ **Confirmed in Phase 0.** Email/password working. Google OAuth still unbuilt — see `docs/deployment.md` §4                                                                   |
+| **Next.js caching semantics**                    | ⏳ Outstanding. Matters from Phase 1, when album pages become the first genuinely cacheable surface                                                                             |

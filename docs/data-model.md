@@ -260,7 +260,14 @@ Album artwork is the visual backbone of the product, so it gets first-class trea
 | `storage_key`                       | **Our own storage.** Artwork is fetched and stored, not hotlinked — upstream availability and rate limits are not something album pages should depend on |
 | `width`, `height`, derivative sizes | Grids, feed rows and detail pages need different dimensions                                                                                              |
 
-**Coverage will be incomplete.** Cover Art Archive is inconsistent for less-popular releases, and on-demand catalogue growth means many albums arrive with nothing. The placeholder is a real component with real design requirements, not a grey box. **[OPEN — fallback provider choice is a Gate E decision]**
+**Coverage will be incomplete, and there is no fallback source.** Both candidate fallbacks were rejected on their terms (`architecture.md` §7), so Cover Art Archive is all we have. On-demand catalogue growth means many albums arrive with nothing at all.
+
+Two consequences the model must carry:
+
+- **`artwork_status`** on the album — `found` / `absent` / `pending` — so coverage is a number we can query rather than a guess. This is what makes revisiting the decision an evidence-based conversation.
+- **The placeholder is a real component**, likely among the most-viewed in the product's early life.
+
+Because Cover Art Archive is keyed by MBID, a cover can never be attached to the wrong album — a class of bug both rejected alternatives would have introduced through fuzzy name matching. **[DECIDED]**
 
 ---
 

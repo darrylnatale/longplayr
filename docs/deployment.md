@@ -8,15 +8,14 @@ production and CI enforcement.
 
 ---
 
-## 1. GitHub
+## 1. GitHub — done
 
-The repository exists locally with no remote. CI cannot run until it has one.
+**Repository: <https://github.com/darrylnatale/longplayr> (private).**
+`origin` is configured and `main` is pushed.
 
-```bash
-gh repo create longplayr --private --source=. --remote=origin --push
-# or create it in the UI, then:
-#   git remote add origin git@github.com:<you>/longplayr.git && git push -u origin main
-```
+Still to do: protect `main` in Settings → Branches so both CI jobs must pass
+before merge. Without that rule CI reports failures but doesn't prevent
+anything.
 
 `.github/workflows/ci.yml` runs on push to `main` and on every pull request. It
 has two jobs:
@@ -24,9 +23,6 @@ has two jobs:
 - **check** — format, lint, typecheck, unit tests, build
 - **integration** — boots Supabase in the runner, then integration and
   end-to-end tests
-
-Once green, protect `main` in Settings → Branches so both jobs must pass before
-merge. Without that rule CI reports failures but doesn't prevent anything.
 
 ---
 
@@ -91,7 +87,27 @@ anything reaches production.
 
 ---
 
-## 4. Google sign-in
+## 4. MusicBrainz contact — required before any ingestion
+
+MusicBrainz requires a `User-Agent` identifying the maintainers, and may block
+clients that lack one. Being blocked would affect every longplayr user at once,
+not just one machine, so the client **refuses to make live requests** while the
+contact looks like a placeholder.
+
+Set in Vercel, for both Preview and Production:
+
+```
+MUSICBRAINZ_CONTACT=https://github.com/darrylnatale/longplayr
+```
+
+Local development deliberately keeps the placeholder from `npm run db:env`, so
+ingestion cannot run against the real API by accident. Anything that needs real
+MusicBrainz data must run in a deployed environment, or with the variable set
+explicitly and knowingly.
+
+---
+
+## 5. Google sign-in
 
 Locked as a product decision but **not built** — Phase 0 ships email and
 password only.
@@ -104,7 +120,7 @@ secret. The sign-in and sign-up pages need a provider button added.
 
 ---
 
-## 5. Verification
+## 6. Verification
 
 Phase 0 is genuinely done when, **on the deployed staging URL**:
 

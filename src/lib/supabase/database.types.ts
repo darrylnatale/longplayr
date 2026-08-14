@@ -34,6 +34,140 @@ export type Database = {
   }
   public: {
     Tables: {
+      album_artists: {
+        Row: {
+          album_id: string
+          artist_id: string
+          position: number
+        }
+        Insert: {
+          album_id: string
+          artist_id: string
+          position: number
+        }
+        Update: {
+          album_id?: string
+          artist_id?: string
+          position?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "album_artists_album_id_fkey"
+            columns: ["album_id"]
+            isOneToOne: false
+            referencedRelation: "albums"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "album_artists_artist_id_fkey"
+            columns: ["artist_id"]
+            isOneToOne: false
+            referencedRelation: "artists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      albums: {
+        Row: {
+          artwork_status: Database["public"]["Enums"]["artwork_status"]
+          artwork_updated_at: string | null
+          created_at: string
+          display_credit: string
+          first_release_date: string | null
+          first_release_date_precision:
+            | Database["public"]["Enums"]["date_precision"]
+            | null
+          id: string
+          mbid: string
+          primary_type: Database["public"]["Enums"]["album_type"]
+          representative_release_id: string | null
+          search_vector: unknown
+          secondary_types: Database["public"]["Enums"]["album_secondary_type"][]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          artwork_status?: Database["public"]["Enums"]["artwork_status"]
+          artwork_updated_at?: string | null
+          created_at?: string
+          display_credit: string
+          first_release_date?: string | null
+          first_release_date_precision?:
+            | Database["public"]["Enums"]["date_precision"]
+            | null
+          id?: string
+          mbid: string
+          primary_type: Database["public"]["Enums"]["album_type"]
+          representative_release_id?: string | null
+          search_vector?: unknown
+          secondary_types?: Database["public"]["Enums"]["album_secondary_type"][]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          artwork_status?: Database["public"]["Enums"]["artwork_status"]
+          artwork_updated_at?: string | null
+          created_at?: string
+          display_credit?: string
+          first_release_date?: string | null
+          first_release_date_precision?:
+            | Database["public"]["Enums"]["date_precision"]
+            | null
+          id?: string
+          mbid?: string
+          primary_type?: Database["public"]["Enums"]["album_type"]
+          representative_release_id?: string | null
+          search_vector?: unknown
+          secondary_types?: Database["public"]["Enums"]["album_secondary_type"][]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "albums_representative_release_fk"
+            columns: ["representative_release_id"]
+            isOneToOne: false
+            referencedRelation: "releases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      artists: {
+        Row: {
+          created_at: string
+          disambiguation: string | null
+          id: string
+          mbid: string
+          name: string
+          search_vector: unknown
+          sort_name: string
+          type: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          disambiguation?: string | null
+          id?: string
+          mbid: string
+          name: string
+          search_vector?: unknown
+          sort_name: string
+          type?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          disambiguation?: string | null
+          id?: string
+          mbid?: string
+          name?: string
+          search_vector?: unknown
+          sort_name?: string
+          type?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -67,14 +201,129 @@ export type Database = {
         }
         Relationships: []
       }
+      releases: {
+        Row: {
+          album_id: string
+          country: string | null
+          created_at: string
+          disambiguation: string | null
+          format: string | null
+          id: string
+          label: string | null
+          mbid: string
+          release_date: string | null
+          release_date_precision:
+            | Database["public"]["Enums"]["date_precision"]
+            | null
+          status: string | null
+          title: string
+          track_count: number | null
+          updated_at: string
+        }
+        Insert: {
+          album_id: string
+          country?: string | null
+          created_at?: string
+          disambiguation?: string | null
+          format?: string | null
+          id?: string
+          label?: string | null
+          mbid: string
+          release_date?: string | null
+          release_date_precision?:
+            | Database["public"]["Enums"]["date_precision"]
+            | null
+          status?: string | null
+          title: string
+          track_count?: number | null
+          updated_at?: string
+        }
+        Update: {
+          album_id?: string
+          country?: string | null
+          created_at?: string
+          disambiguation?: string | null
+          format?: string | null
+          id?: string
+          label?: string | null
+          mbid?: string
+          release_date?: string | null
+          release_date_precision?:
+            | Database["public"]["Enums"]["date_precision"]
+            | null
+          status?: string | null
+          title?: string
+          track_count?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "releases_album_id_fkey"
+            columns: ["album_id"]
+            isOneToOne: false
+            referencedRelation: "albums"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tracks: {
+        Row: {
+          id: string
+          length_ms: number | null
+          medium_position: number
+          position: number
+          release_id: string
+          title: string
+        }
+        Insert: {
+          id?: string
+          length_ms?: number | null
+          medium_position?: number
+          position: number
+          release_id: string
+          title: string
+        }
+        Update: {
+          id?: string
+          length_ms?: number | null
+          medium_position?: number
+          position?: number
+          release_id?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tracks_release_id_fkey"
+            columns: ["release_id"]
+            isOneToOne: false
+            referencedRelation: "releases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
     }
     Enums: {
+      album_secondary_type:
+        | "compilation"
+        | "soundtrack"
+        | "live"
+        | "remix"
+        | "mixtape"
+        | "demo"
+        | "spokenword"
+        | "interview"
+        | "audiobook"
+        | "dj_mix"
+      album_type: "album" | "ep" | "other"
+      artwork_status: "pending" | "found" | "absent"
+      date_precision: "day" | "month" | "year"
       user_status: "active" | "suspended" | "banned"
     }
     CompositeTypes: {
@@ -206,6 +455,21 @@ export const Constants = {
   },
   public: {
     Enums: {
+      album_secondary_type: [
+        "compilation",
+        "soundtrack",
+        "live",
+        "remix",
+        "mixtape",
+        "demo",
+        "spokenword",
+        "interview",
+        "audiobook",
+        "dj_mix",
+      ],
+      album_type: ["album", "ep", "other"],
+      artwork_status: ["pending", "found", "absent"],
+      date_precision: ["day", "month", "year"],
       user_status: ["active", "suspended", "banned"],
     },
   },

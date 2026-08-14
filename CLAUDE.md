@@ -20,7 +20,8 @@ These are decided. Do not change them without raising the decision explicitly fi
 - **Everything user-generated is public.** No private accounts, no per-entry visibility.
 - **Account deletion is a hard delete** with a complete cascade. An orphaned row is a privacy failure.
 - **No SQL or database client calls inside React components.** Everything goes through the service layer.
-- **MusicBrainz is rate-limited to roughly one request per second.** Never fetch in a loop without going through the rate limiter.
+- **MusicBrainz is rate-limited to one request per second per IP.** Exceeding it returns `503` for _every_ request from that address, not just the excess. Always go through `src/services/catalogue/rate-limiter.ts`; never fetch in a loop.
+- **No live MusicBrainz ingestion until `MUSICBRAINZ_CONTACT` is a real contact URL.** Local development uses a placeholder and the client refuses to make live requests while it looks like one. This is enforced in code — do not work around it.
 
 ## Deliberately not in scope
 
@@ -30,18 +31,18 @@ Comments, private accounts, track-level features, streaming integration or OAuth
 
 ## Stack
 
-|                    |                                                                                  |
-| ------------------ | -------------------------------------------------------------------------------- |
-| Frontend / backend | Next.js App Router, TypeScript, colocated server logic                           |
-| Database           | Supabase Postgres                                                                |
-| Auth               | Supabase Auth — email/password + Google                                          |
-| File storage       | Supabase Storage (artwork)                                                       |
-| Hosting            | Vercel                                                                           |
-| Metadata           | MusicBrainz                                                                      |
-| Artwork            | Cover Art Archive → fallback (iTunes or Deezer — **pending terms verification**) |
-| Popularity         | ListenBrainz, behind a `PopularitySource` abstraction                            |
-| Search             | Postgres full-text + `pg_trgm`                                                   |
-| Testing            | Vitest (unit, integration), Playwright (end-to-end)                              |
+|                    |                                                                                                   |
+| ------------------ | ------------------------------------------------------------------------------------------------- |
+| Frontend / backend | Next.js App Router, TypeScript, colocated server logic                                            |
+| Database           | Supabase Postgres                                                                                 |
+| Auth               | Supabase Auth — email/password + Google                                                           |
+| File storage       | Supabase Storage (artwork)                                                                        |
+| Hosting            | Vercel                                                                                            |
+| Metadata           | MusicBrainz                                                                                       |
+| Artwork            | Cover Art Archive only, by release-group MBID. No fallback source — see `docs/architecture.md` §7 |
+| Popularity         | ListenBrainz, behind a `PopularitySource` abstraction                                             |
+| Search             | Postgres full-text + `pg_trgm`                                                                    |
+| Testing            | Vitest (unit, integration), Playwright (end-to-end)                                               |
 
 ---
 
