@@ -116,10 +116,10 @@ port = 54324
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
 
-# Artwork storage is a Phase 1 concern (docs/architecture.md §7). Off until then
-# to keep the local stack light; re-enable when the artwork pipeline lands.
+# Needed from Phase 1 onward: album artwork is fetched from Cover Art Archive
+# and stored by us rather than hotlinked (docs/architecture.md §7).
 [storage]
-enabled = false
+enabled = true
 # The maximum file size allowed (e.g. "5MB", "500KB").
 file_size_limit = "50MiB"
 
@@ -130,9 +130,9 @@ file_size_limit = "50MiB"
 # allowed_mime_types = ["image/png", "image/jpeg"]
 # objects_path = "./images"
 
-# Allow connections via S3 compatible clients
+# We upload through the Supabase client, not an S3 client.
 [storage.s3_protocol]
-enabled = true
+enabled = false
 
 # Image transformation API is available to Supabase Pro plan.
 # [storage.image_transformation]
@@ -149,9 +149,11 @@ max_catalogs = 2
 # Analytics Buckets is available to Supabase Pro plan.
 # [storage.analytics.buckets.my-warehouse]
 
-# Store vector embeddings in S3 for large and durable datasets
+# Vector buckets are a Pro feature we do not use, and their migrations add
+# roughly 40 seconds to storage startup — long enough that the container fails
+# its health check and `supabase start` rolls the whole stack back.
 [storage.vector]
-enabled = true
+enabled = false
 max_buckets = 10
 max_indexes = 5
 
