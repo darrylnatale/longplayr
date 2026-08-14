@@ -1,0 +1,16 @@
+.next
+node_modules
+supabase/.temp
+package-lock.json
+package.json
+next-env.d.ts
+
+# Generated
+src/lib/supabase/database.types.ts
+test-results
+playwright-report
+
+# Source material and local editor state — do not reformat
+transcript.md
+.claude
+*.code-workspace

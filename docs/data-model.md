@@ -1,0 +1,351 @@
+# longplayr — Conceptual Data Model
+
+Entities and relationships, deliberately ahead of schema. Column names are illustrative; types, indexes, and constraints get settled at implementation. What matters here is **what exists, what it means, and how the pieces relate**.
+
+Notation: **[DECIDED]** = explicitly chosen. **[INFERRED]** = follows necessarily; flagged for correction. **[OPEN]** = unresolved.
+
+---
+
+## 1. Shape of the model
+
+Three layers that behave very differently:
+
+```
+  ┌─── CATALOGUE ─────────────────────────────┐
+  │  read-only, sourced from MusicBrainz      │
+  │  shared by all users, never user-authored  │
+  │                                            │
+  │  Artist ──< AlbumArtist >── Album ──< Release
+  │                              │
+  │                              └──< Track
+  └────────────────────────────────────────────┘
+                    ▲
+                    │  referenced by
+                    │
+  ┌─── USER CONTENT ──────────────────────────┐
+  │  authored by users, hard-deleted with them │
+  │                                            │
+  │  User ──< CollectionEntry >── Album        │
+  │            │                               │
+  │            ├──< RelistenEvent              │
+  │            └──── Review                    │
+  │                                            │
+  │  User ──< List ──< ListItem >── Album      │
+  │  User ──< Follow >── User                  │
+  │  User ──< Block >── User                   │
+  └────────────────────────────────────────────┘
+                    ▲
+                    │  derived from
+                    │
+  ┌─── DERIVED / OPERATIONAL ─────────────────┐
+  │  Activity     (broadcast — feed events)    │
+  │  Notification (directed — likes, follows)  │
+  │  Report       (moderation)                 │
+  │  CatalogueAddition (audit + rate limiting)  │
+  └────────────────────────────────────────────┘
+```
+
+The layering matters because it maps to different lifecycles. Catalogue data outlives every user. User content is hard-deleted on request. Derived data is disposable and rebuildable.
+
+---
+
+## 2. Catalogue entities
+
+Sourced from MusicBrainz, cached locally, never edited by users. Each carries its **MBID as a unique natural key** alongside our own surrogate primary key.
+
+### Artist
+
+The performer or group. One artist page per record.
+
+| Field            | Notes                                                             |
+| ---------------- | ----------------------------------------------------------------- |
+| `mbid`           | Unique. MusicBrainz artist identifier                             |
+| `name`           | Canonical name                                                    |
+| `sort_name`      | For alphabetical ordering ("Beatles, The")                        |
+| `disambiguation` | MusicBrainz's short qualifier, used when two artists share a name |
+| `type`           | Person, Group, Orchestra, Choir, etc.                             |
+
+"Various Artists" is a real MusicBrainz artist and arrives as an ordinary row. **[INFERRED]** It gets an artist page like any other, which is the correct behaviour for compilation browsing.
+
+### Album
+
+A MusicBrainz **release group** — the abstract record, independent of pressing. This is the social object: ratings, reviews, collection entries and list items all attach here.
+
+| Field                    | Notes                                                                                                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `mbid`                   | Unique. Release-group identifier                                                                                                                 |
+| `title`                  |                                                                                                                                                  |
+| `display_credit`         | **The rendered credit string cached from MusicBrainz** — e.g. `"Jay-Z & Kanye West"`. Avoids reimplementing join-phrase logic **[DECIDED — D1]** |
+| `primary_type`           | Album, EP, Other                                                                                                                                 |
+| `secondary_types`        | Compilation, Live, Soundtrack, Mixtape, Remix, Demo — a set, not a single value                                                                  |
+| `first_release_date`     | Earliest known release. Stored as a **full date with defaults filled**: missing day → the 1st, missing month → January. **[DECIDED]**            |
+| `release_date_precision` | `day` / `month` / `year` — records what was _actually_ known **[INFERRED]**                                                                      |
+| `artwork_*`              | See §6                                                                                                                                           |
+
+**On dates.** MusicBrainz dates are frequently year-only or year-month. Storing a full date keeps sorting and range queries trivial; the separate precision marker keeps display honest, so a year-only release shows as `2004` rather than the invented `1 January 2004`. Storing the date without precision would make that distinction unrecoverable — the marker is what leaves room to handle dates more precisely later, as you flagged, without a migration or a re-ingest. **[INFERRED — a small addition to what was decided; drop it if you'd rather keep the column count down and accept lossy display.]**
+
+**Scope constraint.** Per the catalogue scope decision, only albums, EPs and mixtapes are ingested; singles are excluded. Live albums, compilations and soundtracks are included. This is enforced **at ingest**, not at query time — an out-of-scope release group should never become a row.
+
+### AlbumArtist
+
+Join table connecting albums to every credited artist. **This is what makes _Watch the Throne_ appear on both Jay-Z's and Kanye West's pages.**
+
+| Field                   | Notes                                               |
+| ----------------------- | --------------------------------------------------- |
+| `album_id`, `artist_id` | Composite key                                       |
+| `position`              | Credit order, so the primary artist is identifiable |
+
+Display always uses `Album.display_credit`; this table exists for **linking and discography queries**, not for rendering. **[DECIDED — D1]**
+
+### Release
+
+A specific edition — original pressing, remaster, deluxe, regional variant. Referenced optionally by a collection entry when a user cares which one they heard.
+
+| Field                                                                          | Notes                |
+| ------------------------------------------------------------------------------ | -------------------- |
+| `mbid`                                                                         | Unique               |
+| `album_id`                                                                     | Parent release group |
+| `title`, `date`, `country`, `format`, `label`, `track_count`, `disambiguation` |                      |
+
+**Fetched lazily.** A popular album can have fifty releases, and the overwhelming majority of users never open the editions UI. Eager fetching would multiply ingestion cost for a feature most people won't touch. **[INFERRED — confirmed as an architecture decision in Gate E]**
+
+### Track
+
+Tracklist entries, shown on album pages for context. Never rated, reviewed, or logged.
+
+**A real modelling wrinkle:** MusicBrainz attaches tracklists to _releases_, not release groups. Our album page needs a tracklist, so we nominate a **representative release** to source it from, stored as `Album.representative_release_id`.
+
+**Selection rule — earliest official release. [DECIDED]** Resolved in this order:
+
+1. Earliest release with status **Official**, by release date.
+2. If none is Official, earliest release of any status.
+3. If dates tie or are missing, prefer the release with the most complete data — a known date, then a track count, then a country.
+4. If still tied, lowest MBID, purely so the choice is deterministic and stable across re-ingests.
+
+Steps 2–4 exist because "earliest official" is underdetermined more often than it sounds: bootlegs and promos predate official pressings, many releases carry year-only dates, and some release groups have no Official release at all. Without a deterministic tail, the same album could pick a different tracklist on each re-sync.
+
+---
+
+## 3. User and social entities
+
+### User
+
+| Field                           | Notes                                                                                      |
+| ------------------------------- | ------------------------------------------------------------------------------------------ |
+| `handle`                        | Unique, user-facing identifier in URLs                                                     |
+| `display_name`, `avatar`, `bio` | Profile presentation                                                                       |
+| `email`                         | Authentication; never public                                                               |
+| `status`                        | `active` / `suspended` / `banned` — required by the moderation decision **[DECIDED — C3]** |
+| `created_at`                    |                                                                                            |
+
+Authentication credentials live with the managed auth provider, **not in this table**. This table holds the profile, keyed to the provider's user identifier.
+
+### FavouriteAlbum
+
+Pinned albums summarising a user's taste, shown on their profile. **[DECIDED]**
+
+| Field                 | Notes                    |
+| --------------------- | ------------------------ |
+| `user_id`, `album_id` | Unique together          |
+| `position`            | User-controlled ordering |
+
+**Maximum ten per user**, enforced in the service layer. Independent of the collection — **[INFERRED]** you may favourite an album you haven't added, and favouriting does not add it, since a favourite is a statement about taste rather than a record of listening. Say if you'd rather favourites be restricted to your collection.
+
+### Follow
+
+Asymmetric. `follower_id` → `followee_id`, with `created_at`. Composite unique; self-follows rejected.
+
+### Block
+
+`blocker_id` → `blocked_id`. Per the block decision, this suppresses following, liking, feed presence and notifications **in both directions**, but does **not** restrict viewing — content stays publicly readable. The model can't enforce more than that, and the UI must say so. **[DECIDED — C2]**
+
+---
+
+## 4. The core entity
+
+### CollectionEntry
+
+**The centre of the product.** One row per user per album, permanently — this uniqueness constraint _is_ the collection model.
+
+| Field                 | Notes                                                                                            |
+| --------------------- | ------------------------------------------------------------------------------------------------ |
+| `user_id`, `album_id` | **Unique together.** The album appears once in a collection no matter how many times it's played |
+| `release_id`          | Nullable. The edition, if the user cared to specify one                                          |
+| `rating`              | **Nullable.** 0.0–10.0, one decimal. Null means unrated and excluded from averages               |
+| `liked`               | Boolean, independent of rating                                                                   |
+| `relisten_count`      | Denormalised count of related `RelistenEvent` rows, for cheap `×N` display in grids              |
+| `listened_on`         | **Nullable date, user-supplied.** May be backdated, or omitted entirely                          |
+| `added_at`            | **Always set by the system.** Never null                                                         |
+| `updated_at`          |                                                                                                  |
+
+**Why two timestamps.** `listened_on` is what the user asserts; `added_at` is what actually happened. Collections sort by `listened_on` when present, falling back to `added_at` — so a user who bulk-adds forty undated albums still gets them ordered sensibly by when they added them. `added_at` is also what drives feed eligibility.
+
+**Feed eligibility rule.** An entry generates a `listened` activity event only when `listened_on` is today. Undated and backdated adds are silent. This rule is applied **once, at write time** — it is the reason the materialised activity table is worth having. **[DECIDED — B1]**
+
+**Implicit creation.** Rating, liking or reviewing an album the user hasn't added **creates the entry automatically**, with `listened_on` unset. By the rule above that makes it a silent add, so no `listened` event fires — while the triggering action still produces its own event (`rated`, `reviewed`) or none at all (liking). **[DECIDED]**
+
+Without this, rating an album you'd never logged would announce to your followers that you had just listened to it, which may not be true. `FavouriteAlbum` is deliberately outside this behaviour.
+
+### RelistenEvent
+
+Discrete, timestamped rows — one per relisten.
+
+| Field                 | Notes  |
+| --------------------- | ------ |
+| `collection_entry_id` | Parent |
+| `occurred_at`         |        |
+
+**These must exist as rows, not merely as a counter.** Marking a relisten on Monday, Tuesday and Wednesday produces three separate feed items, which a single count column cannot express. `CollectionEntry.relisten_count` is a denormalised convenience for grid display; these rows are the truth.
+
+### Review
+
+One standing review per user per album, editable in place.
+
+| Field                      | Notes                                                                                   |
+| -------------------------- | --------------------------------------------------------------------------------------- |
+| `collection_entry_id`      | One-to-one. Unique                                                                      |
+| `body`                     | Plain text with line breaks. **Maximum 10,000 characters** (~1,700 words) **[DECIDED]** |
+| `status`                   | `live` / `removed` — soft-delete for moderation                                         |
+| `created_at`, `updated_at` |                                                                                         |
+
+**Modelled as its own table rather than a column on `CollectionEntry`** — because moderation must soft-delete a review without destroying the user's collection entry, and likes and reports need a stable identifier to reference. **[INFERRED — flagged in Gate D, correct if unwanted]**
+
+Editing replaces the body; no version history is kept, per the rating-and-review decision.
+
+---
+
+## 5. Lists and interactions
+
+### List
+
+| Field                             | Notes                                |
+| --------------------------------- | ------------------------------------ |
+| `user_id`, `title`, `description` |                                      |
+| `is_ranked`                       | Whether items carry meaningful order |
+| `status`                          | `live` / `removed` — moderation      |
+
+### ListItem
+
+| Field                 | Notes                                                    |
+| --------------------- | -------------------------------------------------------- |
+| `list_id`, `album_id` | Unique together — an album appears at most once per list |
+| `position`            | Ordering. Meaningful only when the list is ranked        |
+
+Per-item commentary is deferred; adding it later is a nullable column, requiring no restructuring. Ranked ordering is settled **now** precisely because it isn't. **[DECIDED — B7]**
+
+### Likes
+
+Three distinct things can be liked, and they are **not** modelled polymorphically:
+
+| Liking a…  | Stored as                                                     |
+| ---------- | ------------------------------------------------------------- |
+| **Album**  | `CollectionEntry.liked` — already a column, no separate table |
+| **Review** | `ReviewLike` (`user_id`, `review_id`)                         |
+| **List**   | `ListLike` (`user_id`, `list_id`)                             |
+
+**[INFERRED]** Separate tables rather than a polymorphic `Like` table: polymorphic foreign keys can't be enforced by the database, and there are only two of them. The cost of the general solution exceeds its benefit here.
+
+Likes generate **no activity events** — they'd dominate the feed by volume. **[DECIDED — B5]** They do generate **notifications** to the content's author, which is the only way they become visible at all.
+
+---
+
+## 6. Artwork
+
+Album artwork is the visual backbone of the product, so it gets first-class treatment rather than a URL column.
+
+| Field                               | Notes                                                                                                                                                    |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `album_id`                          |                                                                                                                                                          |
+| `source`                            | Cover Art Archive, or the fallback provider                                                                                                              |
+| `storage_key`                       | **Our own storage.** Artwork is fetched and stored, not hotlinked — upstream availability and rate limits are not something album pages should depend on |
+| `width`, `height`, derivative sizes | Grids, feed rows and detail pages need different dimensions                                                                                              |
+
+**Coverage will be incomplete.** Cover Art Archive is inconsistent for less-popular releases, and on-demand catalogue growth means many albums arrive with nothing. The placeholder is a real component with real design requirements, not a grey box. **[OPEN — fallback provider choice is a Gate E decision]**
+
+---
+
+## 7. Derived and operational entities
+
+### Activity
+
+Materialised feed events. **[DECIDED — D2]**
+
+| Field                                                              | Notes                                                                              |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| `actor_id`                                                         | Who did it                                                                         |
+| `type`                                                             | `listened` / `relistened` / `rated` / `reviewed` / `list_created` / `list_updated` |
+| `collection_entry_id`, `relisten_event_id`, `review_id`, `list_id` | Nullable references to the subject, depending on type                              |
+| `created_at`                                                       | Feed ordering                                                                      |
+
+**Events reference live data; they do not snapshot values.** A feed item displaying a rating reads the current value from the collection entry, so edits propagate everywhere. Undoing the action deletes the event — cascading from the referenced row. The feed therefore never displays a claim that has stopped being true. **[DECIDED — D3]**
+
+Feed query: events whose actor is someone you follow, newest first.
+
+### Notification
+
+Events directed at a specific user. **[DECIDED]**
+
+| Field                                         | Notes                                                 |
+| --------------------------------------------- | ----------------------------------------------------- |
+| `recipient_id`                                | Who is being notified                                 |
+| `actor_id`                                    | Who caused it                                         |
+| `type`                                        | `followed` / `review_liked` / `list_liked`            |
+| `follow_id`, `review_like_id`, `list_like_id` | Nullable references to the subject, depending on type |
+| `read_at`                                     | Nullable. Drives the unread count                     |
+| `created_at`                                  |                                                       |
+
+**Distinct from `Activity`, despite the similar shape.** `Activity` is broadcast — things you did, shown to your followers. `Notification` is directed — things others did _to you_. The two carry disjoint event types: likes and follows generate notifications and never activity; listens, ratings, reviews and lists generate activity and never notifications. Collapsing them into one table would mean every feed query filtering out notification types and vice versa.
+
+Like activity events, notifications **reference live data and cascade on deletion** — unfollowing or unliking removes the notification, so the page never reports something that has been undone.
+
+### Report
+
+| Field                                               | Notes                             |
+| --------------------------------------------------- | --------------------------------- |
+| `reporter_id`, `target_type`, `target_id`, `reason` |                                   |
+| `status`                                            | `open` / `actioned` / `dismissed` |
+| `resolved_by`, `resolved_at`                        |                                   |
+
+Targets are reviews, lists, and users.
+
+### CatalogueAddition
+
+Audit trail for self-service catalogue additions: which user added which album, and when.
+
+Exists for two reasons: **rate limiting** (the ceiling that prevents bulk junk-adding, which is the only real risk self-service introduces), and **retrospective review** if something out of scope slips through. **[DECIDED — C4]**
+
+---
+
+## 8. Cross-cutting behaviour
+
+### Hard deletion
+
+Deleting a user removes every row they authored: collection entries, relisten events, reviews, lists and items, follows, blocks, likes, and activity. It also removes **notifications they caused** for other users — a notification naming a deleted account would leak a handle that no longer exists. Catalogue rows are untouched; they were never theirs.
+
+**Two decisions interact well here.** Because averages are computed on read rather than stored, deletion requires **no recomputation step** — the aggregate simply stops including those rows. Had we chosen stored counters, every deletion would need a careful decrement across potentially thousands of albums, each an opportunity for permanent drift. **[DECIDED — C1 + D4]**
+
+### Averages
+
+Computed at query time from non-null ratings on collection entries. No stored aggregates, so no drift is possible. **[DECIDED — D4]**
+
+### Moderation status
+
+`Review.status`, `List.status` and `User.status` exist from day one. Retrofitting content status across populated tables later is exactly the kind of migration worth avoiding. **[DECIDED — C3]**
+
+### MBID as natural key
+
+Every catalogue entity has a unique MBID. Re-ingesting an album is an upsert on that key, which is what prevents duplicate rows.
+
+---
+
+## 9. Open questions
+
+**~~9.1 — Representative release for tracklists.~~ RESOLVED.** Earliest official release, with a deterministic fallback chain. See §2, Track.
+
+**9.2 — MusicBrainz identifier changes.** MBIDs can be merged upstream when duplicate entities are reconciled; the old identifier redirects rather than disappearing. Our unique constraints assume stability. A re-sync strategy that follows redirects and merges local rows is needed — not for launch, but before the catalogue is large enough that a merge causes visible breakage.
+
+**~~9.3 — Partial release dates.~~ RESOLVED.** Store as precise as the source allows, with defaults filling the gaps. See §2, Album.
+
+**9.4 — Genre and tag data.** Deferred from the MVP, but if it lands later it attaches to albums and artists and is worth leaving room for rather than bolting on.
+
+**9.5 — Handle reuse after deletion.** Hard deletion frees a handle. Whether it becomes immediately claimable affects whether old links resolve to a different person — a small decision with an impersonation edge case behind it.
