@@ -2,7 +2,7 @@
 
 A social music platform: users record the albums they've listened to, rate and review them, build lists, follow each other, and discover music through that activity.
 
-**Current state: Phase 0 (foundation).** Auth, profiles, tooling and CI. The catalogue, collection and social features are not built yet — see `docs/development-plan.md` for what belongs to which phase, and do not build ahead of the current phase without saying so.
+**Current state: Phase 1 (catalogue), in progress.** See `docs/current-state.md` for exactly where things stand and what to do next. `docs/development-plan.md` defines what belongs to which phase — do not build ahead of the current phase without saying so.
 
 ---
 
@@ -48,14 +48,20 @@ Comments, private accounts, track-level features, streaming integration or OAuth
 
 ## Documents
 
-| File                           | Contents                                                               |
-| ------------------------------ | ---------------------------------------------------------------------- |
-| `docs/product-spec.md`         | What longplayr is, MVP scope, deferrals, open product decisions        |
-| `docs/design-reference.md`     | Letterboxd analysis, what to borrow/adapt/avoid, original design needs |
-| `docs/data-model.md`           | Conceptual entities and relationships                                  |
-| `docs/architecture.md`         | Technical decisions with alternatives and reasoning                    |
-| `docs/development-plan.md`     | Phased implementation sequence                                         |
-| `docs/claude-code-playbook.md` | How to work in this repo with Claude Code                              |
+Listed in authority order. When two disagree, the higher one wins.
+
+| File                           | Contents                                                                |
+| ------------------------------ | ----------------------------------------------------------------------- |
+| `docs/product-spec.md`         | What longplayr is, MVP scope, deferrals, open product decisions         |
+| `docs/design-reference.md`     | Letterboxd analysis, what to borrow/adapt/avoid, original design needs  |
+| `docs/data-model.md`           | Conceptual entities and relationships                                   |
+| `docs/architecture.md`         | Technical decisions with alternatives and reasoning                     |
+| `docs/development-plan.md`     | Phased implementation sequence                                          |
+| `docs/deployment.md`           | Steps requiring accounts: GitHub, Supabase, Vercel, MusicBrainz contact |
+| `docs/current-state.md`        | **Where we are right now.** Read this first when resuming work          |
+| `docs/claude-code-playbook.md` | How to work in this repo with Claude Code                               |
+
+`docs/current-state.md` is the lowest authority and goes stale fastest — it describes progress, never decisions. Anything it says that contradicts this file or the specs is wrong.
 
 `transcript.md` and the three `claude-*` docs are reference material. Do not modify them.
 
