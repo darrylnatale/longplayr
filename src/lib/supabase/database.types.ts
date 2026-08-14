@@ -79,6 +79,7 @@ export type Database = {
             | null
           id: string
           mbid: string
+          popularity_score: number | null
           primary_type: Database["public"]["Enums"]["album_type"]
           representative_release_id: string | null
           search_vector: unknown
@@ -97,6 +98,7 @@ export type Database = {
             | null
           id?: string
           mbid: string
+          popularity_score?: number | null
           primary_type: Database["public"]["Enums"]["album_type"]
           representative_release_id?: string | null
           search_vector?: unknown
@@ -115,6 +117,7 @@ export type Database = {
             | null
           id?: string
           mbid?: string
+          popularity_score?: number | null
           primary_type?: Database["public"]["Enums"]["album_type"]
           representative_release_id?: string | null
           search_vector?: unknown
@@ -398,6 +401,33 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      search_albums: {
+        Args: { max_results?: number; query: string }
+        Returns: {
+          artwork_status: Database["public"]["Enums"]["artwork_status"]
+          display_credit: string
+          first_release_date: string
+          first_release_date_precision: Database["public"]["Enums"]["date_precision"]
+          id: string
+          mbid: string
+          popularity_score: number
+          primary_type: Database["public"]["Enums"]["album_type"]
+          text_rank: number
+          tier: number
+          title: string
+        }[]
+      }
+      search_artists: {
+        Args: { max_results?: number; query: string }
+        Returns: {
+          album_count: number
+          disambiguation: string
+          id: string
+          mbid: string
+          name: string
+          tier: number
+        }[]
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }

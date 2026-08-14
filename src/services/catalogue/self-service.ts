@@ -1,0 +1,159 @@
+import { createAdminClient } from '@/lib/supabase/admin';
+
+import { err, ok, type Result } from '../result';
+import { getCurrentUser } from '../profiles';
+import { ingestReleaseGroup } from './ingest';
+import { enqueueJob } from './jobs';
+import { searchReleaseGroups, type MbReleaseGroup } from './musicbrainz';
+import { classify } from './scope';
+
+/**
+ * Self-service catalogue additions.
+ *
+ * When a record is missing, users add it themselves rather than waiting for an
+ * admin: the data comes from MusicBrainz, so there is no editorial judgement
+ * for a human to exercise. The real risks are out-of-scope records and bulk
+ * junk, which a scope filter and a rate limit handle better than a queue.
+ */
+
+export const RATE_LIMIT_PER_HOUR = 30;
+export const RATE_LIMIT_PER_DAY = 100;
+
+export type AddError =
+  'unauthenticated' | 'out_of_scope' | 'rate_limited' | 'already_present' | 'upstream_unavailable';
+
+export type UpstreamCandidate = {
+  mbid: string;
+  title: string;
+  credit: string;
+  year: string | null;
+  primaryType: string | null;
+};
+
+function renderCredit(group: MbReleaseGroup): string {
+  return (
+    (group['artist-credit'] ?? [])
+      .map((credit) => `${credit.name}${credit.joinphrase ?? ''}`)
+      .join('')
+      .trim() || 'Unknown Artist'
+  );
+}
+
+/**
+ * Searches MusicBrainz for records we do not hold.
+ *
+ * Returns an empty list rather than throwing when MusicBrainz is unreachable —
+ * including when the contact guard is blocking calls. A missing fallback should
+ * quietly leave local results as they are, not break the search page.
+ */
+export async function searchUpstream(query: string, limit = 10): Promise<UpstreamCandidate[]> {
+  let result: Awaited<ReturnType<typeof searchReleaseGroups>>;
+  try {
+    result = await searchReleaseGroups(query, limit * 2);
+  } catch {
+    return [];
+  }
+
+  const admin = createAdminClient();
+
+  const inScope = (result['release-groups'] ?? []).filter((group) => classify(group).inScope);
+  if (inScope.length === 0) return [];
+
+  // Hide anything we already hold; it is in the local results above.
+  const { data: existing } = await admin
+    .from('albums')
+    .select('mbid')
+    .in(
+      'mbid',
+      inScope.map((g) => g.id),
+    );
+
+  const held = new Set((existing ?? []).map((row) => row.mbid));
+
+  return inScope
+    .filter((group) => !held.has(group.id))
+    .slice(0, limit)
+    .map((group) => ({
+      mbid: group.id,
+      title: group.title,
+      credit: renderCredit(group),
+      year: group['first-release-date']?.slice(0, 4) ?? null,
+      primaryType: group['primary-type'] ?? null,
+    }));
+}
+
+/** Remaining additions allowed for a user in each window. */
+export async function remainingAllowance(userId: string): Promise<{ hour: number; day: number }> {
+  const admin = createAdminClient();
+  const now = Date.now();
+
+  const [hour, day] = await Promise.all(
+    [3_600_000, 86_400_000].map(async (windowMs) => {
+      const { count, error } = await admin
+        .from('catalogue_additions')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .gte('created_at', new Date(now - windowMs).toISOString());
+      if (error) throw error;
+      return count ?? 0;
+    }),
+  );
+
+  return {
+    hour: Math.max(0, RATE_LIMIT_PER_HOUR - hour),
+    day: Math.max(0, RATE_LIMIT_PER_DAY - day),
+  };
+}
+
+/**
+ * Adds one release group to the catalogue on a user's behalf.
+ *
+ * Fetched inline rather than queued: this is the fast path, and making someone
+ * wait behind a seeding backlog for the one record they asked for would be the
+ * wrong trade. Artwork is queued separately, since it is not needed to render
+ * the page they are about to visit.
+ */
+export async function addAlbumFromUpstream(
+  mbid: string,
+): Promise<Result<{ mbid: string }, AddError>> {
+  const user = await getCurrentUser();
+  if (!user) return err('unauthenticated', 'You need to be signed in to add a record.');
+
+  const allowance = await remainingAllowance(user.id);
+  if (allowance.hour <= 0 || allowance.day <= 0) {
+    return err(
+      'rate_limited',
+      `You have reached the limit of ${RATE_LIMIT_PER_HOUR} additions an hour, ${RATE_LIMIT_PER_DAY} a day.`,
+    );
+  }
+
+  const admin = createAdminClient();
+
+  const { data: existing } = await admin
+    .from('albums')
+    .select('mbid')
+    .eq('mbid', mbid)
+    .maybeSingle();
+  if (existing) return ok({ mbid });
+
+  let result: Awaited<ReturnType<typeof ingestReleaseGroup>>;
+  try {
+    result = await ingestReleaseGroup(mbid, admin);
+  } catch (error) {
+    return err(
+      'upstream_unavailable',
+      error instanceof Error ? error.message : 'MusicBrainz is unavailable right now.',
+    );
+  }
+
+  if (result.status === 'out_of_scope') {
+    return err('out_of_scope', `longplayr does not catalogue this: ${result.reason}.`);
+  }
+
+  // Recorded whether or not the album was new to us, because the audit answers
+  // "who added what", and it is what the rate limit counts.
+  await admin.from('catalogue_additions').insert({ user_id: user.id, album_mbid: mbid });
+  await enqueueJob('fetch_artwork', mbid, { admin });
+
+  return ok({ mbid });
+}

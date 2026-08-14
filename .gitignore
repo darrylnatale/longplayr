@@ -51,3 +51,7 @@ next-env.d.ts
 
 # Source material — kept locally, not tracked
 transcript.md
+
+# Seed reports (generated)
+seed-report.txt
+seed-report.json

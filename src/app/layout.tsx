@@ -22,9 +22,17 @@ async function Nav() {
   return (
     <nav className="border-b border-border">
       <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
-        <Link href="/" className="text-lg font-semibold tracking-tight">
-          longplayr
-        </Link>
+        <div className="flex items-center gap-6">
+          <Link href="/" className="text-lg font-semibold tracking-tight">
+            longplayr
+          </Link>
+          <Link href="/albums" className="text-sm text-muted hover:text-foreground">
+            Browse
+          </Link>
+          <Link href="/search" className="text-sm text-muted hover:text-foreground">
+            Search
+          </Link>
+        </div>
 
         <div className="flex items-center gap-4 text-sm">
           {user ? (

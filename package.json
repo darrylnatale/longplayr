@@ -20,7 +20,8 @@
     "db:env": "node scripts/write-local-env.mjs",
     "db:types": "supabase gen types typescript --local > src/lib/supabase/database.types.ts",
     "verify": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build",
-    "db:seed:fixtures": "vitest run --project seed"
+    "db:seed:fixtures": "vitest run --project seed tests/seed/seed-fixtures.test.ts",
+    "db:seed:catalogue": "vitest run --project seed tests/seed/seed-catalogue.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
