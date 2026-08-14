@@ -44,6 +44,20 @@ export default defineConfig({
           fileParallelism: false,
         },
       },
+      {
+        // Seeding utilities, not tests. A separate project so they never run
+        // as part of the suite — the integration tests truncate the catalogue
+        // between cases and would wipe anything seeded here.
+        plugins: [react()],
+        resolve: { alias },
+        test: {
+          name: 'seed',
+          environment: 'node',
+          include: ['tests/seed/**/*.ts'],
+          setupFiles: ['./tests/setup/integration.ts'],
+          fileParallelism: false,
+        },
+      },
     ],
   },
 });
