@@ -1,15 +1,22 @@
-import type { MbReleaseGroup } from './musicbrainz';
+import type { MbReleaseDetail, MbReleaseGroup } from './musicbrainz';
 
 /**
  * MusicBrainz response fixtures.
  *
- * Hand-built to mirror the response shapes documented by MusicBrainz, covering
- * the cases that drove modelling decisions. They are **not** captured from live
- * responses, because live calls are blocked until a genuine contact value is
- * configured (docs/development-plan.md, Phase 1).
+ * **Corrected against the live API.** An earlier version assumed release-group
+ * responses embedded `media[].tracks[]`; they do not. That wrong assumption
+ * produced a real catalogue in which every album had an empty tracklist, and it
+ * survived a full fixture suite because the fixtures encoded the same mistake.
  *
- * That limit is the point of the real-data smoke test: these prove our logic is
- * self-consistent, not that our reading of MusicBrainz is correct.
+ * The shapes here now match what the API actually returns:
+ *
+ *  - Release groups (`inc=artist-credits+releases`) carry release **metadata
+ *    only** — no `media`, no `track-count`, no `label-info`.
+ *  - Tracklists require fetching the release itself (`inc=recordings`), where
+ *    tracks live under `media[].tracks[]` and `track-count` is per medium.
+ *
+ * Fixtures still cannot prove our reading of the API is right — only real
+ * requests do that. That is what the smoke-test gate exists for.
  */
 
 /** Baseline: one artist, one official release, full date, tracklist. */
@@ -37,18 +44,6 @@ export const singleArtistAlbum: MbReleaseGroup = {
       status: 'Official',
       date: '2007-12-28',
       country: 'GB',
-      'track-count': 10,
-      media: [
-        {
-          format: 'CD',
-          position: 1,
-          tracks: [
-            { id: 't1', position: 1, title: '15 Step', length: 237000 },
-            { id: 't2', position: 2, title: 'Bodysnatchers', length: 242000 },
-          ],
-        },
-      ],
-      'label-info': [{ label: { name: 'XL Recordings' } }],
     },
   ],
 };
@@ -87,7 +82,6 @@ export const collaborationAlbum: MbReleaseGroup = {
       status: 'Official',
       date: '2011-08-08',
       country: 'US',
-      'track-count': 12,
     },
   ],
 };
@@ -239,18 +233,6 @@ export const multiDiscAlbum: MbReleaseGroup = {
       title: 'Sandinista!',
       status: 'Official',
       date: '1980-12-12',
-      media: [
-        {
-          format: 'Vinyl',
-          position: 1,
-          tracks: [{ id: 'd1t1', position: 1, title: 'The Magnificent Seven', length: 328000 }],
-        },
-        {
-          format: 'Vinyl',
-          position: 2,
-          tracks: [{ id: 'd2t1', position: 1, title: 'Lose This Skin', length: 315000 }],
-        },
-      ],
     },
   ],
 };
@@ -264,4 +246,67 @@ export const allFixtures = {
   yearOnlyAlbum,
   messyReleaseGroup,
   multiDiscAlbum,
+};
+
+// ---------------------------------------------------------------------------
+// Release detail responses (`inc=recordings+labels+media`)
+//
+// The only shape that carries a tracklist. Modelled on a verified live
+// response: tracks sit under `media[].tracks[]`, `track-count` is a property of
+// each medium rather than of the release, and `number` is a display string that
+// can be non-numeric on vinyl.
+// ---------------------------------------------------------------------------
+
+/** Single disc, matching the representative release of `singleArtistAlbum`. */
+export const singleDiscReleaseDetail: MbReleaseDetail = {
+  id: '0b0e4f1e-2222-4000-8000-000000000001',
+  title: 'In Rainbows',
+  status: 'Official',
+  date: '2007-12-28',
+  country: 'GB',
+  'label-info': [{ label: { name: 'XL Recordings' } }],
+  media: [
+    {
+      position: 1,
+      format: 'CD',
+      'track-count': 2,
+      tracks: [
+        { id: 't1', position: 1, number: '1', title: '15 Step', length: 237000 },
+        { id: 't2', position: 2, number: '2', title: 'Bodysnatchers', length: 242000 },
+      ],
+    },
+  ],
+};
+
+/** Two discs. Track positions repeat, so the medium keeps them distinct. */
+export const multiDiscReleaseDetail: MbReleaseDetail = {
+  id: '00000000-0000-4000-8000-00000000d001',
+  title: 'Sandinista!',
+  status: 'Official',
+  date: '1980-12-12',
+  media: [
+    {
+      position: 1,
+      format: 'Vinyl',
+      'track-count': 1,
+      tracks: [
+        { id: 'd1t1', position: 1, number: 'A1', title: 'The Magnificent Seven', length: 328000 },
+      ],
+    },
+    {
+      position: 2,
+      format: 'Vinyl',
+      'track-count': 1,
+      tracks: [{ id: 'd2t1', position: 1, number: 'C1', title: 'Lose This Skin', length: 315000 }],
+    },
+  ],
+};
+
+/** A release MusicBrainz holds with no tracklist at all — a real occurrence. */
+export const emptyReleaseDetail: MbReleaseDetail = {
+  id: '00000000-0000-4000-8000-00000000b001',
+  title: 'Unknown Pleasures',
+  status: 'Official',
+  date: '1979',
+  media: [],
 };

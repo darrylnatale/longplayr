@@ -1,6 +1,6 @@
 import type { Database } from '@/lib/supabase/database.types';
 
-import type { MbRelease, MbReleaseGroup, MbTrack } from './musicbrainz';
+import type { MbReleaseDetail, MbReleaseGroup, MbReleaseSummary, MbTrack } from './musicbrainz';
 import { selectRepresentativeRelease } from './representative-release';
 import { classify, parsePartialDate } from './scope';
 
@@ -68,21 +68,15 @@ export function renderCredit(credits: MbReleaseGroup['artist-credit']): string {
     .trim();
 }
 
-export function mapRelease(release: MbRelease): MappedRelease {
+/**
+ * Maps a release as it appears inside a release-group response.
+ *
+ * Metadata only. That shape carries no `media` and no `track-count`, verified
+ * against the live API — so format, label and track count are all unknown here
+ * and are filled in later by `mapReleaseDetail`, which needs a second request.
+ */
+export function mapReleaseSummary(release: MbReleaseSummary): MappedRelease {
   const date = parsePartialDate(release.date);
-
-  const media = release.media ?? [];
-  const tracks = media.flatMap((medium, mediumIndex) =>
-    (medium.tracks ?? []).map((track: MbTrack) => ({
-      position: track.position,
-      medium_position: medium.position ?? mediumIndex + 1,
-      title: track.title,
-      length_ms: track.length ?? null,
-    })),
-  );
-
-  // track-count is the release-wide total; fall back to what we actually got.
-  const trackCount = release['track-count'] ?? (tracks.length || null);
 
   return {
     release: {
@@ -92,10 +86,48 @@ export function mapRelease(release: MbRelease): MappedRelease {
       release_date: date?.date ?? null,
       release_date_precision: date?.precision ?? null,
       country: release.country ?? null,
+      format: null,
+      label: null,
+      track_count: null,
+      disambiguation: release.disambiguation?.trim() || null,
+    },
+    tracks: [],
+  };
+}
+
+/**
+ * Maps a release fetched directly, which does carry its tracklist.
+ *
+ * Tracks live under `media[].tracks[]`, one medium per disc. `track-count` is a
+ * property of each medium rather than of the release, so the release-wide total
+ * is their sum.
+ *
+ * `position` is used for ordering rather than the display `number`, which can
+ * be non-numeric on vinyl ("A1", "B2").
+ */
+export function mapReleaseDetail(release: MbReleaseDetail): MappedRelease {
+  const summary = mapReleaseSummary(release);
+  const media = release.media ?? [];
+
+  const tracks = media.flatMap((medium, mediumIndex) =>
+    (medium.tracks ?? []).map((track: MbTrack) => ({
+      position: track.position,
+      // Multi-disc releases repeat track positions, so the medium is what keeps
+      // them distinct — and what produces "1.1" / "2.1" on the album page.
+      medium_position: medium.position ?? mediumIndex + 1,
+      title: track.title,
+      length_ms: track.length ?? null,
+    })),
+  );
+
+  const declaredCount = media.reduce((total, medium) => total + (medium['track-count'] ?? 0), 0);
+
+  return {
+    release: {
+      ...summary.release,
       format: media[0]?.format ?? null,
       label: release['label-info']?.[0]?.label?.name ?? null,
-      track_count: trackCount,
-      disambiguation: release.disambiguation?.trim() || null,
+      track_count: declaredCount || tracks.length || null,
     },
     tracks,
   };
@@ -118,7 +150,7 @@ export function mapReleaseGroup(group: MbReleaseGroup): MappedAlbum {
     position: index,
   }));
 
-  const releases = (group.releases ?? []).map(mapRelease);
+  const releases = (group.releases ?? []).map(mapReleaseSummary);
 
   const representative = selectRepresentativeRelease(
     releases.map((r) => ({

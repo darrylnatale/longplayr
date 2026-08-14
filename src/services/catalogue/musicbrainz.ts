@@ -141,21 +141,43 @@ export type MbArtistCredit = {
   artist: MbArtist;
 };
 
-export type MbRelease = {
+/**
+ * A release as it appears *inside a release-group response*.
+ *
+ * Verified against the live API: this shape has **no `media` and no
+ * `track-count`**. Tracklists require fetching the release separately. An
+ * earlier version assumed otherwise and produced a catalogue where every album
+ * had an empty tracklist.
+ */
+export type MbReleaseSummary = {
   id: string;
   title: string;
   status?: string | null;
   date?: string;
   country?: string | null;
   disambiguation?: string;
+};
+
+/** A medium — one disc, tape or side. `track-count` lives here, not on the release. */
+export type MbMedium = {
+  position?: number;
+  format?: string | null;
+  title?: string | null;
   'track-count'?: number;
-  media?: { format?: string | null; position?: number; tracks?: MbTrack[] }[];
+  tracks?: MbTrack[];
+};
+
+/** A release fetched directly, with `inc=recordings`. Carries the tracklist. */
+export type MbReleaseDetail = MbReleaseSummary & {
+  media?: MbMedium[];
   'label-info'?: { label?: { name?: string } | null }[];
 };
 
 export type MbTrack = {
   id: string;
   position: number;
+  /** Display number. Can be non-numeric on vinyl ("A1"), so `position` orders. */
+  number?: string;
   title: string;
   length?: number | null;
 };
@@ -168,7 +190,7 @@ export type MbReleaseGroup = {
   'first-release-date'?: string;
   disambiguation?: string;
   'artist-credit'?: MbArtistCredit[];
-  releases?: MbRelease[];
+  releases?: MbReleaseSummary[];
 };
 
 export type MbSearchResult = {
@@ -188,8 +210,8 @@ export function getReleaseGroup(mbid: string): Promise<MbReleaseGroup> {
 }
 
 /** A single release with its tracklist and label. */
-export function getRelease(mbid: string): Promise<MbRelease> {
-  return request<MbRelease>(`/release/${mbid}`, {
+export function getRelease(mbid: string): Promise<MbReleaseDetail> {
+  return request<MbReleaseDetail>(`/release/${mbid}`, {
     inc: 'recordings+labels+media',
   });
 }

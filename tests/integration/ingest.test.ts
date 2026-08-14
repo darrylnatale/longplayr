@@ -2,8 +2,12 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
 import type { Database } from '@/lib/supabase/database.types';
+import type { MbReleaseDetail } from '@/services/catalogue/musicbrainz';
 import {
   collaborationAlbum,
+  emptyReleaseDetail,
+  multiDiscReleaseDetail,
+  singleDiscReleaseDetail,
   messyReleaseGroup,
   mixtapeWithoutPrimaryType,
   multiDiscAlbum,
@@ -13,6 +17,22 @@ import {
   yearOnlyAlbum,
 } from '@/services/catalogue/fixtures';
 import { ingestReleaseGroupPayload } from '@/services/catalogue/ingest';
+import { mapReleaseDetail } from '@/services/catalogue/map';
+
+/**
+ * Stands in for the second MusicBrainz request.
+ *
+ * Release-group responses carry no tracklist, so ingestion fetches the
+ * representative release separately. Injecting that here keeps these tests
+ * offline while exercising the real two-step path.
+ */
+function detailFetcher(...details: MbReleaseDetail[]) {
+  const byMbid = new Map(details.map((d) => [d.id, d]));
+  return async (mbid: string) => {
+    const detail = byMbid.get(mbid);
+    return detail ? mapReleaseDetail(detail) : null;
+  };
+}
 
 /**
  * Ingestion against a real database, driven entirely by fixtures.
@@ -40,7 +60,11 @@ afterAll(clearCatalogue);
 
 describe('ingestReleaseGroupPayload', () => {
   it('ingests an album with its artist, release and tracks', async () => {
-    const result = await ingestReleaseGroupPayload(singleArtistAlbum, admin);
+    const result = await ingestReleaseGroupPayload(
+      singleArtistAlbum,
+      admin,
+      detailFetcher(singleDiscReleaseDetail),
+    );
     expect(result.status).toBe('ingested');
 
     const { data: album } = await admin
@@ -60,9 +84,10 @@ describe('ingestReleaseGroupPayload', () => {
   });
 
   it('is idempotent — re-ingesting creates no duplicates', async () => {
-    await ingestReleaseGroupPayload(singleArtistAlbum, admin);
-    await ingestReleaseGroupPayload(singleArtistAlbum, admin);
-    await ingestReleaseGroupPayload(singleArtistAlbum, admin);
+    const fetcher = detailFetcher(singleDiscReleaseDetail);
+    await ingestReleaseGroupPayload(singleArtistAlbum, admin, fetcher);
+    await ingestReleaseGroupPayload(singleArtistAlbum, admin, fetcher);
+    await ingestReleaseGroupPayload(singleArtistAlbum, admin, fetcher);
 
     const counts = await Promise.all([
       admin.from('albums').select('id', { count: 'exact', head: true }),
@@ -159,7 +184,7 @@ describe('ingestReleaseGroupPayload', () => {
   });
 
   it('stores multi-disc tracklists without position collisions', async () => {
-    await ingestReleaseGroupPayload(multiDiscAlbum, admin);
+    await ingestReleaseGroupPayload(multiDiscAlbum, admin, detailFetcher(multiDiscReleaseDetail));
 
     const { data } = await admin
       .from('tracks')
@@ -173,13 +198,18 @@ describe('ingestReleaseGroupPayload', () => {
   });
 
   it('replaces a tracklist rather than appending to it', async () => {
-    await ingestReleaseGroupPayload(singleArtistAlbum, admin);
+    await ingestReleaseGroupPayload(
+      singleArtistAlbum,
+      admin,
+      detailFetcher(singleDiscReleaseDetail),
+    );
 
-    const shortened = structuredClone(singleArtistAlbum);
-    shortened.releases![0].media![0].tracks = [
-      { id: 't1', position: 1, title: '15 Step', length: 237000 },
+    const shortened = structuredClone(singleDiscReleaseDetail);
+    shortened.media![0].tracks = [
+      { id: 't1', position: 1, number: '1', title: '15 Step', length: 237000 },
     ];
-    await ingestReleaseGroupPayload(shortened, admin);
+    shortened.media![0]['track-count'] = 1;
+    await ingestReleaseGroupPayload(singleArtistAlbum, admin, detailFetcher(shortened));
 
     const { count } = await admin.from('tracks').select('id', { count: 'exact', head: true });
     expect(count).toBe(1);
@@ -207,5 +237,114 @@ describe('ingestReleaseGroupPayload', () => {
 
     const { data } = await admin.from('albums').select('representative_release_id').single();
     expect(data?.representative_release_id).toBeNull();
+  });
+});
+
+/**
+ * Tracklist ingestion.
+ *
+ * The behaviour that was silently broken against real data: release-group
+ * responses carry no tracklist, so it comes from a second request for the
+ * representative release.
+ */
+describe('tracklists', () => {
+  it('writes the tracklist from the representative release', async () => {
+    await ingestReleaseGroupPayload(
+      singleArtistAlbum,
+      admin,
+      detailFetcher(singleDiscReleaseDetail),
+    );
+
+    const { data } = await admin
+      .from('tracks')
+      .select('position, medium_position, title, length_ms')
+      .order('position');
+
+    expect(data).toEqual([
+      { position: 1, medium_position: 1, title: '15 Step', length_ms: 237000 },
+      { position: 2, medium_position: 1, title: 'Bodysnatchers', length_ms: 242000 },
+    ]);
+  });
+
+  it('fills in format, label and track count, which only the detail response has', async () => {
+    await ingestReleaseGroupPayload(
+      singleArtistAlbum,
+      admin,
+      detailFetcher(singleDiscReleaseDetail),
+    );
+
+    const { data } = await admin
+      .from('releases')
+      .select('format, label, track_count')
+      .eq('mbid', singleDiscReleaseDetail.id)
+      .single();
+
+    expect(data).toEqual({ format: 'CD', label: 'XL Recordings', track_count: 2 });
+  });
+
+  it('sums track_count across media rather than reading it off the release', async () => {
+    await ingestReleaseGroupPayload(multiDiscAlbum, admin, detailFetcher(multiDiscReleaseDetail));
+
+    const { data } = await admin
+      .from('releases')
+      .select('track_count')
+      .eq('mbid', multiDiscReleaseDetail.id)
+      .single();
+
+    // Two media of one track each. Reading a top-level track-count would give
+    // null, which is exactly the bug real data exposed.
+    expect(data?.track_count).toBe(2);
+  });
+
+  it('keeps multi-disc positions distinct', async () => {
+    await ingestReleaseGroupPayload(multiDiscAlbum, admin, detailFetcher(multiDiscReleaseDetail));
+
+    const { data } = await admin
+      .from('tracks')
+      .select('medium_position, position')
+      .order('medium_position');
+
+    expect(data).toEqual([
+      { medium_position: 1, position: 1 },
+      { medium_position: 2, position: 1 },
+    ]);
+  });
+
+  it('ingests an album whose release has no tracklist', async () => {
+    const result = await ingestReleaseGroupPayload(
+      yearOnlyAlbum,
+      admin,
+      detailFetcher(emptyReleaseDetail),
+    );
+
+    // A missing tracklist must not fail the album; the page renders without it.
+    expect(result.status).toBe('ingested');
+    const { count } = await admin.from('tracks').select('id', { count: 'exact', head: true });
+    expect(count).toBe(0);
+  });
+
+  it('ingests successfully when the detail fetch fails entirely', async () => {
+    const result = await ingestReleaseGroupPayload(singleArtistAlbum, admin, async () => null);
+
+    expect(result.status).toBe('ingested');
+    const { data } = await admin
+      .from('albums')
+      .select('representative_release_id')
+      .eq('mbid', singleArtistAlbum.id)
+      .single();
+    expect(data?.representative_release_id).not.toBeNull();
+  });
+
+  it('does not fetch a tracklist when there is no representative release', async () => {
+    let called = false;
+    await ingestReleaseGroupPayload(variousArtistsCompilation, admin, async (mbid) => {
+      called = true;
+      void mbid;
+      return null;
+    });
+
+    // No releases means no representative release, so no second request is
+    // spent against the rate limit.
+    expect(called).toBe(false);
   });
 });

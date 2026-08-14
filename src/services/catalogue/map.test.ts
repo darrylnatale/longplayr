@@ -2,15 +2,17 @@ import { describe, expect, it } from 'vitest';
 
 import {
   collaborationAlbum,
+  emptyReleaseDetail,
   messyReleaseGroup,
   mixtapeWithoutPrimaryType,
-  multiDiscAlbum,
+  multiDiscReleaseDetail,
   singleArtistAlbum,
+  singleDiscReleaseDetail,
   singleRelease,
   variousArtistsCompilation,
   yearOnlyAlbum,
 } from './fixtures';
-import { mapReleaseGroup, OutOfScopeError, renderCredit } from './map';
+import { mapReleaseDetail, mapReleaseGroup, OutOfScopeError, renderCredit } from './map';
 
 describe('renderCredit', () => {
   it('renders a single artist', () => {
@@ -97,10 +99,41 @@ describe('mapReleaseGroup', () => {
     expect(result.representativeReleaseMbid).toBeNull();
     expect(result.releases).toEqual([]);
   });
+});
 
-  it('flattens multi-disc tracklists while keeping medium positions', () => {
-    const result = mapReleaseGroup(multiDiscAlbum);
-    const tracks = result.releases[0].tracks;
+describe('mapReleaseSummary — inside a release-group response', () => {
+  it('records metadata but no tracklist, format or label', () => {
+    const { release, tracks } = mapReleaseGroup(singleArtistAlbum).releases[0];
+
+    // Verified against the live API: release groups embed release metadata
+    // only. Assuming otherwise produced a catalogue where every album had an
+    // empty tracklist.
+    expect(release).toMatchObject({
+      status: 'Official',
+      country: 'GB',
+      release_date: '2007-12-28',
+      release_date_precision: 'day',
+      format: null,
+      label: null,
+      track_count: null,
+    });
+    expect(tracks).toEqual([]);
+  });
+});
+
+describe('mapReleaseDetail — a directly fetched release', () => {
+  it('maps the tracklist, format and label', () => {
+    const { release, tracks } = mapReleaseDetail(singleDiscReleaseDetail);
+
+    expect(release).toMatchObject({ format: 'CD', label: 'XL Recordings', track_count: 2 });
+    expect(tracks).toEqual([
+      { position: 1, medium_position: 1, title: '15 Step', length_ms: 237000 },
+      { position: 2, medium_position: 1, title: 'Bodysnatchers', length_ms: 242000 },
+    ]);
+  });
+
+  it('keeps multi-disc positions distinct', () => {
+    const { tracks } = mapReleaseDetail(multiDiscReleaseDetail);
 
     expect(tracks).toEqual([
       { position: 1, medium_position: 1, title: 'The Magnificent Seven', length_ms: 328000 },
@@ -108,22 +141,21 @@ describe('mapReleaseGroup', () => {
     ]);
   });
 
-  it('maps release detail including label and format', () => {
-    const { release } = mapReleaseGroup(singleArtistAlbum).releases[0];
-
-    expect(release).toMatchObject({
-      status: 'Official',
-      country: 'GB',
-      format: 'CD',
-      label: 'XL Recordings',
-      track_count: 10,
-      release_date: '2007-12-28',
-      release_date_precision: 'day',
-    });
+  it('sums track-count across media rather than reading it off the release', () => {
+    // track-count is a property of each medium. Reading it at the top level
+    // yields null, which is the bug real data exposed.
+    expect(mapReleaseDetail(multiDiscReleaseDetail).release.track_count).toBe(2);
   });
 
-  it('falls back to counting tracks when track-count is absent', () => {
-    const { release } = mapReleaseGroup(multiDiscAlbum).releases[0];
-    expect(release.track_count).toBe(2);
+  it('orders by position, not by the display number', () => {
+    // Vinyl numbering is "A1", "B2" — unusable for ordering.
+    const { tracks } = mapReleaseDetail(multiDiscReleaseDetail);
+    expect(tracks.map((t) => t.position)).toEqual([1, 1]);
+  });
+
+  it('handles a release with no media at all', () => {
+    const { tracks, release } = mapReleaseDetail(emptyReleaseDetail);
+    expect(tracks).toEqual([]);
+    expect(release.track_count).toBeNull();
   });
 });

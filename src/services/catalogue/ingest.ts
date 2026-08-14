@@ -3,8 +3,14 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { Database } from '@/lib/supabase/database.types';
 
-import { mapReleaseGroup, OutOfScopeError, type MappedAlbum } from './map';
-import { getReleaseGroup } from './musicbrainz';
+import {
+  mapReleaseDetail,
+  mapReleaseGroup,
+  OutOfScopeError,
+  type MappedAlbum,
+  type MappedRelease,
+} from './map';
+import { getRelease, getReleaseGroup } from './musicbrainz';
 
 type Admin = SupabaseClient<Database>;
 
@@ -82,7 +88,7 @@ async function replaceCredits(
   if (error) throw error;
 }
 
-/** Upserts releases and their tracklists, returning MBID → row id. */
+/** Upserts release metadata, returning MBID → row id. Tracks are separate. */
 async function upsertReleases(
   admin: Admin,
   albumId: string,
@@ -100,23 +106,41 @@ async function upsertReleases(
   if (error) throw error;
 
   for (const row of data ?? []) byMbid.set(row.mbid, row.id);
+  return byMbid;
+}
 
-  for (const { release, tracks } of mapped.releases) {
-    const releaseId = byMbid.get(release.mbid);
-    if (!releaseId || tracks.length === 0) continue;
+/**
+ * Writes the tracklist for one release, replacing whatever was there.
+ *
+ * Wholesale replacement rather than diffing: tracklists are small, and upstream
+ * corrections routinely renumber or retitle tracks, which a diff would handle
+ * worse than a rewrite.
+ */
+async function replaceTracks(
+  admin: Admin,
+  releaseId: string,
+  detail: MappedRelease,
+): Promise<void> {
+  const { error: deleteError } = await admin.from('tracks').delete().eq('release_id', releaseId);
+  if (deleteError) throw deleteError;
 
-    // Tracklists are replaced wholesale. They are small, and diffing them
-    // against upstream edits would be more code than it is worth.
-    const { error: deleteError } = await admin.from('tracks').delete().eq('release_id', releaseId);
-    if (deleteError) throw deleteError;
-
-    const { error: insertError } = await admin
+  if (detail.tracks.length > 0) {
+    const { error } = await admin
       .from('tracks')
-      .insert(tracks.map((track) => ({ ...track, release_id: releaseId })));
-    if (insertError) throw insertError;
+      .insert(detail.tracks.map((track) => ({ ...track, release_id: releaseId })));
+    if (error) throw error;
   }
 
-  return byMbid;
+  // Format, label and track count are only known from the detail response.
+  const { error: updateError } = await admin
+    .from('releases')
+    .update({
+      format: detail.release.format,
+      label: detail.release.label,
+      track_count: detail.release.track_count,
+    })
+    .eq('id', releaseId);
+  if (updateError) throw updateError;
 }
 
 /**
@@ -128,6 +152,15 @@ async function upsertReleases(
 export async function ingestReleaseGroupPayload(
   payload: Parameters<typeof mapReleaseGroup>[0],
   admin: Admin = createAdminClient(),
+  /**
+   * Supplies the representative release's tracklist.
+   *
+   * Injected rather than called directly so the write path stays testable
+   * without network access. In production this is a second MusicBrainz request
+   * per album — release-group responses carry no tracklist, so there is no way
+   * to avoid it.
+   */
+  fetchReleaseDetail?: (mbid: string) => Promise<MappedRelease | null>,
 ): Promise<IngestResult> {
   let mapped: MappedAlbum;
   try {
@@ -151,22 +184,46 @@ export async function ingestReleaseGroupPayload(
     ? (releaseIds.get(mapped.representativeReleaseMbid) ?? null)
     : null;
 
-  if (representativeId) {
+  if (representativeId && mapped.representativeReleaseMbid) {
     const { error } = await admin
       .from('albums')
       .update({ representative_release_id: representativeId })
       .eq('id', albumId);
     if (error) throw error;
+
+    // Only the representative release gets a tracklist. Fetching every edition
+    // would cost one request each against a one-per-second budget, for data no
+    // page currently shows.
+    if (fetchReleaseDetail) {
+      const detail = await fetchReleaseDetail(mapped.representativeReleaseMbid);
+      if (detail) await replaceTracks(admin, representativeId, detail);
+    }
   }
 
   return { status: 'ingested', albumId, mbid: mapped.album.mbid };
 }
 
-/** Fetches a release group from MusicBrainz and ingests it. */
+/**
+ * Fetches a release group from MusicBrainz and ingests it.
+ *
+ * Costs **two** MusicBrainz requests: one for the release group, one for the
+ * representative release's tracklist. Both go through the shared rate limiter,
+ * which serialises them — so ingestion runs at roughly two seconds per album
+ * and never exceeds one request per second.
+ */
 export async function ingestReleaseGroup(
   mbid: string,
   admin: Admin = createAdminClient(),
 ): Promise<IngestResult> {
   const payload = await getReleaseGroup(mbid);
-  return ingestReleaseGroupPayload(payload, admin);
+
+  return ingestReleaseGroupPayload(payload, admin, async (releaseMbid) => {
+    try {
+      return mapReleaseDetail(await getRelease(releaseMbid));
+    } catch {
+      // A missing or broken tracklist must not fail an otherwise good album.
+      // The album page renders without one; re-ingesting can fill it in later.
+      return null;
+    }
+  });
 }
