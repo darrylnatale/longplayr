@@ -10,6 +10,14 @@ const supabaseHost = supabaseUrl ? new URL(supabaseUrl) : null;
 
 const nextConfig: NextConfig = {
   images: {
+    // Next 16 blocks image optimization from local IPs by default, as SSRF
+    // protection, returning 400. Local Supabase serves artwork from
+    // 127.0.0.1, so every cover breaks in development without this.
+    //
+    // Development only. In deployed environments Supabase has a real hostname,
+    // so this is unnecessary there and enabling it would reintroduce the risk
+    // the restriction exists to prevent.
+    dangerouslyAllowLocalIP: process.env.NODE_ENV === 'development',
     remotePatterns: supabaseHost
       ? [
           {

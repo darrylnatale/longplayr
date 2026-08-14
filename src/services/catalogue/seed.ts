@@ -67,7 +67,16 @@ export async function seedCatalogue(options: SeedOptions = {}): Promise<SeedRepo
   const startedAt = Date.now();
   const source = new ListenBrainzSource();
 
-  const entries = await source.topReleaseGroups({ limit, range });
+  const fetched = await source.topReleaseGroups({ limit, range });
+
+  // Hard cap, independent of what ListenBrainz actually returned.
+  //
+  // Asking for `count=30` is a request, not a guarantee: if the API ignored it,
+  // returned more, or changed its paging behaviour, the loop below would
+  // happily ingest every extra row. A bounded validation run must not be able
+  // to become a full seed because an upstream response was larger than asked
+  // for.
+  const entries = fetched.slice(0, limit);
 
   const report: SeedReport = {
     source: source.name,
@@ -86,7 +95,19 @@ export async function seedCatalogue(options: SeedOptions = {}): Promise<SeedRepo
     durationSeconds: 0,
   };
 
+  // Second, independent stop: counts requests actually sent to MusicBrainz.
+  // The slice above bounds the list; this bounds the network. If they ever
+  // disagree, the run aborts rather than quietly continuing.
+  let upstreamFetches = 0;
+
   for (const [index, entry] of entries.entries()) {
+    if (upstreamFetches >= limit) {
+      throw new Error(
+        `Seed aborted: attempted more than ${limit} MusicBrainz fetches. ` +
+          'This should be unreachable — investigate before re-running.',
+      );
+    }
+
     onProgress?.(index + 1, entries.length, `${entry.artistName} — ${entry.title}`);
 
     const { data: existing } = await admin
@@ -99,6 +120,7 @@ export async function seedCatalogue(options: SeedOptions = {}): Promise<SeedRepo
       if (existing) {
         report.alreadyPresent += 1;
       } else {
+        upstreamFetches += 1;
         const result = await ingestReleaseGroup(entry.mbid, admin);
         if (result.status === 'out_of_scope') {
           report.rejectedOutOfScope.push({
