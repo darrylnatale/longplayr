@@ -77,6 +77,12 @@ npm run verify                       # exactly what CI runs — run before pushi
 
 `npm run verify` covers format, lint, typecheck, unit and component tests, and build. Integration and end-to-end tests need the database and run separately: `npm run test:integration`, `npm run test:e2e`.
 
+> **⚠️ `npm run test:integration` DELETES ALL CATALOGUE DATA.**
+>
+> The integration suite truncates `albums` and `artists` in `beforeEach` and again in `afterAll`. Running it against a seeded database destroys the catalogue — silently, and in seconds, where re-seeding takes minutes of rate-limited requests.
+>
+> **Never run catalogue seeding and the integration suite against the same database** without expecting to lose the data. Seed after testing, not before. This has already happened once mid-session.
+
 **Always verify from a clean build.** `rm -rf .next && npm run verify`. This is a standing requirement, not a suggestion: `PageProps` and `LayoutProps` are generated into `.next/types`, so a stale directory can make typecheck pass locally while failing in CI. That exact discrepancy has already put a red commit on `main` once.
 
 **There is no branch protection.** GitHub gates it behind a paid plan for private repositories, and paying or going public purely for that has been declined. Nothing mechanically prevents a red commit landing on `main`, so the clean-build check above is the actual safety net. Treat it accordingly.

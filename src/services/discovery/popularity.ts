@@ -20,8 +20,21 @@ export type PopularEntry = {
   mbid: string;
   title: string;
   artistName: string;
+  /**
+   * Primary credited artist's MBID, when the source provides one.
+   *
+   * Used to group an artist's albums reliably. Grouping by name would merge
+   * distinct artists who share one and split artists credited inconsistently,
+   * so a missing MBID falls back to the name rather than pretending otherwise.
+   */
+  artistMbid: string | null;
   /** Higher is more popular. Comparable only within a single source. */
   score: number;
+  /**
+   * Whether the source believes cover art exists. Advisory only — artwork is
+   * still resolved through Cover Art Archive at ingest.
+   */
+  hasArtwork?: boolean;
 };
 
 export type PopularityRange = 'week' | 'month' | 'year' | 'all_time';

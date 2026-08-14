@@ -51,7 +51,12 @@ prints its URL.
 | `npm run db:env`               | Regenerate `.env.local` from the running stack                  |
 | `npm run db:types`             | Regenerate `src/lib/supabase/database.types.ts` from the schema |
 
-Run `npm run verify` before pushing — it is exactly what CI checks.
+Run `npm run verify` before pushing — it is exactly what CI checks. Always from
+a clean tree: `rm -rf .next && npm run verify`.
+
+> **⚠️ The integration suite deletes all catalogue data.** It truncates `albums`
+> and `artists` between cases. Seeding takes minutes of rate-limited requests;
+> destroying it takes seconds. Seed _after_ running tests, never before.
 
 ## Structure
 

@@ -8,6 +8,7 @@ import type { PopularityRange } from '../discovery/popularity';
 import { artworkCoverage, fetchAndStoreArtwork } from './artwork';
 import { ingestReleaseGroup } from './ingest';
 import { OutOfScopeError } from './map';
+import { selectSeedCandidates } from './seed-selection';
 import { NotFoundError } from './musicbrainz';
 
 type Admin = SupabaseClient<Database>;
@@ -34,6 +35,10 @@ export type SeedReport = {
   droppedMissingMbid: number;
   usableFromPopularitySource: number;
 
+  maxPerArtist: number | null;
+  selectedForSeeding: number;
+  excludedByArtistCap: number;
+
   ingested: number;
   alreadyPresent: number;
   rejectedOutOfScope: { mbid: string; title: string; reason: string }[];
@@ -46,19 +51,133 @@ export type SeedReport = {
   durationSeconds: number;
 };
 
+/**
+ * Initial seed strategy, decided from measured evidence (see the four-way
+ * comparison in the Phase 1 notes):
+ *
+ *  - **all-time**, not monthly. MBID coverage is dramatically better — 2
+ *    missing per 500 against 35 — and the result reads as a canon rather than
+ *    a snapshot of one fandom's month.
+ *  - **500 candidates**, enough to be useful while remaining operationally
+ *    manageable at roughly two seconds per album.
+ *  - **2 albums per artist**, a cold-start diversification device only. It is
+ *    not a catalogue constraint: see seed-selection.ts.
+ */
+export const DEFAULT_SEED_RANGE: PopularityRange = 'all_time';
+export const DEFAULT_SEED_CANDIDATES = 500;
+export const DEFAULT_MAX_PER_ARTIST = 2;
+
 export type SeedOptions = {
+  /** Candidates requested from the popularity source, before selection. */
   limit?: number;
   range?: PopularityRange;
+  /** Albums per artist during initial selection. `null` disables the cap. */
+  maxPerArtist?: number | null;
   /** Skip artwork to keep a run short. Artwork can be queued separately. */
   includeArtwork?: boolean;
   admin?: Admin;
   onProgress?: (done: number, total: number, label: string) => void;
 };
 
+/**
+ * What a seed *would* do, without writing anything.
+ *
+ * Album type is deliberately absent. ListenBrainz returns no type, so
+ * determining it means fetching each candidate from MusicBrainz — 500 requests
+ * to decide what to fetch. Type distribution is reported after ingestion
+ * instead, where it costs nothing.
+ */
+export type SeedDryRunReport = {
+  source: string;
+  range: PopularityRange;
+  requested: number;
+
+  returnedByPopularitySource: number;
+  droppedMissingMbid: number;
+  usableFromPopularitySource: number;
+  distinctCandidateMbids: number;
+
+  maxPerArtist: number | null;
+  selected: number;
+  excludedByCap: number;
+  distinctArtists: number;
+  largestArtistShare: number;
+  cappedArtists: { name: string; kept: number; excluded: number }[];
+
+  /** From the source's own hint, not from Cover Art Archive. Advisory. */
+  candidatesWithArtworkHint: number;
+
+  alreadyInCatalogue: number;
+  wouldIngest: number;
+
+  sample: { rank: number; artist: string; title: string }[];
+  estimatedMusicBrainzRequests: number;
+  estimatedMinutes: number;
+};
+
+/**
+ * Reports what a seed would do, without writing anything.
+ *
+ * Costs exactly one ListenBrainz request and no MusicBrainz requests, so the
+ * selection can be inspected before any catalogue data is committed.
+ */
+export async function dryRunSeed(options: SeedOptions = {}): Promise<SeedDryRunReport> {
+  const {
+    limit = DEFAULT_SEED_CANDIDATES,
+    range = DEFAULT_SEED_RANGE,
+    maxPerArtist = DEFAULT_MAX_PER_ARTIST,
+    admin = createAdminClient(),
+  } = options;
+
+  const source = new ListenBrainzSource();
+  const candidates = (await source.topReleaseGroups({ limit, range })).slice(0, limit);
+
+  const selection = selectSeedCandidates(candidates, { maxPerArtist });
+
+  const { data: existing } = await admin
+    .from('albums')
+    .select('mbid')
+    .in(
+      'mbid',
+      selection.selected.map((e) => e.mbid),
+    );
+  const held = new Set((existing ?? []).map((row) => row.mbid));
+  const wouldIngest = selection.selected.filter((e) => !held.has(e.mbid)).length;
+
+  // Two MusicBrainz requests per new album: the release group, then the
+  // representative release for its tracklist.
+  const requests = wouldIngest * 2;
+
+  return {
+    source: source.name,
+    range,
+    requested: limit,
+    returnedByPopularitySource: source.lastDiagnostics.returned,
+    droppedMissingMbid: source.lastDiagnostics.missingMbid,
+    usableFromPopularitySource: source.lastDiagnostics.usable,
+    distinctCandidateMbids: new Set(candidates.map((c) => c.mbid)).size,
+    maxPerArtist,
+    selected: selection.selected.length,
+    excludedByCap: selection.excludedByCap.length,
+    distinctArtists: selection.distinctArtists,
+    largestArtistShare: maxPerArtist ?? Math.max(0, ...selection.cappedArtists.map((a) => a.kept)),
+    cappedArtists: selection.cappedArtists.slice(0, 15),
+    candidatesWithArtworkHint: candidates.filter((c) => c.hasArtwork).length,
+    alreadyInCatalogue: selection.selected.length - wouldIngest,
+    wouldIngest,
+    sample: selection.selected
+      .slice(0, 25)
+      .map((e, i) => ({ rank: i + 1, artist: e.artistName, title: e.title })),
+    estimatedMusicBrainzRequests: requests,
+    estimatedMinutes: Math.ceil(requests / 60),
+  };
+}
+
 export async function seedCatalogue(options: SeedOptions = {}): Promise<SeedReport> {
   const {
-    limit = 100,
-    range = 'month',
+    limit = DEFAULT_SEED_CANDIDATES,
+    range = DEFAULT_SEED_RANGE,
+    maxPerArtist = DEFAULT_MAX_PER_ARTIST,
     includeArtwork = true,
     admin = createAdminClient(),
     onProgress,
@@ -71,12 +190,15 @@ export async function seedCatalogue(options: SeedOptions = {}): Promise<SeedRepo
 
   // Hard cap, independent of what ListenBrainz actually returned.
   //
-  // Asking for `count=30` is a request, not a guarantee: if the API ignored it,
+  // Asking for `count=N` is a request, not a guarantee: if the API ignored it,
   // returned more, or changed its paging behaviour, the loop below would
-  // happily ingest every extra row. A bounded validation run must not be able
-  // to become a full seed because an upstream response was larger than asked
-  // for.
-  const entries = fetched.slice(0, limit);
+  // happily ingest every extra row. A bounded run must not be able to become a
+  // larger one because an upstream response was bigger than asked for.
+  const candidates = fetched.slice(0, limit);
+
+  // Selection policy — the artist cap — applied before anything is fetched.
+  const selection = selectSeedCandidates(candidates, { maxPerArtist });
+  const entries = selection.selected;
 
   const report: SeedReport = {
     source: source.name,
@@ -85,6 +207,9 @@ export async function seedCatalogue(options: SeedOptions = {}): Promise<SeedRepo
     returnedByPopularitySource: source.lastDiagnostics.returned,
     droppedMissingMbid: source.lastDiagnostics.missingMbid,
     usableFromPopularitySource: source.lastDiagnostics.usable,
+    maxPerArtist,
+    selectedForSeeding: entries.length,
+    excludedByArtistCap: selection.excludedByCap.length,
     ingested: 0,
     alreadyPresent: 0,
     rejectedOutOfScope: [],
@@ -101,9 +226,9 @@ export async function seedCatalogue(options: SeedOptions = {}): Promise<SeedRepo
   let upstreamFetches = 0;
 
   for (const [index, entry] of entries.entries()) {
-    if (upstreamFetches >= limit) {
+    if (upstreamFetches > entries.length) {
       throw new Error(
-        `Seed aborted: attempted more than ${limit} MusicBrainz fetches. ` +
+        `Seed aborted: attempted more fetches than the ${entries.length} selected albums. ` +
           'This should be unreachable — investigate before re-running.',
       );
     }
@@ -190,6 +315,8 @@ export function formatSeedReport(report: SeedReport): string {
     `  Returned by ListenBrainz     ${report.returnedByPopularitySource}`,
     `  Dropped, no MBID             ${report.droppedMissingMbid}`,
     `  Usable                       ${report.usableFromPopularitySource}`,
+    `  Selected (cap ${String(report.maxPerArtist ?? 'none').padEnd(4)})          ${report.selectedForSeeding}`,
+    `  Excluded by artist cap       ${report.excludedByArtistCap}`,
     '',
     `  Newly ingested               ${report.ingested}`,
     `  Already present              ${report.alreadyPresent}`,

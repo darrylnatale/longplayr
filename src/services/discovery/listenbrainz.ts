@@ -22,6 +22,9 @@ type ListenBrainzReleaseGroup = {
   release_group_mbid?: string | null;
   release_group_name?: string | null;
   artist_name?: string | null;
+  artist_mbids?: string[] | null;
+  /** Present when Cover Art Archive holds art for this release group. */
+  caa_id?: number | null;
   listen_count?: number | null;
 };
 
@@ -81,6 +84,8 @@ export class ListenBrainzSource implements PopularitySource {
         mbid: row.release_group_mbid,
         title: row.release_group_name ?? '(untitled)',
         artistName: row.artist_name ?? '(unknown)',
+        artistMbid: row.artist_mbids?.[0] ?? null,
+        hasArtwork: Boolean(row.caa_id),
         // Rank position is a more stable ordinal than raw listen counts, which
         // vary hugely in magnitude between ranges.
         score: rows.length - index,
