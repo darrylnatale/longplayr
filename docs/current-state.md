@@ -12,24 +12,35 @@
 | 4. What gets built and when                  | `docs/development-plan.md`                   |
 | 5. Where we are right now                    | this file                                    |
 
-Last updated at commit `c47d461`.
+Last updated at commit `8907306`.
 
 ---
 
 ## 1. Current state
 
-**Phase 1 (catalogue), roughly two-thirds through.** The application runs locally: `npm run db:start && npm run db:env && npm run dev`.
+**Phase 1 (catalogue), staging deployed, seed in progress.**
 
-|                   |                                                       |
-| ----------------- | ----------------------------------------------------- |
-| Unit tests        | 70                                                    |
-| Integration tests | 31 (need the local database)                          |
-| End-to-end tests  | 4 (Playwright)                                        |
-| Latest commit     | `c47d461` — artwork pipeline                          |
-| Repository        | <https://github.com/darrylnatale/longplayr> (private) |
-| Deployed          | **No.** Nothing is deployed anywhere yet              |
+|                      |                                                       |
+| -------------------- | ----------------------------------------------------- |
+| Unit tests           | 94                                                    |
+| Integration tests    | 65                                                    |
+| End-to-end tests     | 4                                                     |
+| Latest commit        | `8907306`                                             |
+| Repository           | <https://github.com/darrylnatale/longplayr> (private) |
+| **Staging app**      | <https://longplayr.vercel.app>                        |
+| **Staging database** | `oexuqjpvyeijmlirxtal.supabase.co`                    |
+| Production           | does not exist                                        |
 
-CI runs on every push and is green. There is **no branch protection** — GitHub gates it behind a paid plan for private repos, and paying or going public for it was declined. The compensating control is `rm -rf .next && npm run verify` before pushing.
+Local: `npm run db:start && npm run db:env && npm run dev`.
+
+Staging is verified clean: schema pushed (6 migrations), artwork bucket present,
+`/albums` served 0 albums, unknown handles 404, cron endpoint 401 without a
+token. All five environment variables are set in Vercel for Production and
+Preview.
+
+No branch protection — GitHub gates it behind a paid plan for private repos and
+that was declined. `rm -rf .next && npm run verify` before pushing is the
+compensating control.
 
 ---
 
@@ -67,15 +78,23 @@ Its definition of done requires a deployed staging URL, so Phase 0 is **not form
 
 ## 4. Remaining Phase 1 work
 
-In intended order:
+Search, discovery, self-service add, album/artist pages, tracklists and the job
+queue are all built and tested.
 
-1. **Job queue drain** — claim-and-run loop plus a cron route handler, respecting the rate limiter. Retry, backoff and failure states need tests.
-2. **Album and artist pages** — read-only, no personal state (that is Phase 2). Album page needs the three-state shell but only the not-collected state is reachable now.
-3. **Search** — Postgres full-text plus trigram over albums, artists, users. Ranking combines text match, artist weighting and the popularity signal.
-4. **MusicBrainz fallback in search** — self-service add, scope-filtered, capped at 30/hour and 100/day per user via `catalogue_additions`.
-5. **ListenBrainz seed** — `PopularitySource` interface with a ListenBrainz implementation, then a seed job. Filter to entries carrying MBIDs; they are optional in responses.
+**In progress:** the approved seed running against staging — ListenBrainz
+all-time, 500 candidates, max 2 albums per artist, expecting 358 albums and
+~716 MusicBrainz requests over ~12 minutes. It writes `seed-report.json` and
+`seed-report.txt` (both gitignored) into the project root.
 
-**Completion gate.** Phase 1 is _not_ complete when these pass. It requires the **real-data smoke test** in a deployed environment with the genuine contact value, covering the case table in `docs/development-plan.md`. The user wants to inspect real pages and catalogue behaviour before Phase 1 is signed off. Everything to date is fixture-verified only.
+**Next, once it finishes:** produce the full data report — ingested, scope
+rejections, failures, artists, releases, tracks, type distribution, artwork
+coverage, incomplete dates, multi-disc, collaborations, Various Artists, and any
+unexpected MusicBrainz shapes — then capture the real pages for inspection and
+stop.
+
+**Completion gate unchanged.** Phase 1 is not complete until the representative
+real-data cases in `docs/development-plan.md` are confirmed present in the
+seeded catalogue.
 
 ---
 
@@ -106,18 +125,46 @@ Only these. Everything else is locked in the documents above.
 
 ## 7. Lessons from this session
 
-**Verify from a clean tree.** `PageProps`/`LayoutProps` are generated into `.next/types`; a stale directory made typecheck pass locally and fail in CI. `npm run typecheck` now runs `next typegen` first, but always `rm -rf .next` before verifying.
+**Verify from a clean tree.** `PageProps`/`LayoutProps` are generated into
+`.next/types`; a stale directory made typecheck pass locally and fail in CI.
 
-**Two failures looked like product bugs and were test bugs.** Embedding `releases` from `albums` is ambiguous — two foreign key paths exist, so queries must name the key: `releases!releases_album_id_fkey(...)`. And a Cover Art Archive stub that replaced `globalThis.fetch` wholesale also intercepted supabase-js, breaking every query in the file. **Scope fetch stubs by URL.** In both cases the code was right and the test was wrong; do not assume the opposite by default.
+**Fixtures encoded a wrong assumption and hid a real bug for hours.**
+Release-group responses carry no `media` and no `track-count` — tracklists need
+a second request for the representative release, and `track-count` is per
+medium. The fixture suite passed throughout because the fixtures made the same
+mistake. Only real data exposed it. Ingestion now costs two MusicBrainz requests
+per album.
 
-**Diagnose containers from their logs.** Storage looked broken but was starting successfully, just slower than its health check allowed. The logs said so plainly.
+**Three failures looked like product bugs and were not.** A PostgREST embed was
+ambiguous because two foreign keys join `albums` and `releases` — queries must
+name the key. A Cover Art Archive stub replaced `globalThis.fetch` wholesale and
+broke every Supabase query in the file. Next 16 blocks image optimisation from
+local IPs by default, returning 400. Do not assume the code is at fault first.
 
-**Fixture MBIDs must be valid UUIDs.** The schema types them as `uuid` and rejects readable placeholders. Real MBIDs are UUIDs.
+**Duplicated defaults drift.** The seed runner hardcoded `SEED_LIMIT ?? 50` and
+`SEED_RANGE ?? 'month'`, silently overriding the approved strategy and seeding
+14 wrong albums. The runner now carries no defaults; `seedCatalogue` owns them.
 
-**Testing conventions to preserve.** Unit tests are pure logic, no database, no network. Integration tests use the real local database and refuse to run against a non-local URL. Nothing in the suite makes a live MusicBrainz or Cover Art Archive call.
+**Swallowed errors report success.** `dryRunSeed` ignored a failed lookup, so an
+unreachable database looked like an empty catalogue.
+
+**An interrupted tool call may already have run.** A rejected seed command had
+ingested most of a catalogue before being killed, which made a later report look
+inconsistent.
+
+**Testing conventions to preserve.** Unit tests are pure logic. Integration
+tests use the local database and refuse any non-local URL. Seeding uses a
+separate vitest project whose setup permits remote targets and names them. No
+test makes a live MusicBrainz, ListenBrainz or Cover Art Archive call.
 
 ---
 
 ## 8. Next action
 
-**Build the job queue drain.** A claim-and-run function over `ingestion_jobs` (respecting `run_after`, `priority`, `attempts`/`max_attempts`), a cron route handler that drains at the MusicBrainz rate, and integration tests for retry, backoff, exhaustion and the partial unique index. Then continue in the order in §4.
+**Read `seed-report.json` and produce the data report**, then capture the
+staging pages — browse, an album with artwork, one without, an artist, and
+several search queries — and stop for inspection.
+
+The report is a file on disk, so it does not depend on conversation context.
+
+Do not start Phase 2. Do not add infrastructure without a demonstrated need.
