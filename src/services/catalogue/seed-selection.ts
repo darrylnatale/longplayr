@@ -39,6 +39,8 @@ export type SelectionOptions = {
 
 export type SelectionResult = {
   selected: PopularEntry[];
+  /** Repeated release groups from the source, skipped before the cap applies. */
+  duplicatesSkipped: number;
   /** Dropped by the cap. Retained so the dry run can show what was set aside. */
   excludedByCap: PopularEntry[];
   distinctArtists: number;
@@ -71,10 +73,20 @@ export function selectSeedCandidates(
   const selected: PopularEntry[] = [];
   const excludedByCap: PopularEntry[] = [];
 
+  // ListenBrainz returns the same release group more than once — three
+  // duplicates in a 500-candidate all-time list, and two in a 50-candidate
+  // monthly one. Left in, a duplicate consumes one of an artist's capped slots
+  // and then reports itself as "already present", quietly costing the
+  // catalogue an album it could have had.
+  const seenMbids = new Set<string>();
+
   // Candidates arrive in popularity order and stay in it: the cap decides what
   // is included, never how it is ranked.
   for (const entry of candidates) {
     if (limit !== undefined && selected.length >= limit) break;
+
+    if (seenMbids.has(entry.mbid)) continue;
+    seenMbids.add(entry.mbid);
 
     const key = artistKey(entry);
     names.set(key, entry.artistName);
@@ -101,6 +113,7 @@ export function selectSeedCandidates(
 
   return {
     selected,
+    duplicatesSkipped: candidates.length - seenMbids.size,
     excludedByCap,
     distinctArtists: keptByArtist.size,
     cappedArtists,

@@ -9,7 +9,8 @@ import type { PopularityRange } from '@/services/discovery/popularity';
 /**
  * Real-data catalogue seed. **Not a test** — a utility run explicitly.
  *
- *   SEED_LIMIT=100 SEED_RANGE=month npm run db:seed:catalogue
+ *   npm run db:seed:catalogue        # uses the approved strategy
+ *   SEED_LIMIT=50 npm run db:seed:catalogue   # override only to test
  *
  * Makes live calls to ListenBrainz, MusicBrainz and Cover Art Archive, so it
  * requires a genuine MUSICBRAINZ_CONTACT. The client refuses to run with a
@@ -31,12 +32,18 @@ describe('seed catalogue from ListenBrainz', () => {
     'ingests popular release groups and writes a report',
     { timeout: 60 * 60 * 1000 },
     async () => {
-      const limit = Number(process.env.SEED_LIMIT ?? 50);
-      const range = (process.env.SEED_RANGE ?? 'month') as PopularityRange;
-
+      // No defaults here. seedCatalogue owns the approved strategy — all-time,
+      // 500 candidates, 2 per artist — and duplicating those values in the
+      // runner is exactly how a run silently used the wrong ones.
       const report = await seedCatalogue({
-        limit,
-        range,
+        limit: process.env.SEED_LIMIT ? Number(process.env.SEED_LIMIT) : undefined,
+        range: (process.env.SEED_RANGE as PopularityRange | undefined) ?? undefined,
+        maxPerArtist:
+          process.env.SEED_MAX_PER_ARTIST === 'none'
+            ? null
+            : process.env.SEED_MAX_PER_ARTIST
+              ? Number(process.env.SEED_MAX_PER_ARTIST)
+              : undefined,
         admin,
         includeArtwork: process.env.SEED_ARTWORK !== 'false',
         onProgress: (done, total, label) => {

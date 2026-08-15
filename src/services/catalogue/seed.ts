@@ -38,6 +38,7 @@ export type SeedReport = {
   usableFromPopularitySource: number;
 
   maxPerArtist: number | null;
+  duplicatesSkipped: number;
   selectedForSeeding: number;
   excludedByArtistCap: number;
 
@@ -102,6 +103,7 @@ export type SeedDryRunReport = {
   distinctCandidateMbids: number;
 
   maxPerArtist: number | null;
+  duplicatesSkipped: number;
   selected: number;
   excludedByCap: number;
   distinctArtists: number;
@@ -168,6 +170,7 @@ export async function dryRunSeed(options: SeedOptions = {}): Promise<SeedDryRunR
     usableFromPopularitySource: source.lastDiagnostics.usable,
     distinctCandidateMbids: new Set(candidates.map((c) => c.mbid)).size,
     maxPerArtist,
+    duplicatesSkipped: selection.duplicatesSkipped,
     selected: selection.selected.length,
     excludedByCap: selection.excludedByCap.length,
     distinctArtists: selection.distinctArtists,
@@ -220,6 +223,7 @@ export async function seedCatalogue(options: SeedOptions = {}): Promise<SeedRepo
     droppedMissingMbid: source.lastDiagnostics.missingMbid,
     usableFromPopularitySource: source.lastDiagnostics.usable,
     maxPerArtist,
+    duplicatesSkipped: selection.duplicatesSkipped,
     selectedForSeeding: entries.length,
     excludedByArtistCap: selection.excludedByCap.length,
     ingested: 0,
@@ -328,6 +332,7 @@ export function formatSeedReport(report: SeedReport): string {
     `  Returned by ListenBrainz     ${report.returnedByPopularitySource}`,
     `  Dropped, no MBID             ${report.droppedMissingMbid}`,
     `  Usable                       ${report.usableFromPopularitySource}`,
+    `  Duplicate release groups     ${report.duplicatesSkipped}`,
     `  Selected (cap ${String(report.maxPerArtist ?? 'none').padEnd(4)})          ${report.selectedForSeeding}`,
     `  Excluded by artist cap       ${report.excludedByArtistCap}`,
     '',

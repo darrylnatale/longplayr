@@ -143,3 +143,25 @@ describe('selectSeedCandidates — limit', () => {
     expect(CANDIDATES.map((e) => e.title)).toEqual(before);
   });
 });
+
+describe('selectSeedCandidates — duplicates', () => {
+  it('skips a release group the source returned twice', () => {
+    const withDupes = [
+      entry('Album A', 'One', 'artist-1', 100),
+      entry('Album A', 'One', 'artist-1', 99), // same title -> same generated mbid
+      entry('Album B', 'One', 'artist-1', 98),
+      entry('Album C', 'One', 'artist-1', 97),
+    ];
+
+    const result = selectSeedCandidates(withDupes, { maxPerArtist: 2 });
+
+    // Without deduping, the repeat would consume one of the two slots and then
+    // report itself "already present", costing the catalogue a real album.
+    expect(result.duplicatesSkipped).toBe(1);
+    expect(result.selected.map((e) => e.title)).toEqual(['Album A', 'Album B']);
+  });
+
+  it('reports no duplicates when every candidate is distinct', () => {
+    expect(selectSeedCandidates(CANDIDATES, { maxPerArtist: 2 }).duplicatesSkipped).toBe(0);
+  });
+});
