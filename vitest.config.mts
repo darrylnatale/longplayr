@@ -54,7 +54,10 @@ export default defineConfig({
           name: 'seed',
           environment: 'node',
           include: ['tests/seed/**/*.ts'],
-          setupFiles: ['./tests/setup/integration.ts'],
+          // NOT the integration setup: that one refuses remote databases
+          // because those tests truncate tables. Seeding targets staging on
+          // purpose. See tests/setup/seed.ts.
+          setupFiles: ['./tests/setup/seed.ts'],
           fileParallelism: false,
         },
       },

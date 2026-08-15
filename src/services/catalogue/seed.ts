@@ -26,6 +26,8 @@ type Admin = SupabaseClient<Database>;
  */
 
 export type SeedReport = {
+  /** Host actually written to. Recorded so the target is never in doubt. */
+  target: string;
   source: string;
   range: PopularityRange;
   requested: number;
@@ -88,6 +90,8 @@ export type SeedOptions = {
  * instead, where it costs nothing.
  */
 export type SeedDryRunReport = {
+  /** Host actually written to. Recorded so the target is never in doubt. */
+  target: string;
   source: string;
   range: PopularityRange;
   requested: number;
@@ -134,13 +138,19 @@ export async function dryRunSeed(options: SeedOptions = {}): Promise<SeedDryRunR
 
   const selection = selectSeedCandidates(candidates, { maxPerArtist });
 
-  const { data: existing } = await admin
+  const { data: existing, error: existingError } = await admin
     .from('albums')
     .select('mbid')
     .in(
       'mbid',
       selection.selected.map((e) => e.mbid),
     );
+
+  // Not optional. Swallowing this made an unreachable database look like an
+  // empty catalogue, which would report "would ingest 358" against a database
+  // that already held them.
+  if (existingError) throw existingError;
+
   const held = new Set((existing ?? []).map((row) => row.mbid));
   const wouldIngest = selection.selected.filter((e) => !held.has(e.mbid)).length;
 
@@ -149,6 +159,7 @@ export async function dryRunSeed(options: SeedOptions = {}): Promise<SeedDryRunR
   const requests = wouldIngest * 2;
 
   return {
+    target: new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!).host,
     source: source.name,
     range,
     requested: limit,
@@ -201,6 +212,7 @@ export async function seedCatalogue(options: SeedOptions = {}): Promise<SeedRepo
   const entries = selection.selected;
 
   const report: SeedReport = {
+    target: new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!).host,
     source: source.name,
     range,
     requested: limit,
@@ -311,6 +323,7 @@ export async function seedCatalogue(options: SeedOptions = {}): Promise<SeedRepo
 export function formatSeedReport(report: SeedReport): string {
   const lines = [
     `Seed report — ${report.source} (${report.range}), ${report.durationSeconds}s`,
+    `  Target                       ${report.target}`,
     '',
     `  Returned by ListenBrainz     ${report.returnedByPopularitySource}`,
     `  Dropped, no MBID             ${report.droppedMissingMbid}`,
