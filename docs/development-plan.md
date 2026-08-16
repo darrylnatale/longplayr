@@ -72,7 +72,7 @@ Phases 0–2 constitute the product's spine. If work stopped after Phase 2, long
 - Job queue table plus cron endpoint to drain it
 - Ingestion: release groups, artists, artist credits, representative release, tracklist
 - Scope filter at ingest — albums, EPs, mixtapes; **no singles**
-- Artwork pipeline: Cover Art Archive → fallback → stored in Supabase Storage, with derivative sizes
+- Artwork pipeline: Cover Art Archive alone, keyed by release-group MBID, stored in Supabase Storage at three derivative sizes (250, 500, 1200). **No fallback source** — see `architecture.md` §7
 - Designed artwork placeholder for coverage gaps
 - Album page (read-only, no personal state)
 - Artist page with discography
@@ -95,6 +95,7 @@ Phases 0–2 constitute the product's spine. If work stopped after Phase 2, long
 - Representative-release selection and its deterministic fallback chain (`data-model.md` §2)
 - Partial-date storage with a precision marker
 - Artwork storage layout and derivative generation
+- The four artwork states — `pending`, `found`, `absent`, `failed` — and a coverage metric that counts failures rather than hiding them
 - Search ranking formula — text match, artist weighting, popularity signal
 - The `PopularitySource` interface, with ListenBrainz as first implementation
 
@@ -104,7 +105,7 @@ Phases 0–2 constitute the product's spine. If work stopped after Phase 2, long
 - Self-service additions are capped at 30/hour and 100/day per user
 - Upsert idempotency: re-ingesting an album produces no duplicates
 - Rate limiter genuinely limits — this is easy to get subtly wrong and expensive to discover in production
-- Artwork fallback chain, including the case where every source fails
+- Artwork status is recorded on every outcome, and `absent` is never conflated with `failed` — a 404 from Cover Art Archive records `absent`, a 5xx or network error records `failed` and stays retryable. Coverage counts failures in the denominator
 - Search ranking: a title shared by several albums returns the most popular first
 - Representative-release selection is **deterministic** — re-ingesting picks the same release, including when no Official release exists and when dates tie
 - Year-only and month-only dates round-trip and display without invented precision
