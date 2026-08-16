@@ -12,7 +12,9 @@
 | 4. What gets built and when                  | `docs/development-plan.md`                   |
 | 5. Where we are right now                    | this file                                    |
 
-Last code commit `18aadd9`. Numbers below were **verified directly against the staging database on 2026-08-16**, not copied from the seed report — the report is a snapshot taken mid-run and several of its figures no longer describe the current state.
+Numbers below were **verified directly against the staging database on 2026-08-16**, not copied from the seed report — the report is a snapshot taken mid-run and several of its figures no longer describe the current state.
+
+**Staging has not been modified.** Every staging query behind the figures in this document was a read-only `select`. The artwork recovery described in §4 is built, fully tested locally, and **not yet run against staging**.
 
 **Phase 2 has NOT started.** Nothing from the core loop — collection entries, ratings, likes, reviews, relistens — exists.
 
@@ -24,10 +26,9 @@ Last code commit `18aadd9`. Numbers below were **verified directly against the s
 
 |                   |                                                       |
 | ----------------- | ----------------------------------------------------- |
-| Unit tests        | 99                                                    |
-| Integration tests | 65 (need a local database)                            |
+| Unit tests        | 110                                                   |
+| Integration tests | 81 (need a local database)                            |
 | End-to-end tests  | 4 (Playwright)                                        |
-| Latest commit     | `18aadd9`                                             |
 | Repository        | <https://github.com/darrylnatale/longplayr> (private) |
 | **Staging app**   | <https://longplayr.vercel.app>                        |
 | **Staging DB**    | `oexuqjpvyeijmlirxtal.supabase.co`                    |
@@ -126,9 +127,58 @@ Current staging artwork state, queried directly:
 
 **The queue is currently empty** (`ingestion_jobs` = 0 rows), as is `catalogue_additions`. Nothing is pending, which also means the 36 missing covers are not scheduled to be retried by anything. Waiting will not fix them.
 
+**The artwork retry path was missing, and now exists.** The cause was subtler than an unbuilt feature. `fetchAndStoreArtwork` records its outcome and returns rather than throwing — deliberate, so that a Cover Art Archive problem cannot fail a metadata ingest that already succeeded. But the job runner discarded the returned status, so a failed fetch marked the job **`succeeded`** and no retry was ever scheduled. The album was left at `failed` with nothing queued and nothing to notice.
+
+`runJob` now re-raises a `failed` artwork result, handing it to the queue's existing retry, backoff and exhaustion machinery. `absent` is not a failure and completes the job. The lifecycle is:
+
+| Cover Art Archive says | Album becomes | Job becomes                                   |
+| ---------------------- | ------------- | --------------------------------------------- |
+| an image               | `found`       | `succeeded`                                   |
+| 404                    | `absent`      | `succeeded` — answered, no retry              |
+| 5xx or network error   | `failed`      | back to `pending`, retried behind backoff     |
+| 5xx three times        | `failed`      | `failed` — stops, awaiting a deliberate sweep |
+
+**Recovery is `enqueueMissingArtwork()`**, exposed as `npm run db:backfill:artwork`. It queues a `fetch_artwork` job for every album in `pending` or `failed`, bounded and idempotent twice over: the partial unique index skips albums with an outstanding job, and a re-run after a successful drain finds nothing because those albums are no longer in a retryable state. Queue-only by default; `BACKFILL_DRAIN=true` also drains, which is what makes recovery a single operation rather than four days of daily cron.
+
 ---
 
-## 5. The MusicBrainz 503 investigation
+## 5. The MusicBrainz 503s — resolved, not rate limiting
+
+**Answered on 2026-08-16 by capturing a live 503.** The body and headers settle it:
+
+```
+{"error": "The MusicBrainz web server is currently busy. Please try again later."}
+
+x-ratelimit-zone:      global          ← not our per-IP budget
+x-ratelimit-limit:     15
+x-ratelimit-remaining: 12              ← rejected with 12 of 15 left
+retry-after:           0               ← retry immediately, no penalty
+x-mb-rate-limiter:     lua
+server:                openresty       ← the edge proxy; 200s come from Plack::Handler::Starlet
+```
+
+Four things follow, and together they close the question:
+
+1. **The message is the wrong one for rate limiting.** MusicBrainz's rate-limit 503 reads _"Your requests are exceeding the allowable rate limit."_ This one says the server is busy. They are different responses for different causes.
+2. **The zone is `global`.** This is a shared bucket across MusicBrainz traffic, not a budget longplayr can exhaust on its own.
+3. **We were rejected with budget remaining** — 12 of 15. Nothing of ours ran out.
+4. **`retry-after: 0`** — MusicBrainz is not asking us to slow down. It is asking us to come back.
+
+Corroborating: on the 200 responses the per-IP zone reports `x-ratelimit-limit: 1200` with `remaining` swinging 290 → 1023 → 884 between our own requests at 1.5s spacing. A budget that refills and drains by hundreds while we make one request is not being moved by us.
+
+**The 503s were MusicBrainz shedding load at its edge proxy. The rate limiter was never the problem, and the request never reached the application.** During the probe, 1 request in 6 was shed — a higher rate than the seed's 21 in 191.
+
+### What this means for policy
+
+**Nothing has been changed.** The rate limiter and the retry policy are untouched, deliberately, and the evidence says the limiter is not what needs attention.
+
+The retry policy is a different matter and is now worth a decision. Three attempts at 2s and 4s means all three land inside roughly six seconds — which is exactly what the seed observed, all 21 failing three attempts in ~6s. If the edge is shedding load, a six-second window is simply too narrow to escape it, and the fix is a longer, jittered backoff rather than a slower request rate. **[OPEN]** — raised, not resolved.
+
+### What was instrumented
+
+`musicbrainz.ts` now captures the response body and the rate-limit headers on any non-OK response, and classifies 503s as `server busy` or `rate limited` (`isServerBusy`, `isRateLimited`, `describeFailure`). The classification lands in the error message and in job `last_error`, so the next occurrence explains itself instead of needing another investigation. Timing, attempt count and backoff are unchanged.
+
+### Original investigation
 
 21 failures, all on `/release-group/`. Investigated without changing rate or retry policy.
 
@@ -146,9 +196,7 @@ Evidence against rate limiting:
 - **21 failures on `/release-group/`, zero across 170 `/release/` calls**, despite being interleaved at the same rate
 - **All 21 failed three attempts across ~6 seconds** — a rolling rate-limit window would have cleared
 
-Working hypothesis: server-side load or query timeouts on the heavier `release-group?inc=artist-credits+releases` query, which returns every release beneath a group. MusicBrainz uses 503 for general unavailability, not only rate limiting.
-
-**503 response bodies are not currently captured.** MusicBrainz returns a distinct rate-limit message that would settle this definitively. **Capture the body before changing retry or rate-limit policy.** Neither has been changed.
+Working hypothesis at the time: server-side load or query timeouts on the heavier `release-group?inc=artist-credits+releases` query. **Confirmed as to load, wrong as to the query** — the captured 503 came from a bare lookup with no includes at all, so the weight of the query is not what triggers the shed. The release-group asymmetry remains unexplained and is most likely an artefact of when each endpoint happened to be called; with a global bucket, which endpoint is in flight during a shed is chance.
 
 ---
 
@@ -168,16 +216,16 @@ Also note: Next 16 blocks image optimisation from local IPs by default (400). `d
 
 **Open decisions** (see `docs/product-spec.md` §8 and `docs/data-model.md` §9 for the authoritative list):
 
-- Whether to re-run the 21 MusicBrainz failures, and whether to capture 503 bodies first
-- Whether the 36 albums still missing artwork should be retried, and on what schedule (68 requests failed during the seed, but 32 of those albums have since succeeded — see §3)
+- **Whether to widen the MusicBrainz retry window.** Now that the 503s are known to be edge load shedding (§5), three attempts inside ~6s is the part worth revisiting — not the request rate. Longer, jittered backoff, and possibly more attempts. **Nothing changed yet**
+- **Whether the daily cron should sweep for missing artwork itself.** `enqueueMissingArtwork()` exists but nothing calls it automatically, so recovery is currently a deliberate act. Auto-sweeping would make the system self-healing at the cost of a cron that enqueues work on its own
 - Report reason categories (Phase 6)
 - MBID merge handling, handle reuse after deletion
 - Genre and tag data
 
 **Next steps:**
 
-1. Capture 503 response bodies before touching retry or rate-limit policy
-2. Re-run the seed to pick up the 21 MusicBrainz failures and the 36 albums still without artwork — both are retryable and the seed is idempotent. Nothing is queued to do this automatically; the job queue is empty
+1. Run `npm run db:backfill:artwork` against staging to recover the 36 — dry by default, `BACKFILL_DRAIN=true` to fetch. **Not yet run; staging is untouched**
+2. Re-run the seed to pick up the 21 MusicBrainz failures — retryable, and the seed is idempotent. Expect some to shed again; that is upstream load, not a defect
 3. Confirm the representative real-data cases in `docs/development-plan.md` are present in the seeded catalogue: collaboration, Various Artists, EP, mixtape, compilation, live album, year-only date, multi-disc tracklist, and albums with and without artwork
 4. Inspect the seeded catalogue and pages
 
@@ -202,6 +250,12 @@ Also note: Next 16 blocks image optimisation from local IPs by default (400). `d
 **Fixing a metric does not fix the rows it already mismeasured.** The four-state model corrects how coverage is computed from now on, but every existing staging row predates it and sits in `pending`, so coverage still prints 100%. A corrected formula over uncorrected data reads exactly like the bug it replaced. Backfill, or say plainly that the number is not yet meaningful.
 
 **Count the right noun.** "68 artwork failures" and "36 albums without artwork" were both true and neither was wrong — one counts failed requests during a run, the other counts albums in a final state, and 32 albums appear in the first but not the second because they succeeded on a later attempt. A count is meaningless without its unit and its moment. Say which noun and which point in time.
+
+**A returned failure is not a raised failure.** `fetchAndStoreArtwork` returns `{ status: 'failed' }` rather than throwing, which is right for the seed and wrong for the job runner — the runner ignored the value and marked the job succeeded. Nothing was broken enough to notice: no exception, no failed job, no alert, just 36 albums quietly never retried. When a function reports failure by return value, every caller has to decide what to do with it, and a `switch` that ignores the result is the easiest place to forget.
+
+**Capture the evidence before theorising about upstream.** Three plausible mechanisms were argued from status codes alone across two sessions. One captured 503 body settled it in a single request — and disproved the leading hypothesis, since the shed happened on a bare lookup rather than the heavy query everyone suspected. Log the body, not just the status.
+
+**A shared bucket is not your bucket.** MusicBrainz reports `x-ratelimit-zone: global` on shed requests and a per-IP zone on served ones. Reading a `remaining` number without reading its zone would have led straight to throttling a client that was already nine times under the limit.
 
 **ListenBrainz went down twice on consecutive days**, while MusicBrainz and Cover Art Archive stayed healthy. Worth designing around when charts eventually refresh on a schedule.
 

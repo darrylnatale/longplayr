@@ -59,14 +59,106 @@ function assertIdentifiable(): void {
   }
 }
 
+/**
+ * Diagnostics attached to a non-OK response.
+ *
+ * Captured because the seed produced 21 unexplained 503s and the logs recorded
+ * only the status, which cannot distinguish "you are going too fast" from
+ * "MusicBrainz is busy". Those have opposite remedies: the first means slow
+ * down, the second means our rate is irrelevant and only backoff helps.
+ */
+export type MusicBrainzResponseDiagnostics = {
+  /** Response body, truncated. MusicBrainz sends a distinct message per cause. */
+  body?: string;
+  /** `global` when the edge limiter shed the request, absent on app responses. */
+  rateLimitZone?: string;
+  rateLimitLimit?: string;
+  rateLimitRemaining?: string;
+  retryAfter?: string;
+  /** `openresty` is the edge proxy; `Plack::Handler::Starlet` is the app. */
+  server?: string;
+};
+
 export class MusicBrainzError extends Error {
   constructor(
     message: string,
     readonly status?: number,
+    readonly diagnostics?: MusicBrainzResponseDiagnostics,
   ) {
     super(message);
     this.name = 'MusicBrainzError';
   }
+}
+
+/**
+ * True when a 503 is MusicBrainz shedding load rather than rate limiting us.
+ *
+ * Verified against the live API on 2026-08-16. The two 503s are distinguishable
+ * and only one is our fault:
+ *
+ *   busy         {"error": "The MusicBrainz web server is currently busy..."}
+ *                x-ratelimit-zone: global, retry-after: 0, server: openresty
+ *                Rejected at the edge, with our own per-IP budget untouched.
+ *
+ *   rate limited {"error": "Your requests are exceeding the allowable rate
+ *                limit..."} — the message their docs describe.
+ *
+ * Every 503 sampled during the investigation was the first kind, while the
+ * client was averaging 0.104 req/s against a 1/s limit.
+ */
+export function isServerBusy(diagnostics: MusicBrainzResponseDiagnostics | undefined): boolean {
+  if (!diagnostics) return false;
+  if (diagnostics.rateLimitZone === 'global') return true;
+  return /currently busy/i.test(diagnostics.body ?? '');
+}
+
+/** True when MusicBrainz says we are the problem. */
+export function isRateLimited(diagnostics: MusicBrainzResponseDiagnostics | undefined): boolean {
+  return /exceeding the allowable rate limit/i.test(diagnostics?.body ?? '');
+}
+
+/** Reads the diagnostics we care about off a non-OK response. */
+async function captureDiagnostics(response: Response): Promise<MusicBrainzResponseDiagnostics> {
+  let body: string | undefined;
+  try {
+    body = (await response.text()).slice(0, 500);
+  } catch {
+    // A body we cannot read is not worth failing the error path over.
+  }
+
+  const header = (name: string) => response.headers.get(name) ?? undefined;
+
+  return {
+    body,
+    rateLimitZone: header('x-ratelimit-zone'),
+    rateLimitLimit: header('x-ratelimit-limit'),
+    rateLimitRemaining: header('x-ratelimit-remaining'),
+    retryAfter: header('retry-after'),
+    server: header('server'),
+  };
+}
+
+/** One-line summary for logs and job `last_error`. */
+export function describeFailure(
+  status: number,
+  path: string,
+  diagnostics: MusicBrainzResponseDiagnostics,
+): string {
+  const cause = isRateLimited(diagnostics)
+    ? 'rate limited'
+    : isServerBusy(diagnostics)
+      ? 'server busy (edge load shedding, not our rate)'
+      : 'unclassified';
+
+  const parts = [
+    `zone=${diagnostics.rateLimitZone ?? '-'}`,
+    `remaining=${diagnostics.rateLimitRemaining ?? '-'}/${diagnostics.rateLimitLimit ?? '-'}`,
+    `retry-after=${diagnostics.retryAfter ?? '-'}`,
+  ];
+
+  return `MusicBrainz returned ${status} for ${path} — ${cause} [${parts.join(' ')}] ${
+    diagnostics.body ?? ''
+  }`.trim();
 }
 
 export class NotFoundError extends MusicBrainzError {
@@ -98,12 +190,19 @@ async function request<T>(path: string, params: Record<string, string> = {}): Pr
       throw new NotFoundError(path);
     }
 
-    // 503 means we are being rate limited; 5xx generally is worth retrying.
-    if (response.status === 503 || response.status >= 500) {
-      lastError = new MusicBrainzError(
-        `MusicBrainz returned ${response.status} for ${path}`,
-        response.status,
-      );
+    // Read the body and rate-limit headers before deciding anything. A 503
+    // carrying "currently busy" with x-ratelimit-zone: global is MusicBrainz
+    // shedding load at the edge, which our request rate does not influence; a
+    // 503 carrying "exceeding the allowable rate limit" is our fault. The seed
+    // recorded neither, which is why 21 failures stayed unexplained for days.
+    const diagnostics = await captureDiagnostics(response);
+    const message = describeFailure(response.status, path, diagnostics);
+
+    // 5xx is worth retrying whichever kind it is. Timing and attempt count are
+    // deliberately unchanged here — see docs/current-state.md §5 before tuning
+    // them, because the evidence says the current policy is not the problem.
+    if (response.status >= 500) {
+      lastError = new MusicBrainzError(message, response.status, diagnostics);
       if (attempt < MAX_ATTEMPTS) {
         // Back off well beyond the 1s window before trying again.
         await sleep(2000 * attempt);
@@ -111,10 +210,7 @@ async function request<T>(path: string, params: Record<string, string> = {}): Pr
       }
     }
 
-    throw new MusicBrainzError(
-      `MusicBrainz returned ${response.status} for ${path}`,
-      response.status,
-    );
+    throw new MusicBrainzError(message, response.status, diagnostics);
   }
 
   throw lastError ?? new MusicBrainzError(`MusicBrainz request failed for ${path}`);

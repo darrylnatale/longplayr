@@ -7,6 +7,7 @@ import type { PopularityRange } from '../discovery/popularity';
 
 import { artworkCoverage, fetchAndStoreArtwork } from './artwork';
 import { ingestReleaseGroup } from './ingest';
+import { enqueueJob } from './jobs';
 import { OutOfScopeError } from './map';
 import { selectSeedCandidates } from './seed-selection';
 import { NotFoundError } from './musicbrainz';
@@ -311,6 +312,11 @@ export async function seedCatalogue(options: SeedOptions = {}): Promise<SeedRepo
             title: `${entry.artistName} — ${entry.title}`,
             error: art.reason,
           });
+          // Queue a retry rather than leaving the failure in the report and
+          // nowhere else. The first seed did exactly that: 68 covers failed,
+          // the report listed them, and nothing was scheduled to try again.
+          // Idempotent — the partial unique index collapses duplicates.
+          await enqueueJob('fetch_artwork', entry.mbid, { admin });
         }
       }
     } catch (error) {

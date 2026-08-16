@@ -3,7 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { Database } from '@/lib/supabase/database.types';
 
-import { fetchAndStoreArtwork } from './artwork';
+import { CoverArtUnavailableError, fetchAndStoreArtwork } from './artwork';
 import { ingestReleaseGroup } from './ingest';
 
 type Admin = SupabaseClient<Database>;
@@ -54,6 +54,72 @@ export async function enqueueJob(
   if (error && error.code !== '23505') throw error;
 }
 
+/** Artwork states that warrant another attempt. `found` and `absent` are settled. */
+const ARTWORK_RETRYABLE: Database['public']['Enums']['artwork_status'][] = ['pending', 'failed'];
+
+/**
+ * Queues artwork for every album that still needs it.
+ *
+ * Two populations need this and neither is reached by the normal path:
+ *
+ *  - **Legacy `pending` rows.** The first seed predates the four-state model.
+ *    Its Cover Art Archive failures threw before any status was written, so 36
+ *    albums sit at `pending` — indistinguishable from never attempted — with no
+ *    job queued and nothing scheduled to notice.
+ *  - **Exhausted `failed` rows.** A job that burns all its attempts stops
+ *    retrying by design. Reviving it is a deliberate act, which is this.
+ *
+ * Idempotent twice over: the partial unique index means an album with an
+ * outstanding job is skipped, and re-running after a successful drain finds
+ * nothing because those albums are no longer in a retryable state.
+ *
+ * Bounded on purpose. The queue drains once a day on Vercel's Hobby plan, so
+ * enqueueing tens of thousands would build a backlog that outlives its useful
+ * life rather than getting through it.
+ */
+export async function enqueueMissingArtwork(
+  options: { limit?: number; priority?: number; admin?: Admin } = {},
+): Promise<{ candidates: number; queued: number }> {
+  const admin = options.admin ?? createAdminClient();
+  const limit = options.limit ?? 500;
+
+  const { data: albums, error } = await admin
+    .from('albums')
+    .select('mbid')
+    .in('artwork_status', ARTWORK_RETRYABLE)
+    .order('popularity_score', { ascending: false, nullsFirst: false })
+    .limit(limit);
+
+  if (error) throw error;
+
+  const mbids = (albums ?? []).map((album) => album.mbid);
+  if (mbids.length === 0) return { candidates: 0, queued: 0 };
+
+  // Which of these already have work outstanding, in one query rather than one
+  // per album. The insert below is safe either way — the partial unique index
+  // rejects a duplicate — but without this the count could not tell "queued now"
+  // from "was already queued", which is the number that says whether a sweep
+  // did anything.
+  const { data: existing, error: jobsError } = await admin
+    .from('ingestion_jobs')
+    .select('target_mbid')
+    .eq('kind', 'fetch_artwork')
+    .in('status', ['pending', 'running'])
+    .in('target_mbid', mbids);
+
+  if (jobsError) throw jobsError;
+  const outstanding = new Set((existing ?? []).map((job) => job.target_mbid));
+
+  let queued = 0;
+  for (const mbid of mbids) {
+    if (outstanding.has(mbid)) continue;
+    await enqueueJob('fetch_artwork', mbid, { admin, priority: options.priority });
+    queued += 1;
+  }
+
+  return { candidates: mbids.length, queued };
+}
+
 async function runJob(job: Job, admin: Admin): Promise<void> {
   switch (job.kind) {
     case 'ingest_release_group': {
@@ -66,9 +132,23 @@ async function runJob(job: Job, admin: Admin): Promise<void> {
       await enqueueJob('fetch_artwork', job.target_mbid, { admin });
       return;
     }
-    case 'fetch_artwork':
-      await fetchAndStoreArtwork(job.target_mbid, admin);
+    case 'fetch_artwork': {
+      const result = await fetchAndStoreArtwork(job.target_mbid, admin);
+
+      // fetchAndStoreArtwork records its outcome and returns rather than
+      // throwing, so that a Cover Art Archive problem never fails a metadata
+      // ingest that succeeded. Correct there, wrong here: returning normally
+      // marked the job 'succeeded' even when the fetch had failed, so the album
+      // was left at artwork_status 'failed' with nothing queued to try again.
+      //
+      // Re-raising hands the failure to the queue's existing retry, backoff and
+      // exhaustion machinery. 'absent' is not a failure — Cover Art Archive
+      // answered, and the answer was no cover.
+      if (result.status === 'failed') {
+        throw new CoverArtUnavailableError(result.reason);
+      }
       return;
+    }
     case 'fetch_releases':
       // Editions are fetched lazily when someone opens the editions UI, which
       // does not exist yet. Queued work of this kind is a no-op for now.
