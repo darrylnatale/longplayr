@@ -54,7 +54,13 @@ export function storedArtworkUrl(
   albumMbid: string,
   size: ArtworkSize = 500,
 ): string {
-  return `${supabaseUrl}/storage/v1/object/public/${ARTWORK_BUCKET}/${artworkPath(albumMbid, size)}`;
+  // Trailing whitespace and slashes are stripped deliberately. A tab pasted
+  // into a Vercel environment variable survived `new URL()` — which tolerates
+  // it — but not string concatenation, producing a malformed image URL that
+  // the optimiser rejected with 400. Every cover on staging broke while the
+  // pages themselves rendered fine, which made it look like an artwork bug.
+  const base = supabaseUrl.trim().replace(/\/+$/, '');
+  return `${base}/storage/v1/object/public/${ARTWORK_BUCKET}/${artworkPath(albumMbid, size)}`;
 }
 
 /**

@@ -5,7 +5,7 @@ import type { NextConfig } from 'next';
  * environment, so the allowed pattern is derived from the same variable the
  * app already uses rather than hardcoded.
  */
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
 const supabaseHost = supabaseUrl ? new URL(supabaseUrl) : null;
 
 const nextConfig: NextConfig = {
