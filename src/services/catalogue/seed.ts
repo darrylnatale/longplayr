@@ -42,13 +42,33 @@ export type SeedReport = {
   selectedForSeeding: number;
   excludedByArtistCap: number;
 
-  ingested: number;
-  alreadyPresent: number;
-  rejectedOutOfScope: { mbid: string; title: string; reason: string }[];
-  notFoundUpstream: { mbid: string; title: string }[];
-  failed: { mbid: string; title: string; error: string }[];
+  /**
+   * Catalogue outcome per selected album. Mutually exclusive — every selected
+   * album lands in exactly one bucket, so these sum to selectedForSeeding.
+   */
+  catalogueOutcome: {
+    ingested: number;
+    alreadyPresent: number;
+    rejected: { mbid: string; title: string; reason: string }[];
+    notFoundUpstream: { mbid: string; title: string }[];
+    failed: { mbid: string; title: string; error: string }[];
+  };
 
-  artwork: { found: number; absent: number; pending: number; coveragePercent: number };
+  /**
+   * Artwork outcome, independent of the above. An album can be catalogued
+   * successfully and still have no cover, so mixing the two made a run look
+   * worse than it was and hid which failure actually occurred.
+   */
+  artworkOutcome: { mbid: string; title: string; error: string }[];
+
+  artwork: {
+    found: number;
+    absent: number;
+    failed: number;
+    pending: number;
+    total: number;
+    observedCoveragePercent: number;
+  };
   catalogue: { albums: number; artists: number };
 
   durationSeconds: number;
@@ -226,12 +246,15 @@ export async function seedCatalogue(options: SeedOptions = {}): Promise<SeedRepo
     duplicatesSkipped: selection.duplicatesSkipped,
     selectedForSeeding: entries.length,
     excludedByArtistCap: selection.excludedByCap.length,
-    ingested: 0,
-    alreadyPresent: 0,
-    rejectedOutOfScope: [],
-    notFoundUpstream: [],
-    failed: [],
-    artwork: { found: 0, absent: 0, pending: 0, coveragePercent: 0 },
+    catalogueOutcome: {
+      ingested: 0,
+      alreadyPresent: 0,
+      rejected: [],
+      notFoundUpstream: [],
+      failed: [],
+    },
+    artworkOutcome: [],
+    artwork: { found: 0, absent: 0, failed: 0, pending: 0, total: 0, observedCoveragePercent: 0 },
     catalogue: { albums: 0, artists: 0 },
     durationSeconds: 0,
   };
@@ -259,19 +282,19 @@ export async function seedCatalogue(options: SeedOptions = {}): Promise<SeedRepo
 
     try {
       if (existing) {
-        report.alreadyPresent += 1;
+        report.catalogueOutcome.alreadyPresent += 1;
       } else {
         upstreamFetches += 1;
         const result = await ingestReleaseGroup(entry.mbid, admin);
         if (result.status === 'out_of_scope') {
-          report.rejectedOutOfScope.push({
+          report.catalogueOutcome.rejected.push({
             mbid: entry.mbid,
             title: `${entry.artistName} — ${entry.title}`,
             reason: result.reason,
           });
           continue;
         }
-        report.ingested += 1;
+        report.catalogueOutcome.ingested += 1;
       }
 
       // Popularity is written for everything we hold, including albums that
@@ -279,11 +302,20 @@ export async function seedCatalogue(options: SeedOptions = {}): Promise<SeedRepo
       await admin.from('albums').update({ popularity_score: entry.score }).eq('mbid', entry.mbid);
 
       if (includeArtwork) {
-        await fetchAndStoreArtwork(entry.mbid, admin);
+        // Records its own outcome rather than throwing, so a Cover Art Archive
+        // failure never masquerades as a catalogue failure.
+        const art = await fetchAndStoreArtwork(entry.mbid, admin);
+        if (art.status === 'failed') {
+          report.artworkOutcome.push({
+            mbid: entry.mbid,
+            title: `${entry.artistName} — ${entry.title}`,
+            error: art.reason,
+          });
+        }
       }
     } catch (error) {
       if (error instanceof OutOfScopeError) {
-        report.rejectedOutOfScope.push({
+        report.catalogueOutcome.rejected.push({
           mbid: entry.mbid,
           title: `${entry.artistName} — ${entry.title}`,
           reason: error.reason,
@@ -291,12 +323,12 @@ export async function seedCatalogue(options: SeedOptions = {}): Promise<SeedRepo
       } else if (error instanceof NotFoundError) {
         // ListenBrainz knows an MBID that MusicBrainz no longer resolves —
         // usually a merged or removed release group.
-        report.notFoundUpstream.push({
+        report.catalogueOutcome.notFoundUpstream.push({
           mbid: entry.mbid,
           title: `${entry.artistName} — ${entry.title}`,
         });
       } else {
-        report.failed.push({
+        report.catalogueOutcome.failed.push({
           mbid: entry.mbid,
           title: `${entry.artistName} — ${entry.title}`,
           error: error instanceof Error ? error.message : String(error),
@@ -305,13 +337,7 @@ export async function seedCatalogue(options: SeedOptions = {}): Promise<SeedRepo
     }
   }
 
-  const coverage = await artworkCoverage(admin);
-  report.artwork = {
-    found: coverage.found,
-    absent: coverage.absent,
-    pending: coverage.pending,
-    coveragePercent: coverage.coverage,
-  };
+  report.artwork = await artworkCoverage(admin);
 
   const [albums, artists] = await Promise.all([
     admin.from('albums').select('id', { count: 'exact', head: true }),
@@ -336,29 +362,41 @@ export function formatSeedReport(report: SeedReport): string {
     `  Selected (cap ${String(report.maxPerArtist ?? 'none').padEnd(4)})          ${report.selectedForSeeding}`,
     `  Excluded by artist cap       ${report.excludedByArtistCap}`,
     '',
-    `  Newly ingested               ${report.ingested}`,
-    `  Already present              ${report.alreadyPresent}`,
-    `  Rejected, out of scope       ${report.rejectedOutOfScope.length}`,
-    `  Not found in MusicBrainz     ${report.notFoundUpstream.length}`,
-    `  Failed                       ${report.failed.length}`,
-    '',
+
     `  Catalogue                    ${report.catalogue.albums} albums, ${report.catalogue.artists} artists`,
-    `  Artwork found                ${report.artwork.found}`,
-    `  Artwork absent               ${report.artwork.absent}`,
-    `  Artwork pending              ${report.artwork.pending}`,
-    `  Coverage                     ${report.artwork.coveragePercent}%`,
+    '',
+    '  Catalogue outcome (mutually exclusive)',
+    `    ingested                   ${report.catalogueOutcome.ingested}`,
+    `    already present            ${report.catalogueOutcome.alreadyPresent}`,
+    `    rejected (out of scope)    ${report.catalogueOutcome.rejected.length}`,
+    `    not found upstream         ${report.catalogueOutcome.notFoundUpstream.length}`,
+    `    failed                     ${report.catalogueOutcome.failed.length}`,
+    '',
+    '  Artwork outcome (independent of the above)',
+    `    found                      ${report.artwork.found}`,
+    `    absent (confirmed no art)  ${report.artwork.absent}`,
+    `    failed (service error)     ${report.artwork.failed}`,
+    `    pending (not attempted)    ${report.artwork.pending}`,
+    `    observed coverage          ${report.artwork.observedCoveragePercent}%  (found / attempted)`,
   ];
 
-  if (report.rejectedOutOfScope.length > 0) {
+  if (report.catalogueOutcome.rejected.length > 0) {
     lines.push('', '  Rejected (first 10):');
-    for (const item of report.rejectedOutOfScope.slice(0, 10)) {
+    for (const item of report.catalogueOutcome.rejected.slice(0, 10)) {
       lines.push(`    ${item.title} — ${item.reason}`);
     }
   }
 
-  if (report.failed.length > 0) {
-    lines.push('', '  Failures (first 10):');
-    for (const item of report.failed.slice(0, 10)) {
+  if (report.catalogueOutcome.failed.length > 0) {
+    lines.push('', '  Catalogue failures (first 10):');
+    for (const item of report.catalogueOutcome.failed.slice(0, 10)) {
+      lines.push(`    ${item.title} — ${item.error}`);
+    }
+  }
+
+  if (report.artworkOutcome.length > 0) {
+    lines.push('', '  Artwork failures (first 10):');
+    for (const item of report.artworkOutcome.slice(0, 10)) {
       lines.push(`    ${item.title} — ${item.error}`);
     }
   }

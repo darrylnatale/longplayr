@@ -7,6 +7,11 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.15"
+  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -445,7 +450,7 @@ export type Database = {
         | "audiobook"
         | "dj_mix"
       album_type: "album" | "ep" | "other"
-      artwork_status: "pending" | "found" | "absent"
+      artwork_status: "pending" | "found" | "absent" | "failed"
       date_precision: "day" | "month" | "year"
       job_kind: "ingest_release_group" | "fetch_artwork" | "fetch_releases"
       job_status: "pending" | "running" | "succeeded" | "failed"
@@ -593,7 +598,7 @@ export const Constants = {
         "dj_mix",
       ],
       album_type: ["album", "ep", "other"],
-      artwork_status: ["pending", "found", "absent"],
+      artwork_status: ["pending", "found", "absent", "failed"],
       date_precision: ["day", "month", "year"],
       job_kind: ["ingest_release_group", "fetch_artwork", "fetch_releases"],
       job_status: ["pending", "running", "succeeded", "failed"],
@@ -601,4 +606,3 @@ export const Constants = {
     },
   },
 } as const
-

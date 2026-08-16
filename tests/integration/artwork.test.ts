@@ -149,7 +149,12 @@ describe('artworkCoverage', () => {
     await ingestReleaseGroupPayload(yearOnlyAlbum, admin);
 
     // Both start pending, so coverage is undefined rather than zero-with-data.
-    expect(await artworkCoverage(admin)).toMatchObject({ found: 0, absent: 0, pending: 2 });
+    expect(await artworkCoverage(admin)).toMatchObject({
+      found: 0,
+      absent: 0,
+      failed: 0,
+      pending: 2,
+    });
 
     stubCoverArt(imageResponse);
     await fetchAndStoreArtwork(singleArtistAlbum.id, admin, [500]);
@@ -159,7 +164,7 @@ describe('artworkCoverage', () => {
 
     const coverage = await artworkCoverage(admin);
     expect(coverage).toMatchObject({ found: 1, absent: 1, pending: 0, total: 2 });
-    expect(coverage.coverage).toBe(50);
+    expect(coverage.observedCoveragePercent).toBe(50);
   });
 
   it('excludes pending albums from the percentage', async () => {
@@ -171,6 +176,54 @@ describe('artworkCoverage', () => {
     // One found, one still pending: 100% of what has been attempted, not 50%.
     const coverage = await artworkCoverage(admin);
     expect(coverage).toMatchObject({ found: 1, pending: 1 });
-    expect(coverage.coverage).toBe(100);
+    expect(coverage.observedCoveragePercent).toBe(100);
+  });
+});
+
+describe('artwork failure is distinct from absence', () => {
+  it('records failed, not absent, when Cover Art Archive errors', async () => {
+    await ingestReleaseGroupPayload(singleArtistAlbum, admin);
+    stubCoverArt(() => new Response(null, { status: 500 }));
+
+    const result = await fetchAndStoreArtwork(singleArtistAlbum.id, admin, [500]);
+
+    // A 500 says nothing about whether artwork exists. Calling it 'absent'
+    // would record a permanent gap for a temporary outage.
+    expect(result.status).toBe('failed');
+
+    const { data } = await admin
+      .from('albums')
+      .select('artwork_status')
+      .eq('mbid', singleArtistAlbum.id)
+      .single();
+    expect(data?.artwork_status).toBe('failed');
+  });
+
+  it('does not throw on a Cover Art Archive error', async () => {
+    await ingestReleaseGroupPayload(singleArtistAlbum, admin);
+    stubCoverArt(() => new Response(null, { status: 503 }));
+
+    // Previously this propagated and was counted as a catalogue failure, which
+    // conflated "we could not fetch a cover" with "we could not ingest".
+    await expect(fetchAndStoreArtwork(singleArtistAlbum.id, admin, [500])).resolves.toMatchObject({
+      status: 'failed',
+    });
+  });
+
+  it('counts failures in the denominator, never hiding them', async () => {
+    await ingestReleaseGroupPayload(singleArtistAlbum, admin);
+    await ingestReleaseGroupPayload(yearOnlyAlbum, admin);
+
+    stubCoverArt(imageResponse);
+    await fetchAndStoreArtwork(singleArtistAlbum.id, admin, [500]);
+    vi.restoreAllMocks();
+    stubCoverArt(() => new Response(null, { status: 500 }));
+    await fetchAndStoreArtwork(yearOnlyAlbum.id, admin, [500]);
+
+    const coverage = await artworkCoverage(admin);
+
+    // One found, one failed. The old metric reported 100% here.
+    expect(coverage).toMatchObject({ found: 1, absent: 0, failed: 1, pending: 0 });
+    expect(coverage.observedCoveragePercent).toBe(50);
   });
 });

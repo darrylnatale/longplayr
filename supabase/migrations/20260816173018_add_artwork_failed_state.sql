@@ -1,0 +1,21 @@
+-- longplayr — distinguish artwork failure from artwork absence
+--
+-- The first real seed reported "100% coverage" while 36 of 335 albums had no
+-- cover. Cover Art Archive returned 5xx for 68 requests; those threw before any
+-- status was written, leaving the albums 'pending' — and coverage excluded
+-- pending on the assumption that it meant "not yet attempted".
+--
+-- It did not. It meant "attempted and failed". The metric whose entire purpose
+-- is telling us whether single-source artwork is viable reported perfection in
+-- exactly the case it should have raised a flag.
+--
+-- Four states, and the distinction that matters is between the last two:
+--   pending  not attempted
+--   found    retrieved and stored
+--   absent   Cover Art Archive answered, and holds no front cover  (a real gap)
+--   failed   the request errored                                   (retryable)
+--
+-- A failed request must never count as absent. One is a fact about the
+-- artwork; the other is a fact about the network.
+
+alter type public.artwork_status add value if not exists 'failed';

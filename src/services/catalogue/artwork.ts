@@ -22,6 +22,14 @@ import type { Database } from '@/lib/supabase/database.types';
 
 const CAA_ROOT = 'https://coverartarchive.org';
 
+/** Cover Art Archive could not be reached, or errored. Retryable — not absence. */
+export class CoverArtUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CoverArtUnavailableError';
+  }
+}
+
 /** Sizes Cover Art Archive offers. 500 is our display size; 1200 is for detail. */
 export const ARTWORK_SIZES = [250, 500, 1200] as const;
 export type ArtworkSize = (typeof ARTWORK_SIZES)[number];
@@ -30,8 +38,18 @@ export const ARTWORK_BUCKET = 'artwork';
 
 type Admin = SupabaseClient<Database>;
 
+/**
+ * Outcome of one artwork attempt.
+ *
+ * `absent` and `failed` are deliberately distinct. Absent is a fact about the
+ * artwork — Cover Art Archive answered and holds no front cover. Failed is a
+ * fact about the network. Conflating them is what let a catalogue missing 36
+ * covers report 100% coverage.
+ */
 export type ArtworkResult =
-  { status: 'found'; sizes: ArtworkSize[] } | { status: 'absent'; reason: string };
+  | { status: 'found'; sizes: ArtworkSize[] }
+  | { status: 'absent'; reason: string }
+  | { status: 'failed'; reason: string };
 
 /** Cover Art Archive URL for a release group's front cover. */
 export function coverArtUrl(albumMbid: string, size: ArtworkSize): string {
@@ -79,9 +97,13 @@ async function fetchCover(
     redirect: 'follow', // CAA 307-redirects to archive.org
   });
 
+  // 404 is an answer: this release group has no front cover. Anything else is
+  // a failure to get an answer, which is a different thing entirely.
   if (response.status === 404) return null;
   if (!response.ok) {
-    throw new Error(`Cover Art Archive returned ${response.status} for ${albumMbid} (${size})`);
+    throw new CoverArtUnavailableError(
+      `Cover Art Archive returned ${response.status} for ${albumMbid} (${size})`,
+    );
   }
 
   return {
@@ -103,34 +125,48 @@ export async function fetchAndStoreArtwork(
   sizes: readonly ArtworkSize[] = ARTWORK_SIZES,
 ): Promise<ArtworkResult> {
   const stored: ArtworkSize[] = [];
+  let result: ArtworkResult;
 
-  for (const size of sizes) {
-    const cover = await fetchCover(albumMbid, size);
-    if (!cover) break; // No front cover at all; smaller sizes will not exist either.
+  try {
+    for (const size of sizes) {
+      const cover = await fetchCover(albumMbid, size);
+      // A 404 on the first size means no front cover exists; the others will
+      // not either.
+      if (!cover) break;
 
-    const { error } = await admin.storage
-      .from(ARTWORK_BUCKET)
-      .upload(artworkPath(albumMbid, size), cover.bytes, {
-        contentType: cover.contentType,
-        upsert: true,
-      });
+      const { error } = await admin.storage
+        .from(ARTWORK_BUCKET)
+        .upload(artworkPath(albumMbid, size), cover.bytes, {
+          contentType: cover.contentType,
+          upsert: true,
+        });
 
-    if (error) throw error;
-    stored.push(size);
+      if (error) throw error;
+      stored.push(size);
+    }
+
+    result =
+      stored.length > 0
+        ? { status: 'found', sizes: stored }
+        : { status: 'absent', reason: 'Cover Art Archive holds no front cover' };
+  } catch (error) {
+    // Recorded rather than thrown. Previously this propagated, the album stayed
+    // 'pending', and coverage counted it as "not attempted" — which is how a
+    // catalogue with 36 coverless albums reported 100% coverage.
+    result = {
+      status: 'failed',
+      reason: error instanceof Error ? error.message : String(error),
+    };
   }
-
-  const status = stored.length > 0 ? 'found' : 'absent';
 
   const { error } = await admin
     .from('albums')
-    .update({ artwork_status: status, artwork_updated_at: new Date().toISOString() })
+    .update({ artwork_status: result.status, artwork_updated_at: new Date().toISOString() })
     .eq('mbid', albumMbid);
 
   if (error) throw error;
 
-  return stored.length > 0
-    ? { status: 'found', sizes: stored }
-    : { status: 'absent', reason: 'no front cover in Cover Art Archive' };
+  return result;
 }
 
 /**
@@ -142,12 +178,14 @@ export async function fetchAndStoreArtwork(
 export async function artworkCoverage(admin: Admin = createAdminClient()): Promise<{
   found: number;
   absent: number;
+  failed: number;
   pending: number;
   total: number;
-  coverage: number;
+  /** found / (found + absent + failed). Failures are never hidden. */
+  observedCoveragePercent: number;
 }> {
   const counts = await Promise.all(
-    (['found', 'absent', 'pending'] as const).map(async (status) => {
+    (['found', 'absent', 'failed', 'pending'] as const).map(async (status) => {
       const { count, error } = await admin
         .from('albums')
         .select('id', { count: 'exact', head: true })
@@ -157,17 +195,19 @@ export async function artworkCoverage(admin: Admin = createAdminClient()): Promi
     }),
   );
 
-  const [found, absent, pending] = counts;
-  const total = found + absent + pending;
-  const resolved = found + absent;
+  const [found, absent, failed, pending] = counts;
+  const total = found + absent + failed + pending;
+
+  // Everything attempted, including failures. Excluding failures is what
+  // produced a "100% coverage" report for a catalogue missing 36 covers.
+  const attempted = found + absent + failed;
 
   return {
     found,
     absent,
+    failed,
     pending,
     total,
-    // Share of *resolved* albums that have art. Pending ones are excluded
-    // because they have not been attempted yet and would understate coverage.
-    coverage: resolved === 0 ? 0 : Math.round((found / resolved) * 1000) / 10,
+    observedCoveragePercent: attempted === 0 ? 0 : Math.round((found / attempted) * 1000) / 10,
   };
 }
