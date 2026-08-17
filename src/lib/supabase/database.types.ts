@@ -7,11 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.15"
-  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -297,6 +292,8 @@ export type Database = {
           status: string | null
           title: string
           track_count: number | null
+          tracklist_status: Database["public"]["Enums"]["tracklist_status"]
+          tracklist_updated_at: string | null
           updated_at: string
         }
         Insert: {
@@ -315,6 +312,8 @@ export type Database = {
           status?: string | null
           title: string
           track_count?: number | null
+          tracklist_status?: Database["public"]["Enums"]["tracklist_status"]
+          tracklist_updated_at?: string | null
           updated_at?: string
         }
         Update: {
@@ -333,6 +332,8 @@ export type Database = {
           status?: string | null
           title?: string
           track_count?: number | null
+          tracklist_status?: Database["public"]["Enums"]["tracklist_status"]
+          tracklist_updated_at?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -452,8 +453,13 @@ export type Database = {
       album_type: "album" | "ep" | "other"
       artwork_status: "pending" | "found" | "absent" | "failed"
       date_precision: "day" | "month" | "year"
-      job_kind: "ingest_release_group" | "fetch_artwork" | "fetch_releases"
+      job_kind:
+        | "ingest_release_group"
+        | "fetch_artwork"
+        | "fetch_releases"
+        | "fetch_tracklist"
       job_status: "pending" | "running" | "succeeded" | "failed"
+      tracklist_status: "pending" | "found" | "absent" | "failed"
       user_status: "active" | "suspended" | "banned"
     }
     CompositeTypes: {
@@ -600,9 +606,16 @@ export const Constants = {
       album_type: ["album", "ep", "other"],
       artwork_status: ["pending", "found", "absent", "failed"],
       date_precision: ["day", "month", "year"],
-      job_kind: ["ingest_release_group", "fetch_artwork", "fetch_releases"],
+      job_kind: [
+        "ingest_release_group",
+        "fetch_artwork",
+        "fetch_releases",
+        "fetch_tracklist",
+      ],
       job_status: ["pending", "running", "succeeded", "failed"],
+      tracklist_status: ["pending", "found", "absent", "failed"],
       user_status: ["active", "suspended", "banned"],
     },
   },
 } as const
+

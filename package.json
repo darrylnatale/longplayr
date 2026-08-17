@@ -23,7 +23,8 @@
     "db:seed:fixtures": "vitest run --project seed tests/seed/seed-fixtures.test.ts",
     "db:seed:catalogue": "vitest run --project seed tests/seed/seed-catalogue.test.ts",
     "db:seed:dryrun": "vitest run --project seed tests/seed/dry-run.test.ts",
-    "db:backfill:artwork": "vitest run --project seed tests/seed/backfill-artwork.test.ts"
+    "db:backfill:artwork": "vitest run --project seed tests/seed/backfill-artwork.test.ts",
+    "db:backfill:tracklists": "vitest run --project seed tests/seed/backfill-tracklists.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

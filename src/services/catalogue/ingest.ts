@@ -10,7 +10,9 @@ import {
   type MappedAlbum,
   type MappedRelease,
 } from './map';
-import { getRelease, getReleaseGroup } from './musicbrainz';
+import { getRelease, getReleaseGroup, NotFoundError } from './musicbrainz';
+import { enqueueJob } from './queue';
+import { recordTracklistStatus, storeTracklist, type TracklistResult } from './tracklist';
 
 type Admin = SupabaseClient<Database>;
 
@@ -26,8 +28,33 @@ type Admin = SupabaseClient<Database>;
  */
 
 export type IngestResult =
-  | { status: 'ingested'; albumId: string; mbid: string }
+  | {
+      status: 'ingested';
+      albumId: string;
+      mbid: string;
+      /**
+       * What happened to the tracklist, reported separately.
+       *
+       * The album succeeding and its tracklist succeeding are two outcomes, and
+       * collapsing them is what produced 44 albums that looked ingested and had
+       * no tracks. Undefined only when no fetcher was supplied.
+       */
+      tracklist?: TracklistResult;
+    }
   | { status: 'out_of_scope'; mbid: string; reason: string };
+
+/**
+ * What the injected tracklist fetcher reports back.
+ *
+ * Deliberately not `MappedRelease | null`. Null cannot distinguish "this
+ * release has no tracks" from "we never got an answer", and that distinction is
+ * the entire point — one is a fact about the release, the other is a fact about
+ * the network, and only the second should be retried.
+ */
+export type ReleaseDetailOutcome =
+  | { status: 'fetched'; detail: MappedRelease }
+  | { status: 'absent'; reason: string }
+  | { status: 'failed'; reason: string };
 
 /** Upserts artists, returning MBID → row id. */
 async function upsertArtists(admin: Admin, mapped: MappedAlbum): Promise<Map<string, string>> {
@@ -110,40 +137,6 @@ async function upsertReleases(
 }
 
 /**
- * Writes the tracklist for one release, replacing whatever was there.
- *
- * Wholesale replacement rather than diffing: tracklists are small, and upstream
- * corrections routinely renumber or retitle tracks, which a diff would handle
- * worse than a rewrite.
- */
-async function replaceTracks(
-  admin: Admin,
-  releaseId: string,
-  detail: MappedRelease,
-): Promise<void> {
-  const { error: deleteError } = await admin.from('tracks').delete().eq('release_id', releaseId);
-  if (deleteError) throw deleteError;
-
-  if (detail.tracks.length > 0) {
-    const { error } = await admin
-      .from('tracks')
-      .insert(detail.tracks.map((track) => ({ ...track, release_id: releaseId })));
-    if (error) throw error;
-  }
-
-  // Format, label and track count are only known from the detail response.
-  const { error: updateError } = await admin
-    .from('releases')
-    .update({
-      format: detail.release.format,
-      label: detail.release.label,
-      track_count: detail.release.track_count,
-    })
-    .eq('id', releaseId);
-  if (updateError) throw updateError;
-}
-
-/**
  * Ingests one release group from an already-fetched MusicBrainz payload.
  *
  * Separated from fetching so it can be tested against fixtures without any
@@ -160,8 +153,9 @@ export async function ingestReleaseGroupPayload(
    * per album — release-group responses carry no tracklist, so there is no way
    * to avoid it.
    */
-  fetchReleaseDetail?: (mbid: string) => Promise<MappedRelease | null>,
+  fetchReleaseDetail?: (mbid: string) => Promise<ReleaseDetailOutcome>,
 ): Promise<IngestResult> {
+  let tracklist: TracklistResult | undefined;
   let mapped: MappedAlbum;
   try {
     mapped = mapReleaseGroup(payload);
@@ -195,12 +189,26 @@ export async function ingestReleaseGroupPayload(
     // would cost one request each against a one-per-second budget, for data no
     // page currently shows.
     if (fetchReleaseDetail) {
-      const detail = await fetchReleaseDetail(mapped.representativeReleaseMbid);
-      if (detail) await replaceTracks(admin, representativeId, detail);
+      const outcome = await fetchReleaseDetail(mapped.representativeReleaseMbid);
+
+      if (outcome.status === 'fetched') {
+        tracklist = await storeTracklist(admin, representativeId, outcome.detail);
+      } else {
+        // The album stays. A tracklist we could not reach is not a reason to
+        // discard metadata that arrived intact — but it is recorded, and it is
+        // queued, because the previous version did neither and left 44 albums
+        // permanently trackless with nothing pointing at them.
+        tracklist = { status: outcome.status, reason: outcome.reason };
+        await recordTracklistStatus(admin, representativeId, outcome.status);
+
+        if (outcome.status === 'failed') {
+          await enqueueJob('fetch_tracklist', mapped.representativeReleaseMbid, { admin });
+        }
+      }
     }
   }
 
-  return { status: 'ingested', albumId, mbid: mapped.album.mbid };
+  return { status: 'ingested', albumId, mbid: mapped.album.mbid, tracklist };
 }
 
 /**
@@ -219,11 +227,18 @@ export async function ingestReleaseGroup(
 
   return ingestReleaseGroupPayload(payload, admin, async (releaseMbid) => {
     try {
-      return mapReleaseDetail(await getRelease(releaseMbid));
-    } catch {
-      // A missing or broken tracklist must not fail an otherwise good album.
-      // The album page renders without one; re-ingesting can fill it in later.
-      return null;
+      return { status: 'fetched', detail: mapReleaseDetail(await getRelease(releaseMbid)) };
+    } catch (error) {
+      // A missing or broken tracklist still must not fail an otherwise good
+      // album — but which kind of missing it is now gets reported, rather than
+      // flattened into a null the caller could only read as "no tracks".
+      if (error instanceof NotFoundError) {
+        return {
+          status: 'absent',
+          reason: `MusicBrainz no longer resolves release ${releaseMbid}`,
+        };
+      }
+      return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
     }
   });
 }

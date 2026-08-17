@@ -5,10 +5,17 @@ import type { Database } from '@/lib/supabase/database.types';
 
 import { CoverArtUnavailableError, fetchAndStoreArtwork } from './artwork';
 import { ingestReleaseGroup } from './ingest';
+import { enqueueJob } from './queue';
+import { fetchAndStoreTracklist, TracklistUnavailableError } from './tracklist';
+
+// Enqueueing lives in ./queue so that ingestion can queue a tracklist retry
+// without importing this module, which already imports ingestion. Re-exported
+// here because this is where callers expect to find it.
+export { enqueueJob } from './queue';
+export type { JobKind } from './queue';
 
 type Admin = SupabaseClient<Database>;
 type Job = Database['public']['Tables']['ingestion_jobs']['Row'];
-export type JobKind = Database['public']['Enums']['job_kind'];
 
 /**
  * Bulk ingestion queue.
@@ -31,28 +38,6 @@ export type DrainSummary = {
   failed: number;
   exhausted: number;
 };
-
-/**
- * Queues a job, ignoring duplicates.
- *
- * A partial unique index allows only one outstanding job per kind and target,
- * so enqueueing the same work twice is a no-op rather than an error — which is
- * what lets callers enqueue freely without checking first.
- */
-export async function enqueueJob(
-  kind: JobKind,
-  targetMbid: string,
-  options: { priority?: number; admin?: Admin } = {},
-): Promise<void> {
-  const admin = options.admin ?? createAdminClient();
-
-  const { error } = await admin
-    .from('ingestion_jobs')
-    .insert({ kind, target_mbid: targetMbid, priority: options.priority ?? 100 });
-
-  // 23505 is the partial unique index doing its job.
-  if (error && error.code !== '23505') throw error;
-}
 
 /** Artwork states that warrant another attempt. `found` and `absent` are settled. */
 const ARTWORK_RETRYABLE: Database['public']['Enums']['artwork_status'][] = ['pending', 'failed'];
@@ -120,6 +105,70 @@ export async function enqueueMissingArtwork(
   return { candidates: mbids.length, queued };
 }
 
+/** Tracklist states that warrant another attempt. `found` and `absent` are settled. */
+const TRACKLIST_RETRYABLE: Database['public']['Enums']['tracklist_status'][] = [
+  'pending',
+  'failed',
+];
+
+/**
+ * Queues tracklists for every album whose representative release still needs one.
+ *
+ * **Representative releases only**, and that restriction is the whole design of
+ * this query. Only the representative release ever gets a tracklist; the other
+ * ~6,000 release rows are `pending` permanently and correctly. Sweeping by
+ * status alone would queue 6,072 jobs where 44 are wanted, and spend a
+ * one-request-per-second budget for weeks fetching editions no page displays.
+ *
+ * Idempotent on the same two axes as the artwork sweep: the partial unique
+ * index skips releases with outstanding work, and a re-run after a successful
+ * drain finds nothing because those releases are no longer retryable.
+ */
+export async function enqueueMissingTracklists(
+  options: { limit?: number; priority?: number; admin?: Admin } = {},
+): Promise<{ candidates: number; queued: number }> {
+  const admin = options.admin ?? createAdminClient();
+  const limit = options.limit ?? 500;
+
+  const { data: albums, error } = await admin
+    .from('albums')
+    .select('releases!albums_representative_release_fk(mbid, tracklist_status)')
+    .not('representative_release_id', 'is', null)
+    .order('popularity_score', { ascending: false, nullsFirst: false })
+    .limit(limit);
+
+  if (error) throw error;
+
+  const mbids = (albums ?? [])
+    .map((row) => row.releases as { mbid: string; tracklist_status: string } | null)
+    .filter(
+      (release): release is { mbid: string; tracklist_status: string } =>
+        release !== null && (TRACKLIST_RETRYABLE as string[]).includes(release.tracklist_status),
+    )
+    .map((release) => release.mbid);
+
+  if (mbids.length === 0) return { candidates: 0, queued: 0 };
+
+  const { data: existing, error: jobsError } = await admin
+    .from('ingestion_jobs')
+    .select('target_mbid')
+    .eq('kind', 'fetch_tracklist')
+    .in('status', ['pending', 'running'])
+    .in('target_mbid', mbids);
+
+  if (jobsError) throw jobsError;
+  const outstanding = new Set((existing ?? []).map((job) => job.target_mbid));
+
+  let queued = 0;
+  for (const mbid of mbids) {
+    if (outstanding.has(mbid)) continue;
+    await enqueueJob('fetch_tracklist', mbid, { admin, priority: options.priority });
+    queued += 1;
+  }
+
+  return { candidates: mbids.length, queued };
+}
+
 async function runJob(job: Job, admin: Admin): Promise<void> {
   switch (job.kind) {
     case 'ingest_release_group': {
@@ -146,6 +195,18 @@ async function runJob(job: Job, admin: Admin): Promise<void> {
       // answered, and the answer was no cover.
       if (result.status === 'failed') {
         throw new CoverArtUnavailableError(result.reason);
+      }
+      return;
+    }
+    case 'fetch_tracklist': {
+      const result = await fetchAndStoreTracklist(job.target_mbid, admin);
+
+      // Same shape as artwork, and for the same reason. 'absent' means
+      // MusicBrainz answered and the release carries no tracks, which is a
+      // settled fact. 'failed' means we never got an answer, and the job must
+      // go back into the queue rather than report success.
+      if (result.status === 'failed') {
+        throw new TracklistUnavailableError(result.reason);
       }
       return;
     }

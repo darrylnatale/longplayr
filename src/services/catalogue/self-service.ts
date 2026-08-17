@@ -1,7 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 
 import { err, ok, type Result } from '../result';
-import { getCurrentUser } from '../profiles';
+import { getCurrentProfile, getCurrentUser } from '../profiles';
 import { ingestReleaseGroup } from './ingest';
 import { enqueueJob } from './jobs';
 import { searchReleaseGroups, type MbReleaseGroup } from './musicbrainz';
@@ -20,7 +20,12 @@ export const RATE_LIMIT_PER_HOUR = 30;
 export const RATE_LIMIT_PER_DAY = 100;
 
 export type AddError =
-  'unauthenticated' | 'out_of_scope' | 'rate_limited' | 'already_present' | 'upstream_unavailable';
+  | 'unauthenticated'
+  | 'onboarding_required'
+  | 'out_of_scope'
+  | 'rate_limited'
+  | 'already_present'
+  | 'upstream_unavailable';
 
 export type UpstreamCandidate = {
   mbid: string;
@@ -119,6 +124,22 @@ export async function addAlbumFromUpstream(
   const user = await getCurrentUser();
   if (!user) return err('unauthenticated', 'You need to be signed in to add a record.');
 
+  // A profile is required, and not for presentation.
+  //
+  // catalogue_additions.user_id is a foreign key to `profiles`, not to
+  // auth.users. An authenticated user who has not finished onboarding has no
+  // profile row, so the audit insert violates that key — and because its error
+  // was discarded, the album was still written, the artwork job still queued,
+  // and nothing recorded who did it. remainingAllowance counts exactly those
+  // rows, so such a user was also not rate limited at all.
+  //
+  // Refusing here closes both holes at the source: no addition can be made by
+  // anyone the audit table is structurally unable to reference.
+  const profile = await getCurrentProfile();
+  if (!profile) {
+    return err('onboarding_required', 'Choose a handle before adding to the catalogue.');
+  }
+
   const allowance = await remainingAllowance(user.id);
   if (allowance.hour <= 0 || allowance.day <= 0) {
     return err(
@@ -150,9 +171,20 @@ export async function addAlbumFromUpstream(
     return err('out_of_scope', `longplayr does not catalogue this: ${result.reason}.`);
   }
 
-  // Recorded whether or not the album was new to us, because the audit answers
-  // "who added what", and it is what the rate limit counts.
-  await admin.from('catalogue_additions').insert({ user_id: user.id, album_mbid: mbid });
+  // The audit row is the invariant: an addition that reaches the catalogue must
+  // never exist without one, because it answers "who added what" and it is what
+  // the rate limit counts.
+  //
+  // Checked, unlike before. With the profile guard above a foreign-key
+  // violation should now be impossible, so a failure here is genuinely
+  // unexpected — and per src/services/result.ts, unexpected failures throw
+  // rather than being folded into a Result the UI would render as a polite
+  // message. Silently swallowing it is what created the hole.
+  const { error: auditError } = await admin
+    .from('catalogue_additions')
+    .insert({ user_id: profile.id, album_mbid: mbid });
+  if (auditError) throw auditError;
+
   await enqueueJob('fetch_artwork', mbid, { admin });
 
   return ok({ mbid });

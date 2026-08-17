@@ -30,7 +30,9 @@ function detailFetcher(...details: MbReleaseDetail[]) {
   const byMbid = new Map(details.map((d) => [d.id, d]));
   return async (mbid: string) => {
     const detail = byMbid.get(mbid);
-    return detail ? mapReleaseDetail(detail) : null;
+    return detail
+      ? ({ status: 'fetched', detail: mapReleaseDetail(detail) } as const)
+      : ({ status: 'failed', reason: `no fixture for ${mbid}` } as const);
   };
 }
 
@@ -324,7 +326,10 @@ describe('tracklists', () => {
   });
 
   it('ingests successfully when the detail fetch fails entirely', async () => {
-    const result = await ingestReleaseGroupPayload(singleArtistAlbum, admin, async () => null);
+    const result = await ingestReleaseGroupPayload(singleArtistAlbum, admin, async () => ({
+      status: 'failed',
+      reason: 'MusicBrainz returned 503',
+    }));
 
     expect(result.status).toBe('ingested');
     const { data } = await admin
@@ -340,7 +345,7 @@ describe('tracklists', () => {
     await ingestReleaseGroupPayload(variousArtistsCompilation, admin, async (mbid) => {
       called = true;
       void mbid;
-      return null;
+      return { status: 'failed', reason: 'should not be called' };
     });
 
     // No releases means no representative release, so no second request is
