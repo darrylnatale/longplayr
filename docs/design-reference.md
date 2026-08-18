@@ -360,3 +360,17 @@ Newsreader deliberately continues to carry the short editorial sentences that
 front empty and pre-query states — "Search for a record.", "Your collection is
 empty." — and the initials in cover placeholders and avatars. Those are register
 choices already built into search, profile and `AlbumCover`, and they stand.
+
+---
+
+## 12. Surfaces that recorded direction will reopen
+
+`docs/product-spec.md` §10 records decided-but-unbuilt product direction. Two pieces of it land on components this document already treats as settled, so they are flagged here to stop a future session marking those components finished.
+
+**The action card gains a fourth toggle.** Want to Listen (§10.1) is a fifth user–album relation alongside collection, favourite, like and relisten. §3 measured the reference's card as three icon toggles — Watch, Like, Watchlist — and §11.4 already caps the card's width below 1024px. A Want to Listen control fits that borrowed pattern almost exactly, which is fortunate, but the card's five documented states in the development gallery describe collection state only. **They will need revisiting, not extending by analogy** — in particular, "not collected" is currently one state and would become two, since an album can plausibly be uncollected-and-wanted. Whether that state is even reachable is an unresolved product question (§10.1) and must not be answered by drawing it.
+
+**The profile gains identity fields.** Photo and bio are already specified (§3, and `product-spec.md` §5); only city is new (§10.3). The current profile migration deliberately shows identity only, because no collection data exists. When those fields arrive the profile header composition is the thing that changes, not the collection grid.
+
+**Neither is a design task yet.** Both depend on product questions that `product-spec.md` §10 requires be asked rather than inferred, and a design that answers them by drawing them is the same failure as code that answers them by implementing them.
+
+Taste overlap (§10.2) and messaging (§10.4) have **no design work recorded at all**, deliberately — messaging in particular is blocked on a legal precondition, and sketching an inbox would imply a shape the safety architecture has not earned yet.

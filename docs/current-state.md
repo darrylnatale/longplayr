@@ -18,6 +18,8 @@ Verified against the staging database and a clean-tree build on 2026-08-18.
 
 The design-foundation track is in progress. Album, artist, search, profile and Browse are migrated; **Home and Auth are not**.
 
+**New product direction was recorded on 2026-08-18 and none of it is implemented** — Want to Listen, taste overlap, profile photo/bio/city, and direct messaging. Want to Listen is intended to generate feed events; messaging is intended functionality rather than a possibility, and is blocked on legal research; dating-specific profile fields are explicitly excluded. See §12, and `docs/product-spec.md` §10 for the authoritative record.
+
 > ### ⚠️ Two unresolved contradictions with `CLAUDE.md`
 >
 > **Line 5** still reads **"Current state: Phase 1 (catalogue), in progress."** That contradicts this document.
@@ -329,13 +331,45 @@ See `docs/product-spec.md` §8 and `docs/data-model.md` §9 for the authoritativ
 - **Whether the daily cron should sweep for missing artwork and tracklists itself.** Both sweeps exist but nothing calls them automatically
 - **Album page caching strategy** — decision H; the mixed catalogue/personal page needs investigation before Phase 2 builds on it
 - **Whether `CLAUDE.md` line 5 should be updated** to reflect Phase 1 completion
+- **Which phase direct messaging lands in** — the stated intent and `development-plan.md`'s phase numbering disagree (§12)
+- **Every unresolved question in `docs/product-spec.md` §10** — Want to Listen behaviour, taste-overlap algorithm, profile photo and location handling, and the full messaging question set. Recorded as open _by design_; see §12
 - Report reason categories (Phase 6)
 - MBID merge handling, handle reuse after deletion
 - Genre and tag data
 
 ---
 
-## 12. Lessons carried forward
+## 12. Recorded product direction — decided, not implemented
+
+New direction was recorded on 2026-08-18. **None of it is implemented.** Nothing below exists in schema or in code, nothing is scheduled into a phase, and no application code was written for any of it. The authoritative record is `docs/product-spec.md` §10; this is the pointer a resuming session will actually read first.
+
+| Direction                            | State                                                                                                                                 |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| **Want to Listen**                   | Decided. A wishlist relation separate from the collection. **Generates a normal feed event.** Six product questions unresolved        |
+| **Taste overlap / social discovery** | Decided as direction, in the spirit of Last.fm's compatibility notion. **Algorithm explicitly not decided.** Six questions unresolved |
+| **Profile photo, bio, city**         | Photo and bio were **already in scope**. Only city/location is new. Dating-specific fields **explicitly excluded**                    |
+| **Direct messaging**                 | Decided — intended from the beginning of the social product, **not merely a possibility.** Blocked on legal research                  |
+
+Four things a resuming session most often gets wrong about this list:
+
+1. **Want to Listen generates feed events.** This is deliberate and departs from the volume argument that keeps likes and follows out of the feed. A per-user setting to hide that activity is anticipated but is **not** to be designed or accommodated in schema now.
+2. **Messaging is intended, not hypothetical.** It reverses the earlier "should probably not exist" entry. The moderation concern was not dismissed — it became a blocking precondition instead.
+3. **Dating functionality is excluded.** Relationship status, "looking", age and dating preferences are explicitly not part of the direction. Photo, bio and city exist for social legibility only.
+4. **The unresolved questions must be asked, never inferred.** Answering one by picking a sensible default is the specific failure `product-spec.md` §10 exists to prevent.
+
+### Two blockers recorded against messaging
+
+**Legal research is a blocking precondition.** Current DSA and German/EU obligations for a small service hosting user-generated content and private messaging must be researched before any messaging code — legal requirements distinguished from good practice, current authoritative sources cited, anything needing professional legal advice flagged rather than presented as settled. Small does not mean exempt. Full brief in `product-spec.md` §10.4.
+
+**Phase placement is contradictory as given.** The direction says "an intended Phase 2 feature", but `development-plan.md` Phase 2 is the single-user core loop — the social graph does not exist until Phase 3, so there is nobody to message. The recorded intent, "from the beginning of the social product", reads as Phase 3. **This is an open question for the maintainer and must not be resolved by renumbering phases.**
+
+### One finding worth carrying
+
+**Blocking and reporting already exist as decisions of record** (`product-spec.md` §4) — blocking cuts interaction in both directions and explicitly **does not hide content**. Messaging therefore does not force per-viewer visibility filtering into the all-public model, which is the expensive retrofit §7 warns about. It extends existing moderation scaffolding rather than inventing it. An earlier assessment in conversation overstated this cost before the decision was found; the documents were right and the assessment was wrong.
+
+---
+
+## 13. Lessons carried forward
 
 **A returned failure is not a raised failure.** This cost the most, twice. `fetchAndStoreArtwork` returns `{ status: 'failed' }` rather than throwing, and ingestion returned `null` for a failed tracklist. Both are right for their immediate caller and wrong for the one that owns retrying — nothing threw, no job failed, and 36 albums plus 44 tracklists were quietly never retried.
 

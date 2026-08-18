@@ -390,4 +390,31 @@ Consistent with `docs/claude-code-playbook.md`:
 
 ## Deliberately not scheduled
 
-Comments, private accounts, track-level features, streaming integration, algorithmic recommendations, per-item list notes, genres and tags, year-in-review, and native apps. Each is deferred with reasoning in `docs/product-spec.md` §7. None should be added to a phase above without an explicit decision to change scope.
+Comments, private accounts, track-level features, streaming integration, per-item list notes, genres and tags, year-in-review, and native apps. Each is deferred with reasoning in `docs/product-spec.md` §7. None should be added to a phase above without an explicit decision to change scope.
+
+**Algorithmic recommendations** left this list by decision — see the next section.
+
+---
+
+## Recorded direction, not yet scheduled
+
+`docs/product-spec.md` §10 records four areas of **decided but unbuilt** product direction. They are named here so nobody re-derives them, and so nobody schedules them by accident. **None of them has a phase.**
+
+| Direction                                    | State                                                                                                            |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| **Want to Listen** (§10.1)                   | Decided. Generates feed events. Six product questions unresolved — one of them decides the schema                |
+| **Taste overlap / social discovery** (§10.2) | Decided as direction. Algorithm explicitly undecided. Six product questions unresolved                           |
+| **Profile photo, bio, city** (§10.3)         | Photo and bio are **already in scope** (Phase 0/2). Only city is new. Dating-specific fields explicitly excluded |
+| **Direct messaging** (§10.4)                 | Decided. **Blocked on legal research.** Phase placement itself is unresolved — see below                         |
+
+**Every unresolved question in §10 must be asked, not inferred.** That is the whole reason the section exists. A phase must not be planned around a guessed answer.
+
+### Two things that block scheduling
+
+**Messaging phase placement is contradictory as stated and must be resolved by the maintainer.** The direction was given as "an intended Phase 2 feature", but Phase 2 above is the **single-user core loop** — follows and the social graph do not arrive until Phase 3, so there is nobody to message. The recorded intent is "from the beginning of the social product", which reads as Phase 3. **Ask. Do not resolve this by renumbering phases**, and do not quietly file messaging under Phase 3 on the strength of this paragraph.
+
+**Messaging has a blocking legal precondition.** Current DSA and German/EU obligations for a small service hosting user-generated content and private messaging must be researched, with legal requirements distinguished from good practice, current authoritative sources cited, and anything needing professional legal advice flagged as such. See `docs/product-spec.md` §10.4. **No messaging code before that research exists.**
+
+### Where Want to Listen would land if scheduled
+
+Recorded as an observation, not a plan. Want to Listen shares the action card, the implicit-add logic and the profile tab structure with Phase 2, and it generates feed events, which is Phase 3 machinery. Building it during those phases is materially cheaper than retrofitting it afterwards — but it is **not** in either phase's scope today, and its schema question (`product-spec.md` §10.1, last bullet) is unanswered.

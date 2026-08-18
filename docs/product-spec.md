@@ -81,7 +81,7 @@ Revised entries supersede earlier choices made during the same session.
 | Decision        | Value                                                                                                                                                         |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Follow model    | Asymmetric follow **[INFERRED — standard for this product shape; correct if you want mutual-friend semantics]**                                               |
-| Feed contents   | Listens (today-dated adds), relistens, ratings, reviews, list creation/updates                                                                                |
+| Feed contents   | Listens (today-dated adds), relistens, ratings, reviews, list creation/updates. **Want to Listen additions will join this list — see §10.1**                  |
 | Feed exclusions | Likes and follows do **not** generate feed events — they'd dominate by volume and crowd out reviews                                                           |
 | Silent actions  | Undated and backdated adds populate the collection without generating feed events. This is what makes onboarding backfill possible without flooding followers |
 | Feed recency    | Feed shows relative time ("2h"). Profiles show no dates anywhere                                                                                              |
@@ -165,7 +165,7 @@ Revised entries supersede earlier choices made during the same session.
 
 ### Potential future
 
-- Algorithmic recommendations based on collection overlap.
+- ~~Algorithmic recommendations based on collection overlap.~~ **SUPERSEDED — see §10.2**, which raises taste overlap from a maybe to decided direction.
 - Comments on reviews and lists.
 - Collaborative lists.
 - Native mobile apps.
@@ -178,7 +178,7 @@ Revised entries supersede earlier choices made during the same session.
 - **In-app playback.** Licensing cost and complexity dwarf the entire rest of the product, and it competes with the services users already pay for.
 - **Passive scrobbling as the primary input.** Explicitly rejected: it produces volume, not judgement, and the product's value is in deliberate acts.
 - **Track ratings.** Fragments the album-centric identity and multiplies the data model for marginal gain.
-- **Direct messages.** Moderation liability far exceeding their value here.
+- ~~**Direct messages.**~~ **SUPERSEDED — see §10.4.** This read "moderation liability far exceeding their value here". Messaging is now intended functionality from the beginning of the social product. The liability concern was not wrong and is carried forward as a blocking legal-research precondition rather than as a reason to omit the feature.
 - **An engagement-ranked feed.** Reverse-chronological is honest; optimising the feed for time-on-site works against a product about considered taste.
 - **Streaks, badges, gamification.** Rewards logging volume, which is exactly the wrong incentive.
 - **User-authored catalogue metadata.** MusicBrainz already solved this and does it better.
@@ -309,3 +309,126 @@ Character set, length, reserved names, and whether a deleted account's handle be
 - Three decisions were revised mid-definition (core model, rating scale, album requests). All revisions are marked at the point of change.
 - One open decision has since been resolved (8.1, notifications) and one partially informed by screenshot analysis (8.2, profile structure).
 - No material decision here was made unilaterally. Items marked **[INFERRED]** follow necessarily from explicit decisions and are flagged for correction; items marked **[OPEN]** are unresolved by design.
+- **§10 is direction, not scope.** Nothing in it is built, scheduled or implied by §5. Where it supersedes an earlier entry — direct messages, collection-overlap recommendations — the earlier entry is struck through in place rather than deleted, so the reversal stays visible. Two entries in §10.3 are _already_ in scope (avatar and bio) and are recorded there only so they are not mistaken for new work.
+
+---
+
+## 10. Recorded product direction — decided, not implemented
+
+Everything in this section is **decided direction, not built scope**. None of it exists in schema or in code, and none of it is scheduled into a phase yet. It is recorded here so that it survives context resets and so that a future session neither forgets it nor quietly builds it.
+
+Three rules govern this section, and they matter more than the content:
+
+1. **Decided direction is decided.** Where something is marked decided below, it does not need re-litigating, and it supersedes any older entry elsewhere in this document. Superseded entries are annotated at the point of change.
+2. **Unresolved questions must be asked, never inferred.** Every question listed under "Ask before implementing" is unresolved _by design_. Answering one silently — by picking the obvious default, by following the reference product, or by reasoning from the rest of the spec — is the specific failure this section exists to prevent.
+3. **Preconditions are blocking.** Where a precondition is named, the feature is not startable until it is met.
+
+### 10.1 Want to Listen
+
+**Decided.** A listening wishlist, held **separately from the collection**. The conceptual distinction across all five user–album relations:
+
+| Relation           | Means                               |
+| ------------------ | ----------------------------------- |
+| **Collection**     | I have listened to this / I hold it |
+| **Want to Listen** | I intend to listen to this          |
+| **Favourite**      | I particularly value this           |
+| **Like**           | Lightweight positive signal         |
+| **Relisten**       | I listened to this again            |
+
+**Decided: Want to Listen generates a normal feed event.**
+
+This is a deliberate departure from the volume argument in §4 that keeps likes and follows out of the feed, and it should be understood as such rather than as an oversight. Intent is treated as genuinely interesting social signal here — "I want to hear this" is closer to a review than to a like. The consequence is accepted: wishlist activity is high-frequency, and the feed will carry more of it than it carries listens.
+
+**Deferred, and deliberately not to be designed now:** a per-user setting to hide Want to Listen activity from the feed. It is anticipated, it is not being specified, and no schema should be shaped in advance to accommodate it.
+
+**Ask before implementing.** None of these may be answered by inference:
+
+- Does adding an album to the collection automatically remove it from Want to Listen?
+- Does rating, liking, reviewing or relistening automatically remove it from Want to Listen?
+- Is Want to Listen visible on the public profile?
+- Does _removing_ an album from Want to Listen generate a feed event? (Expected no — still ask.)
+- Does Want to Listen contribute to any popularity or discovery ranking, or is it purely a social and personal signal?
+- Can an album be simultaneously collected and on Want to Listen, or is that state impossible?
+
+The last question is load-bearing: it decides whether this is a separate relation with its own lifecycle or a mutually exclusive state machine, and it cannot be deferred past the first migration.
+
+### 10.2 Taste overlap and social discovery
+
+**Decided.** longplayr will have a social layer built on **taste overlap between users** — conceptually similar to Last.fm's musical-compatibility notion. This supersedes the "algorithmic recommendations based on collection overlap" line in §5 _Potential future_, which understated it as a maybe.
+
+Candidate functionality, none of it committed: a similarity score or qualitative label between two users, counts of albums and artists in common, shared favourites, albums one user holds that the other has not heard, and discovering people through overlapping taste.
+
+**The algorithm is explicitly not being decided now.**
+
+**Ask before implementing.**
+
+- What data counts toward similarity — collection only, or favourites, ratings, likes and reviews too?
+- Are all albums weighted equally?
+- Should widely-held albums contribute less than obscure shared ones?
+- Is similarity symmetric?
+- Numeric score, qualitative label, or both?
+- Where does it surface — profile, search, a dedicated people-discovery surface?
+
+### 10.3 Profile identity
+
+**Decided.** Profiles should read as real people rather than anonymous database rows. The intended fields are **profile photo, short bio, and city/location**.
+
+**Two of the three are already in scope.** §5 _Core_ already specifies "public profile with handle, display name, avatar, short bio", and `data-model.md` already carries `display_name`, `avatar` and `bio` on the profile entity. **Only city/location is new.** This is recorded so nobody treats photo and bio as new scope, or re-decides them.
+
+**Explicitly excluded from the product direction:** relationship status, "looking", age, and dating preferences. longplayr is not a dating service and no dating-specific functionality is to be added. The purpose of these fields is social legibility, not matching.
+
+**Ask before implementing photos.** Upload and storage constraints; image size and format; cropping; deletion; whether EXIF metadata is stripped; reporting and takedown; moderation expectations.
+
+**Ask before implementing location.** Whether only city-level granularity is permitted; whether it is public by default; whether users can hide it; whether it is free text or structured; whether historical location is retained.
+
+EXIF stripping and location granularity interact — photo metadata can carry precise coordinates, so a decision to allow only city-level location is undermined if uploads retain GPS tags. Raise them together.
+
+### 10.4 Direct messaging
+
+**Decided, and this reverses an earlier decision.** §5 _Should probably not exist_ previously read "**Direct messages.** Moderation liability far exceeding their value here." That entry is superseded. Messaging is now **intended functionality from the beginning of the social product**, not a future maybe.
+
+**Purpose.** Low-friction contact between people who have found each other through music taste. It exists to serve the discovery loop in §10.5, not to become the product.
+
+**Constraint.** The simplest viable system. The maintainer is a solo developer and is not building a large ongoing moderation operation.
+
+**This constraint does not imply that zero moderation work is legally or operationally available**, and no design may assume it does.
+
+**Initial assumptions, to be treated as NO unless explicitly approved:** no image or file attachments; no read receipts; no typing indicators.
+
+**One thing that is cheaper than it first appears.** Blocking and reporting are **already decisions of record** in §4 _Privacy, safety, moderation_, and blocking is already specified as cutting interaction in both directions while explicitly **not** hiding content. Messaging therefore does not force the all-public model open, and does not require per-viewer visibility filtering to be retrofitted. It extends existing moderation scaffolding rather than inventing it.
+
+**Ask before implementing.** Who may message whom; whether anyone can message anyone or a follow relationship is required; whether first-contact messages are permitted; blocking behaviour for messages specifically; reporting messages and conversations; deleting conversations; retention and deletion policy; what happens to messages when an account is hard-deleted, given that a message has two parties and `CLAUDE.md` treats an orphaned row as a privacy failure; whether blocked users can still see public profiles; spam and rate limiting; whether links are permitted; attachments; read receipts and typing indicators; notification behaviour; abuse handling; account suspension interaction; moderation and admin tooling; privacy expectations.
+
+**Sequencing is unresolved.** The direction was given as "an intended Phase 2 feature", but `development-plan.md` Phase 2 is the **single-user core loop** — follows and the social graph do not exist until Phase 3, so there is nobody to message in Phase 2 as currently planned. The intent recorded is "from the beginning of the social product". **Ask which phase this actually lands in before scheduling it.** Do not resolve this by renumbering phases.
+
+#### Precondition — legal research, blocking
+
+**Before any messaging code is written**, current legal requirements must be researched for a **small Germany/EU-based online service carrying user-generated content and private messaging**. This is a blocking precondition, not a recommendation.
+
+The research must:
+
+- Identify what obligations **actually apply to a service of this size and type**, rather than producing a generic "you need moderation" answer.
+- **Distinguish legal requirements from good-practice recommendations**, explicitly and per item.
+- **Cite current authoritative sources.**
+- **Flag anything requiring professional legal advice** rather than presenting it as settled law.
+
+Specifically to investigate: applicable **Digital Services Act** obligations for a small online platform or hosting service — notice-and-action mechanisms, handling reports of illegal content, statements of reasons for moderation decisions, complaint and appeal handling, and any obligations triggered by hosting and disseminating user content. German national implementation and any transposition specifics must be checked, not assumed to be covered by the DSA text alone.
+
+**Do not assume that being small means having no obligations.** The DSA is proportionate, not exempting; the European Commission describes easy-to-use illegal-content reporting mechanisms and proportionate obligations that reach smaller services. Micro and small enterprises are relieved of some obligations but not all, and the boundaries must be verified against current sources at the time of implementation rather than taken from this paragraph.
+
+**The goal is the minimum viable safety and legal architecture that lets a solo developer offer messaging responsibly** — not a moderation platform.
+
+### 10.5 Social philosophy
+
+longplayr is fundamentally a **music collection and discovery product**. The social layer must emerge from taste rather than turning the product into a generic social network.
+
+The intended loop:
+
+```
+collection → taste becomes legible → discover people with overlapping taste
+    → explore their profiles → discover music → follow / interact → potentially message
+```
+
+Messaging **supports** this loop; it does not become the centre of the product. Profile photo, bio and city exist to make people socially legible. Neither is a step toward dating functionality, and dating-specific features are not to be added.
+
+This philosophy is the tie-breaker when a question in this section has no obvious answer: prefer the option that makes taste more legible, and reject the option that makes longplayr more like a general social network.

@@ -356,3 +356,40 @@ Every catalogue entity has a unique MBID. Re-ingesting an album is an upsert on 
 **9.4 — Genre and tag data.** Deferred from the MVP, but if it lands later it attaches to albums and artists and is worth leaving room for rather than bolting on.
 
 **9.5 — Handle reuse after deletion.** Hard deletion frees a handle. Whether it becomes immediately claimable affects whether old links resolve to a different person — a small decision with an impersonation edge case behind it.
+
+---
+
+## 10. Entities implied by recorded product direction
+
+`product-spec.md` §10 records four areas of decided-but-unbuilt direction. None of the entities below exist, none are designed, and none should be created without first asking the product questions §10 lists. They are named here so that a future migration does not discover them late.
+
+**Want to Listen** (§10.1). A user–album relation, held separately from the collection. It is the **third** independent user–album relation after collection entries and favourites, and that is the point at which a generic `user_album_relation` table starts to look attractive — it should be resisted, because it makes every read polymorphic and forces a discriminator into queries that are currently direct. Keep the relations as separate tables.
+
+The unresolved question "can an album be both collected and on Want to Listen" (§10.1) **decides the schema** and cannot be deferred past the first migration: mutually exclusive states argue for a status column on a single relation, while independent coexistence argues for a separate table. Ask before writing the migration.
+
+Want to Listen additions generate feed events, so whatever `Activity` becomes in Phase 3 needs an event type for them.
+
+**Taste overlap** (§10.2). Any similarity computation is a read-side aggregate over collections and possibly favourites, ratings, likes and reviews. It has no entity of its own until a decision is made to cache it, and that decision should follow the algorithm rather than precede it. Whether it is symmetric determines whether a cache is keyed by an ordered or unordered user pair.
+
+**Profile location** (§10.3). `display_name`, `avatar` and `bio` already exist on the profile entity, per §2. **Only location is new.** Whether it is free text or structured is an open product question, and it decides whether this is a column or a reference to a place table. Whether historical location is retained decides whether it is versioned at all — the default assumption of a single mutable column silently answers "no".
+
+**Messaging** (§10.4). Conversations and messages. Two aspects touch existing invariants directly:
+
+- **Hard delete.** `CLAUDE.md` requires a complete cascade and treats an orphaned row as a privacy failure. A message has two parties, so "delete the user's messages" is ambiguous — deleting the sender's copy from the recipient's inbox and retaining it are both defensible, and both are work. This must be answered before the schema, not after.
+- **Blocking already exists as a decision of record** (`product-spec.md` §4) and cuts interaction in both directions without hiding content. Messaging extends it rather than introducing it.
+
+Message retention is an open question with a legal dimension, so the schema must not assume indefinite retention.
+
+---
+
+## 11. Open questions carried from product direction
+
+These duplicate `product-spec.md` §10 deliberately, because a schema author reads this document and not that one. **The authoritative list is in `product-spec.md` §10. Do not answer any of them here.**
+
+- **11.1** — Can an album be simultaneously collected and on Want to Listen? _(Decides the Want to Listen schema.)_
+- **11.2** — Do collection adds, ratings, likes, reviews or relistens remove an album from Want to Listen? _(Decides whether removal is a trigger, application logic, or nothing.)_
+- **11.3** — Is Want to Listen public on the profile? _(Interacts with the all-public model, which currently admits no exceptions.)_
+- **11.4** — Is taste similarity symmetric? _(Decides the key shape of any cache.)_
+- **11.5** — Is location free text or structured, and is history retained? _(Decides column versus reference, and versioned versus mutable.)_
+- **11.6** — What happens to a two-party message when one party hard-deletes? _(Decides the cascade, and is a privacy commitment.)_
+- **11.7** — What is the message retention policy? _(Has a legal dimension — see `product-spec.md` §10.4.)_

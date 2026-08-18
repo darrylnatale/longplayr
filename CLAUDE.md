@@ -25,7 +25,15 @@ These are decided. Do not change them without raising the decision explicitly fi
 
 ## Deliberately not in scope
 
-Comments, private accounts, track-level features, streaming integration or OAuth, algorithmic recommendations, passive scrobbling, in-app playback, direct messages, gamification. Each is deferred with reasoning in `docs/product-spec.md` §7. Do not add any of them without an explicit scope decision.
+Comments, private accounts, track-level features, streaming integration or OAuth, passive scrobbling, in-app playback, gamification. Each is deferred with reasoning in `docs/product-spec.md` §7. Do not add any of them without an explicit scope decision.
+
+**Direct messaging and taste overlap left this list on 2026-08-18 by explicit scope decision** — the mechanism this section requires. Both are now recorded direction in `docs/product-spec.md` §10. **Neither is implemented, neither is scheduled, and both carry unresolved product questions that must be asked rather than inferred.** Messaging additionally has a blocking legal-research precondition (§10.4). Nothing here authorises building either one.
+
+## Recorded direction is not scope
+
+`docs/product-spec.md` §10 records product direction that is **decided but deliberately unbuilt**: Want to Listen, taste overlap, profile photo/bio/city, and direct messaging. Dating-specific profile fields are explicitly excluded.
+
+Every question that section lists under "ask before implementing" is unresolved **by design**. Answering one silently — by taking the obvious default, by following the reference product, or by reasoning from the rest of the spec — is a scope violation, not a judgement call. Stop and ask.
 
 ---
 
