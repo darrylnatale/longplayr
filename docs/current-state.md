@@ -16,13 +16,15 @@ Verified against the staging database and a clean-tree build on 2026-08-18.
 
 **Phase 1 implementation is complete.** **Phase 2 has NOT started** — no collection entries, ratings, likes, reviews, relistens, favourites, lists, follows or activity exist, in schema or in code.
 
-The design-foundation track is in progress. Album, artist, search and profile are migrated; **Browse, Home and Auth are not**.
+The design-foundation track is in progress. Album, artist, search, profile and Browse are migrated; **Home and Auth are not**.
 
-> ### ⚠️ Unresolved contradiction with `CLAUDE.md`
+> ### ⚠️ Two unresolved contradictions with `CLAUDE.md`
 >
-> `CLAUDE.md` line 5 still reads **"Current state: Phase 1 (catalogue), in progress."** That contradicts this document.
+> **Line 5** still reads **"Current state: Phase 1 (catalogue), in progress."** That contradicts this document.
 >
-> Per the authority table above, **`CLAUDE.md` wins**, and it has not been updated. This is recorded rather than resolved here: amending the top-authority document is a decision for the maintainer, not something a checkpoint should do to itself. One line needs changing when Phase 1 is formally declared closed.
+> **Line 97** still reads **"Styling is provisional. `globals.css` holds neutral placeholder tokens, deliberately not a design system."** That was true when written and is no longer: `globals.css` now carries the two-layer token system — primitives, semantic layer, the brass accent, both container widths — and six of the eight surfaces in §7's migration table render on it. The same line's forecast, that the real palette and grid arrive from the design-foundation track before Phase 2, is being met exactly as written.
+>
+> Per the authority table above, **`CLAUDE.md` wins** in both cases, and neither line has been changed. This is recorded rather than resolved: amending the top-authority document is a decision for the maintainer, not something a checkpoint should do to itself.
 
 ---
 
@@ -70,7 +72,9 @@ Eight migrations applied; local and remote in sync, confirmed with `npx supabase
 
 ### Git state
 
-The last commit is this documentation checkpoint. **The entire design-foundation implementation is uncommitted** in the working tree — 18 modified files and 8 new components, listed in §7. It has been verified clean-tree at every step but deliberately left uncommitted while each surface was reviewed.
+The last commit is this documentation checkpoint. **The entire design-foundation implementation is uncommitted** in the working tree — **17 modified files, 8 new components and the 2-file development gallery**, listed in §7. It has been verified clean-tree at every step but deliberately left uncommitted while each surface was reviewed.
+
+Browse was the most recent surface migrated and is the first to have been inspected against real staging data at all three widths rather than by markup alone — see §7.
 
 No branch protection — GitHub gates it behind a paid plan for private repositories, and that was declined. `rm -rf .next && npm run verify` before pushing is the compensating control.
 
@@ -213,7 +217,7 @@ Migrated: `AlbumCover`, `AlbumGrid`.
 | Artist                               | **migrated** — the canonical discography composition           |
 | Search                               | **migrated**                                                   |
 | Profile                              | **migrated** — identity only                                   |
-| **Browse**                           | **not migrated**                                               |
+| Browse                               | **migrated** — verified against staging at 390/768/1440        |
 | **Home**                             | **not migrated**                                               |
 | **Auth** (login, signup, onboarding) | **not migrated**                                               |
 
@@ -221,15 +225,31 @@ Migrated: `AlbumCover`, `AlbumGrid`.
 
 ### Implementation decisions
 
-Four are recorded in `docs/design-reference.md` §11: the 200–240px square artwork column rather than the reference's ~13%, sans tracklists, rating in the right rail, and the `max-w-sm` action-card cap below 1024px.
+Seven are recorded in `docs/design-reference.md` §11: the 200–240px square artwork column rather than the reference's ~13%, sans tracklists, rating in the right rail, the `max-w-sm` action-card cap below 1024px, and — from the Browse migration — stacked grids ranked by density, stored artwork size following density, and a page title taking the serif only when it names a catalogue entity.
 
 Others made during migration and not yet written into `design-reference.md`:
 
-- **`AlbumGrid` gained `creditFor`** — a credit line shows only when it differs from the artist whose page it is on. This surfaces collaborations _and_ upstream renames (albums credited to Kanye West sit under an artist MusicBrainz now calls Ye). Both are worth showing.
+- **`AlbumGrid` gained `creditFor`** — it _suppresses_ the credit line when it equals the artist whose page the grid is on, rather than gating whether a credit renders at all. On an artist page that hides the redundant repetition while still surfacing collaborations _and_ upstream renames (albums credited to Kanye West sit under an artist MusicBrainz now calls Ye). On a page with no artist context the credit always shows, because a caption without an artist is barely a caption.
 - **Search uses rows, not a grid.** Results are ranked and cross entity types, so vertical order carries meaning a wall of covers would discard, and artists and people have no artwork to tile.
 - **Upstream search results sit in a panel with a dashed "add slot"** rather than a cover. A grey square would read as "cover missing" and imply we already hold the record.
 - **The profile shows no stat cluster.** `0 albums · 0 following · 0 followers` would imply those surfaces are live and merely unused. `CollectionGrid` is deliberately unused there — there is no collection data, and manufacturing some would make every later screenshot a lie.
 - **The artist discography uses `relaxed` density with captions**, following the Detailed convention: metadata buys the room it needs rather than being crammed under a shelf-density cell.
+- **Browse keeps its Popular section conditional and its Recently added section unconditional.** "No popularity data" and "no albums" are different conditions and only the second deserves a sentence, so Popular hides itself while Recently added states the empty case once.
+
+### Browse verification
+
+Checked against real staging data at 390, 768 and 1440px, following the build-screenshot-compare loop `docs/design-reference.md` §10 asks for. Recorded because the artwork-scale defect below was invisible in markup, in tests and in the DOM — it was only visible in the pixels, which is §12's standing lesson arriving again.
+
+| Check                             | Result                                                                                                                                                                                                     |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Wall consistency with artist page | **PASS** — identical geometry, both `relaxed` at ~175px cells at 1440, same section header and caption stack                                                                                               |
+| Popularity ordering               | **PASS** — rendered order matches `popularity_score desc` on staging exactly: OK Computer 500, Nevermind 499, Hybrid Theory 498, Meteora 497, Discovery 495, Toxicity 494, In Rainbows 493, Demon Days 492 |
+| Real and placeholder artwork      | **PASS** — the `RIP` tile (Megadeth — Rust in Peace, exhausted CAA 502) reads as intentional among real covers, not as broken                                                                              |
+| Empty state                       | **PASS** — checked against the empty local database rather than by mutating staging                                                                                                                        |
+| Mobile tab bar                    | **PASS** — `aria-current` correct on `/albums` and moves on tap; 34.6px clearance between the last tile and the fixed bar                                                                                  |
+| Artwork scale                     | **CORRECTED** — `AlbumGrid` hardcoded the 250px asset, so `relaxed` cells were being interpolated upward. Now density-mapped                                                                               |
+
+The ranking itself was not touched. `getPopularAlbums`, `getRecentAlbums`, `getCatalogueSize`, the limits, `popularity_score` and the `PopularitySource` abstraction are all unchanged; the migration was presentation only.
 
 ### Divergence from `design-reference.md`
 
@@ -243,19 +263,21 @@ Others made during migration and not yet written into `design-reference.md`:
 
 None of these reopen Phase 1.
 
-| Item                                              | Status                                                                                                                                                                               |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `absent` artwork unobserved against real CAA data | §4 — verify opportunistically; do not manufacture it                                                                                                                                 |
-| Two exhausted artwork jobs (CAA 502)              | §4 — deliberate sweep whenever wanted                                                                                                                                                |
-| Live album never observed                         | §3 — soundtrack covers the secondary-type path                                                                                                                                       |
-| **Longer, jittered MusicBrainz backoff**          | **[OPEN]** — see §9                                                                                                                                                                  |
-| `"Added — view"` unreachable                      | After a successful add the page revalidates and the upstream row unmounts before its `useActionState` can render the link. Harmless; the album appears in local results              |
-| Staging rejects `@example.com` on public signup   | GoTrue validates the domain on self-signup but not via the admin API, so `tests/e2e/auth.spec.ts` would fail against staging                                                         |
-| Email confirmation disabled on staging            | Turned off deliberately so signup works without SMTP. **Production must have it on**, which means real SMTP configured before launch                                                 |
-| Three test accounts on staging                    | Two own `catalogue_additions` rows; deleting them nulls `user_id` and leaves the rows as anonymous audit records, which is the designed behaviour                                    |
-| Local Node drifted to v20                         | CI pins Node 22. `@supabase/supabase-js` needs a global WebSocket, so integration and seed commands need `NODE_OPTIONS=--experimental-websocket` until the local runtime is restored |
-| Artists have at most 3 releases                   | The seed capped at 2 per artist, so the deep-discography case is untested against real data                                                                                          |
-| Design-foundation code uncommitted                | §1 — verified clean-tree at every step, held for review                                                                                                                              |
+| Item                                              | Status                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `absent` artwork unobserved against real CAA data | §4 — verify opportunistically; do not manufacture it                                                                                                                                                                                                                                                                                                                                                                        |
+| Two exhausted artwork jobs (CAA 502)              | §4 — deliberate sweep whenever wanted                                                                                                                                                                                                                                                                                                                                                                                       |
+| Live album never observed                         | §3 — soundtrack covers the secondary-type path                                                                                                                                                                                                                                                                                                                                                                              |
+| **Longer, jittered MusicBrainz backoff**          | **[OPEN]** — see §9                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `"Added — view"` unreachable                      | After a successful add the page revalidates and the upstream row unmounts before its `useActionState` can render the link. Harmless; the album appears in local results                                                                                                                                                                                                                                                     |
+| Staging rejects `@example.com` on public signup   | GoTrue validates the domain on self-signup but not via the admin API, so `tests/e2e/auth.spec.ts` would fail against staging                                                                                                                                                                                                                                                                                                |
+| Email confirmation disabled on staging            | Turned off deliberately so signup works without SMTP. **Production must have it on**, which means real SMTP configured before launch                                                                                                                                                                                                                                                                                        |
+| Three test accounts on staging                    | Two own `catalogue_additions` rows; deleting them nulls `user_id` and leaves the rows as anonymous audit records, which is the designed behaviour                                                                                                                                                                                                                                                                           |
+| Local Node drifted to v20                         | CI pins Node 22. `@supabase/supabase-js` needs a global WebSocket, so integration and seed commands need `NODE_OPTIONS=--experimental-websocket` until the local runtime is restored                                                                                                                                                                                                                                        |
+| Artists have at most 3 releases                   | The seed capped at 2 per artist, so the deep-discography case is untested against real data                                                                                                                                                                                                                                                                                                                                 |
+| Design-foundation code uncommitted                | §1 — verified clean-tree at every step, held for review                                                                                                                                                                                                                                                                                                                                                                     |
+| **Browse is very tall at phone width**            | **[OPEN]** — 8,122px at 390px. `relaxed` is 2-up on a phone, so Popular's 24 captioned albums run 12 rows before Recently added begins. Observation, not a defect: consistency with the migrated artist page was the stronger constraint, and the alternatives were changing the query limit or inventing a per-breakpoint density. Revisit when the real charts arrive and a "show more" boundary has to be decided anyway |
+| **`AlbumGrid` passes no `priority`**              | **[OPEN]** — Next flags the first Popular cover as LCP and asks for eager loading. Pre-existing and identical on the artist page. Deliberately not fixed during a presentation-only migration: choosing how many leading cells get `priority` is its own decision and it affects every grid surface at once                                                                                                                 |
 
 ---
 
@@ -302,6 +324,8 @@ This one cause explains three separate symptoms: the seed's 21 ingest failures, 
 See `docs/product-spec.md` §8 and `docs/data-model.md` §9 for the authoritative list.
 
 - **Longer, jittered MusicBrainz backoff** (§9)
+- **Whether Browse needs a length boundary at phone width** (§8) — a "show more" or a shorter chart, decided alongside the real charts rather than now
+- **How many leading grid cells should carry `priority`** (§8) — one decision affecting every grid surface
 - **Whether the daily cron should sweep for missing artwork and tracklists itself.** Both sweeps exist but nothing calls them automatically
 - **Album page caching strategy** — decision H; the mixed catalogue/personal page needs investigation before Phase 2 builds on it
 - **Whether `CLAUDE.md` line 5 should be updated** to reflect Phase 1 completion

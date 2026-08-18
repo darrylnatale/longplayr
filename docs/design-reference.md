@@ -294,3 +294,69 @@ primary button, which reads as a banner rather than a control.
 **Decided: `max-w-sm` below the three-column breakpoint, uncapped at and above
 it.** On a phone the cap is wider than the viewport, so it has no effect there —
 it exists solely for the tablet range.
+
+### 11.5 Stacked grids are ranked by density, never by decoration
+
+§3 records that the reference's browse page leads with four large posters and
+then drops to a twelve-across strip, and that **size alone** carries the
+importance — no badges, no ribbons. Browse originally ran both of its sections
+at the same density, which meant the page said nothing about which one mattered.
+
+Adopting the reference literally would have meant a bespoke four-poster row, and
+building one would have produced a second grid implementation — the exact
+outcome the single-source density ramp exists to prevent.
+
+**Decided: where a page stacks more than one grid, the sections are ranked by
+density drawn from the existing ramp — `relaxed` for the lead, `standard` for
+what follows.** `dense` stays available for a third tier or for a surface that
+is pure recognition. Importance is never signalled by a badge, a rule weight or
+a colour.
+
+**Captions travel with density rather than varying independently.** A title and
+credit belong under `relaxed` cells and under no others: `standard` tops out
+near 105px, where a caption is unreadable. A section that wants metadata has to
+take the larger cell that pays for it. This is the same bargain the Detailed
+collection mode strikes (decision D), applied to catalogue surfaces.
+
+### 11.6 Stored artwork size follows grid density
+
+Cover Art Archive offers three sizes and the pipeline stores all three — 250,
+500 and 1200. Which one a grid draws from is a property of the **density**, not
+of the page that happens to be rendering it.
+
+A `relaxed` cell reaches 170–240px, which is 340–720 device pixels on the 2× and
+3× displays most people are reading on. Serving the 250px asset there meant the
+image optimiser was interpolating the largest cells in the product upward from a
+smaller original.
+
+**Decided: `relaxed` draws the 500px asset, `standard` and `dense` draw 250, and
+detail pages draw 500.** 1200 stays reserved. Delivered bytes are effectively
+unchanged — the optimiser emits the same rendered width either way; what changes
+is whether that width was invented rather than photographed.
+
+Recorded as a design rule rather than a delivery detail because on these
+surfaces the artwork **is** the content (§8). A soft cover is not a performance
+characteristic, it is a degraded product.
+
+### 11.7 A page title is serif only when it names something the catalogue holds
+
+§4 borrows "serif for content, sans for chrome". That settles album titles and
+review bodies but not **page titles**, which sit awkwardly between the two — the
+album, artist and profile pages all set their `h1` in Newsreader, and applying
+that by analogy would have made Browse's `h1` serif too.
+
+The distinction that actually holds is what the heading _names_. An album title,
+an artist name and a member's name are things the catalogue **holds**, and those
+`h1`s are serif because the page is about that named thing. "Browse" names no
+such thing — it is a word the interface supplies about itself.
+
+**Decided: a page title takes Newsreader when it is the name of a catalogue
+entity, and Geist when it is a navigational label.** On a wall of covers a serif
+"Browse" would claim the heading is the content, when the content is the grid
+beneath it.
+
+**This is a rule about titles and chrome, not a ban on the serif elsewhere.**
+Newsreader deliberately continues to carry the short editorial sentences that
+front empty and pre-query states — "Search for a record.", "Your collection is
+empty." — and the initials in cover placeholders and avatars. Those are register
+choices already built into search, profile and `AlbumCover`, and they stand.
