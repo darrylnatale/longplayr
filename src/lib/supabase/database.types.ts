@@ -200,6 +200,96 @@ export type Database = {
           },
         ]
       }
+      collection_entries: {
+        Row: {
+          added_at: string
+          album_id: string
+          id: string
+          liked: boolean
+          listened_on: string | null
+          rating: number | null
+          relisten_count: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          added_at?: string
+          album_id: string
+          id?: string
+          liked?: boolean
+          listened_on?: string | null
+          rating?: number | null
+          relisten_count?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          added_at?: string
+          album_id?: string
+          id?: string
+          liked?: boolean
+          listened_on?: string | null
+          rating?: number | null
+          relisten_count?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "collection_entries_album_id_fkey"
+            columns: ["album_id"]
+            isOneToOne: false
+            referencedRelation: "albums"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "collection_entries_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      favourite_albums: {
+        Row: {
+          album_id: string
+          created_at: string
+          id: string
+          position: number
+          user_id: string
+        }
+        Insert: {
+          album_id: string
+          created_at?: string
+          id?: string
+          position: number
+          user_id: string
+        }
+        Update: {
+          album_id?: string
+          created_at?: string
+          id?: string
+          position?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "favourite_albums_album_id_fkey"
+            columns: ["album_id"]
+            isOneToOne: false
+            referencedRelation: "albums"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "favourite_albums_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ingestion_jobs: {
         Row: {
           attempts: number
@@ -346,6 +436,67 @@ export type Database = {
           },
         ]
       }
+      relisten_events: {
+        Row: {
+          collection_entry_id: string
+          id: string
+          occurred_at: string
+        }
+        Insert: {
+          collection_entry_id: string
+          id?: string
+          occurred_at?: string
+        }
+        Update: {
+          collection_entry_id?: string
+          id?: string
+          occurred_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "relisten_events_collection_entry_id_fkey"
+            columns: ["collection_entry_id"]
+            isOneToOne: false
+            referencedRelation: "collection_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reviews: {
+        Row: {
+          body: string
+          collection_entry_id: string
+          created_at: string
+          id: string
+          status: Database["public"]["Enums"]["content_status"]
+          updated_at: string
+        }
+        Insert: {
+          body: string
+          collection_entry_id: string
+          created_at?: string
+          id?: string
+          status?: Database["public"]["Enums"]["content_status"]
+          updated_at?: string
+        }
+        Update: {
+          body?: string
+          collection_entry_id?: string
+          created_at?: string
+          id?: string
+          status?: Database["public"]["Enums"]["content_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reviews_collection_entry_id_fkey"
+            columns: ["collection_entry_id"]
+            isOneToOne: true
+            referencedRelation: "collection_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tracks: {
         Row: {
           id: string
@@ -381,6 +532,42 @@ export type Database = {
           },
         ]
       }
+      want_to_listen: {
+        Row: {
+          added_at: string
+          album_id: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          added_at?: string
+          album_id: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          added_at?: string
+          album_id?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "want_to_listen_album_id_fkey"
+            columns: ["album_id"]
+            isOneToOne: false
+            referencedRelation: "albums"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "want_to_listen_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -406,6 +593,26 @@ export type Database = {
           to: "ingestion_jobs"
           isOneToOne: false
           isSetofReturn: true
+        }
+      }
+      ensure_collection_entry: {
+        Args: { p_album_id: string; p_listened_on?: string; p_user_id: string }
+        Returns: {
+          added_at: string
+          album_id: string
+          id: string
+          liked: boolean
+          listened_on: string | null
+          rating: number | null
+          relisten_count: number
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "collection_entries"
+          isOneToOne: true
+          isSetofReturn: false
         }
       }
       search_albums: {
@@ -452,6 +659,7 @@ export type Database = {
         | "dj_mix"
       album_type: "album" | "ep" | "other"
       artwork_status: "pending" | "found" | "absent" | "failed"
+      content_status: "live" | "removed"
       date_precision: "day" | "month" | "year"
       job_kind:
         | "ingest_release_group"
@@ -605,6 +813,7 @@ export const Constants = {
       ],
       album_type: ["album", "ep", "other"],
       artwork_status: ["pending", "found", "absent", "failed"],
+      content_status: ["live", "removed"],
       date_precision: ["day", "month", "year"],
       job_kind: [
         "ingest_release_group",
