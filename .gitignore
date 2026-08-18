@@ -52,6 +52,12 @@ next-env.d.ts
 # Source material — kept locally, not tracked
 transcript.md
 
+# Design reference captures of a third-party site. Analysed in
+# docs/design-reference.md §3; the written analysis is the artefact worth
+# keeping. The images themselves are ~79 MB of someone else's interface and do
+# not belong in the history.
+/docs/screenshots
+
 # Seed reports (generated)
 seed-report.txt
 seed-report.json

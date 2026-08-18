@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
+import { AuthShell } from '@/components/AuthShell';
 import { getCurrentUser } from '@/services/profiles';
 
 import { AuthForm } from '../AuthForm';
@@ -12,21 +13,26 @@ export default async function SignUpPage() {
   if (await getCurrentUser()) redirect('/');
 
   return (
-    <div className="mx-auto max-w-sm">
-      <h1 className="mb-6 text-2xl font-semibold tracking-tight">Create your account</h1>
-
+    <AuthShell
+      title="Create your account"
+      description="One account, then choose a handle. Everything you add is public."
+      footer={
+        <>
+          Already have an account?{' '}
+          <Link
+            href="/login"
+            className="text-accent underline decoration-accent-dim underline-offset-4 transition-colors hover:decoration-accent"
+          >
+            Sign in
+          </Link>
+        </>
+      }
+    >
       <AuthForm
         action={signUp}
         submitLabel="Create account"
         passwordHint="At least 8 characters."
       />
-
-      <p className="mt-6 text-sm text-muted">
-        Already have an account?{' '}
-        <Link href="/login" className="text-foreground underline underline-offset-4">
-          Sign in
-        </Link>
-      </p>
-    </div>
+    </AuthShell>
   );
 }

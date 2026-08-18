@@ -13,7 +13,9 @@ import { storedArtworkUrl, type ArtworkSize } from '@/services/catalogue/artwork
  * reference uses. That difference cascades through every grid in the product
  * (docs/design-reference.md §5.1).
  *
- * Styling here is provisional, like everything else pre-design-foundation.
+ * The corner radius is nearly square on purpose: covers should read as objects
+ * on a shelf, not as buttons. The hairline border exists so a pale or
+ * white-bordered cover does not bleed into the ground.
  */
 
 type Props = {
@@ -39,7 +41,9 @@ function placeholderTint(mbid: string): string {
   for (let i = 0; i < mbid.length; i++) {
     hash = (hash * 31 + mbid.charCodeAt(i)) >>> 0;
   }
-  return `hsl(${hash % 360} 12% 16%)`;
+  // Lightness and saturation are pinned near the warm neutral ramp so a
+  // placeholder never out-shouts the real artwork beside it; only hue varies.
+  return `hsl(${hash % 360} 10% 12%)`;
 }
 
 /** Up to three initials, so long titles stay legible at grid scale. */
@@ -56,12 +60,12 @@ export function AlbumCover({ mbid, title, size = 500, hasArtwork, px = 200, prio
   if (!hasArtwork) {
     return (
       <div
-        className="flex aspect-square w-full items-center justify-center rounded border border-border"
+        className="@container flex aspect-square w-full items-center justify-center rounded-[var(--radius-cover)] border border-border"
         style={{ backgroundColor: placeholderTint(mbid) }}
         role="img"
         aria-label={`${title} — no cover art available`}
       >
-        <span className="text-lg font-semibold tracking-widest text-muted/70">
+        <span className="font-serif text-[clamp(0.85rem,18cqw,2rem)] tracking-widest text-text-faint">
           {initials(title)}
         </span>
       </div>
@@ -75,7 +79,7 @@ export function AlbumCover({ mbid, title, size = 500, hasArtwork, px = 200, prio
       width={px}
       height={px}
       priority={priority}
-      className="aspect-square w-full rounded border border-border object-cover"
+      className="aspect-square w-full rounded-[var(--radius-cover)] border border-border object-cover"
     />
   );
 }

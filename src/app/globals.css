@@ -1,38 +1,121 @@
 @import 'tailwindcss';
 
 /*
- * PROVISIONAL STYLING — NOT THE DESIGN SYSTEM.
+ * longplayr design foundation.
  *
- * Phase 0 is foundations, not visual identity. These are neutral, deliberately
- * uncommitted values chosen so screens are legible while we build, and so that
- * no design decision gets made by accident.
+ * Established before Phase 2 deliberately: Phase 2 multiplies UI, and
+ * retrofitting a design system across built components costs far more than
+ * setting one first (docs/development-plan.md, design foundation track).
  *
- * The real palette, type scale and grid come from the design-foundation track,
- * which must land before Phase 2. See docs/design-reference.md §8, and §7 for
- * the Letterboxd values we are deliberately diverging from.
+ * Two layers, and the separation is the point:
+ *
+ *   primitives  raw ramp values. Referenced by the semantic layer, never by a
+ *               component.
+ *   semantic    what components use. Re-palette the product by editing this
+ *               block rather than sweeping every file.
+ *
+ * The ground is warm-neutral rather than the blue-cool grey of our structural
+ * reference, and the accent is brass — chosen so longplayr reads as its own
+ * product at a glance (docs/design-reference.md §7-8). Album art supplies
+ * nearly all saturated colour; the interface is a frame, not a picture.
  */
 
 :root {
-  --background: #101214;
-  --surface: #181b1f;
-  --border: #262b31;
-  --foreground: #e8eaed;
-  --muted: #9aa3ad;
-  --accent: #d8dee5;
+  /* --- primitives: warm neutral ramp ------------------------------------ */
+  --ink-950: #0f0e0d;
+  --ink-900: #151312;
+  --ink-850: #1c1918;
+  --ink-800: #241f1d;
+  --ink-700: #2e2926;
+  --ink-600: #3a3431;
+  --ink-500: #554e49;
+  --ink-400: #7a736e;
+  --ink-300: #9d9691;
+  --ink-200: #c7c1bc;
+  --ink-100: #e4e0dc;
+  --ink-50: #f4f1ee;
+
+  /* --- primitives: brass ------------------------------------------------ */
+  --brass-300: #e8cd6d;
+  --brass-400: #dfbc4a;
+  --brass-500: #c9a227;
+  --brass-600: #a8871f;
+  --brass-700: #7d6417;
+
+  /* --- primitives: signal ----------------------------------------------- */
+  --oxblood-500: #a33a3a;
+  /* Lighter step, for signal text on a dark ground. oxblood-500 measures
+   * 2.96:1 against --ink-950 and therefore cannot legally carry body text;
+   * this measures 5.28:1, which clears AA while staying a muted brick
+   * rather than the alarm-red a form error does not need. */
+  --oxblood-300: #c96a6a;
+
+  /* --- layout ------------------------------------------------------------
+   * Two container widths, because a twelve-across grid and a readable text
+   * measure cannot be the same number. Content pages read; grid pages tile.
+   */
+  --width-content: 70rem; /* 1120px — album, artist, review, settings */
+  --width-wide: min(94vw, 105rem); /* ≤1680px — grid surfaces */
+
+  /* Covers read as objects, not buttons, so the radius stays nearly square. */
+  --radius-cover: 2px;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-surface: var(--surface);
-  --color-border: var(--border);
-  --color-foreground: var(--foreground);
-  --color-muted: var(--muted);
-  --color-accent: var(--accent);
-  --font-sans: var(--font-geist-sans);
+  /* --- semantic colour --------------------------------------------------- */
+  --color-bg: var(--ink-950);
+  --color-surface: var(--ink-900);
+  --color-raised: var(--ink-850);
+  --color-chip: var(--ink-800);
+  --color-border: var(--ink-700);
+  --color-border-strong: var(--ink-600);
+
+  --color-text: var(--ink-50);
+  --color-text-secondary: var(--ink-200);
+  --color-text-muted: var(--ink-400);
+  --color-text-faint: var(--ink-500);
+
+  --color-accent: var(--brass-500);
+  --color-accent-hover: var(--brass-400);
+  --color-accent-strong: var(--brass-300);
+  --color-accent-dim: var(--brass-700);
+  /* Text sitting on a brass fill. Brass is light, so this is the dark ground. */
+  --color-accent-contrast: var(--ink-950);
+
+  /* Likes derive from the accent rather than introducing a fourth hue — and
+   * deliberately avoid the reference's orange heart. */
+  --color-like: var(--brass-400);
+  /* Fills, borders and destructive affordances. Not legible as text. */
+  --color-danger: var(--oxblood-500);
+  /* Error and validation copy. Every error message in the product used a
+   * raw Tailwind red before this existed, which is how the auth pages
+   * ended up outside the palette entirely. */
+  --color-danger-text: var(--oxblood-300);
+
+  /* --- type -------------------------------------------------------------- */
+  --font-sans: var(--font-geist-sans); /* chrome: controls, labels, metadata */
+  --font-serif: var(--font-newsreader); /* editorial: titles, review bodies */
   --font-mono: var(--font-geist-mono);
+
+  --text-4xl: 2.5rem;
+  --text-5xl: 3.25rem;
+
+  /* --- layout ------------------------------------------------------------ */
+  --container-content: var(--width-content);
+  --radius-cover: var(--radius-cover);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--ink-950);
+  color: var(--ink-50);
+}
+
+/*
+ * Scores, durations and track numbers are compared down a column far more
+ * often than they are read in prose. Proportional figures make those columns
+ * jitter; tabular ones do not.
+ */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
 }

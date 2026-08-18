@@ -3,16 +3,23 @@
 import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
 
+import { BARE_INPUT, Field, INPUT, INPUT_SHELL, SUBMIT } from '@/components/Field';
+
 import type { AuthFormState } from './actions';
+
+/**
+ * Credentials form, shared by sign in and create account.
+ *
+ * Behaviour is untouched: the same `useActionState` wiring, the same server
+ * action contract, the same field and form-level error shapes, the same
+ * `autoComplete` switch keyed off the submit label. Only the presentation moved
+ * onto the design foundation.
+ */
 
 function SubmitButton({ label }: { label: string }) {
   const { pending } = useFormStatus();
   return (
-    <button
-      type="submit"
-      disabled={pending}
-      className="w-full rounded-md border border-border bg-surface px-4 py-2 text-sm font-medium hover:border-muted disabled:opacity-50"
-    >
+    <button type="submit" disabled={pending} className={SUBMIT}>
       {pending ? 'Working…' : label}
     </button>
   );
@@ -29,12 +36,11 @@ export function AuthForm({
 }) {
   const [state, formAction] = useActionState(action, {});
 
+  const isSignUp = submitLabel === 'Create account';
+
   return (
-    <form action={formAction} className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="email" className="text-sm text-muted">
-          Email
-        </label>
+    <form action={formAction} className="flex flex-col gap-5">
+      <Field id="email" label="Email" error={state.fieldErrors?.email}>
         <input
           id="email"
           name="email"
@@ -42,42 +48,44 @@ export function AuthForm({
           autoComplete="email"
           required
           aria-describedby={state.fieldErrors?.email ? 'email-error' : undefined}
-          className="rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-muted"
+          className={INPUT}
         />
-        {state.fieldErrors?.email && (
-          <p id="email-error" className="text-sm text-red-400">
-            {state.fieldErrors.email}
-          </p>
-        )}
-      </div>
+      </Field>
 
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="password" className="text-sm text-muted">
-          Password
-        </label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          autoComplete={submitLabel === 'Create account' ? 'new-password' : 'current-password'}
-          required
-          aria-describedby={state.fieldErrors?.password ? 'password-error' : 'password-hint'}
-          className="rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-muted"
-        />
-        {passwordHint && !state.fieldErrors?.password && (
-          <p id="password-hint" className="text-sm text-muted">
-            {passwordHint}
-          </p>
-        )}
-        {state.fieldErrors?.password && (
-          <p id="password-error" className="text-sm text-red-400">
-            {state.fieldErrors.password}
-          </p>
-        )}
-      </div>
+      <Field id="password" label="Password" hint={passwordHint} error={state.fieldErrors?.password}>
+        {/*
+         * Wrapped rather than bare so the field keeps one focus ring whatever
+         * sits inside it, matching the handle field's prefixed input.
+         */}
+        <div className={INPUT_SHELL}>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            autoComplete={isSignUp ? 'new-password' : 'current-password'}
+            required
+            aria-describedby={
+              state.fieldErrors?.password
+                ? 'password-error'
+                : passwordHint
+                  ? 'password-hint'
+                  : undefined
+            }
+            className={`${BARE_INPUT} pl-3`}
+          />
+        </div>
+      </Field>
 
+      {/*
+       * Form-level failure — a rejected credential rather than a malformed
+       * field. Given its own panel so it reads as a state of the form rather
+       * than as a note about whichever input happens to sit above it.
+       */}
       {state.error && (
-        <p role="alert" className="text-sm text-red-400">
+        <p
+          role="alert"
+          className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2.5 text-sm text-danger-text"
+        >
           {state.error}
         </p>
       )}
