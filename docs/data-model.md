@@ -180,9 +180,17 @@ Asymmetric. `follower_id` → `followee_id`, with `created_at`. Composite unique
 
 **Why two timestamps.** `listened_on` is what the user asserts; `added_at` is what actually happened. Collections sort by `listened_on` when present, falling back to `added_at` — so a user who bulk-adds forty undated albums still gets them ordered sensibly by when they added them. `added_at` is also what drives feed eligibility.
 
-**Feed eligibility rule.** An entry generates a `listened` activity event only when `listened_on` is today. Undated and backdated adds are silent. This rule is applied **once, at write time** — it is the reason the materialised activity table is worth having. **[DECIDED — B1]**
+**Feed eligibility rule.** **[DECIDED — B1, amended 2026-08-18]**
 
-**Implicit creation.** Rating, liking or reviewing an album the user hasn't added **creates the entry automatically**, with `listened_on` unset. By the rule above that makes it a silent add, so no `listened` event fires — while the triggering action still produces its own event (`rated`, `reviewed`) or none at all (liking). **[DECIDED]**
+An entry generates a `listened` activity event when a user **adds it interactively** — at the moment they act. It generates none when the entry arrives as **historical or backfilled data**. The rule is applied **once, at write time**, which is the reason the materialised activity table is worth having.
+
+**`listened_on` does not decide this**, and the earlier version of this rule — "only when `listened_on` is today" — has been replaced. That version conflated two separate things: the anti-flood invariant, and a user's assertion about when they heard a record. Backdating is a claim about the past, not a request for silence.
+
+**The discriminator is now the write path, not the date.** An interactive add produces an event; a bulk or imported write does not. That relocation is deliberate and it leaves one thing genuinely undecided — see §11.9.
+
+**Implicit creation.** Rating, liking or reviewing an album the user hasn't added **creates the entry automatically**, with `listened_on` unset. **No `listened` event fires**, while the triggering action still produces its own event (`rated`, `reviewed`) or none at all (liking). **[DECIDED]**
+
+**The reason changed with the eligibility rule, and the behaviour did not.** This used to be silent as a side effect of `listened_on` being unset. It is now silent for a better reason: **the event must reflect the action the user took.** They rated a record; they did not claim to have listened to it. Inferring a listen from a rating and broadcasting it is precisely the surprise this rule exists to prevent, and that reasoning no longer depends on a date field.
 
 Without this, rating an album you'd never logged would announce to your followers that you had just listened to it, which may not be true. `FavouriteAlbum` is deliberately outside this behaviour.
 
@@ -398,6 +406,7 @@ These duplicate `product-spec.md` §10 deliberately, because a schema author rea
 - ~~**11.2** — Do collection adds, ratings, likes, reviews or relistens remove an album from Want to Listen?~~ **RESOLVED — yes, all of them.** One rule: any action that causes a collection entry to exist clears Want to Listen. See §10.
 - **11.3** — Is Want to Listen public on the profile? _(Interacts with the all-public model, which currently admits no exceptions.)_
 - **11.8** — Should Want to Listen be offered on an album already in the collection? _(The schema permits the state; whether the interface should produce it is unanswered.)_
+- **11.9** — **How is a manual bulk backfill kept out of the feed?** The amended eligibility rule keys on the write path rather than on `listened_on`, which covers a future import cleanly — but a user adding two hundred albums by hand in one sitting is two hundred interactions by that definition. Suppressing them, aggregating them into one feed item, or rate-limiting event creation are all plausible and none is decided. **Phase 3. Ask.**
 - **11.4** — Is taste similarity symmetric? _(Decides the key shape of any cache.)_
 - **11.5** — Is location free text or structured, and is history retained? _(Decides column versus reference, and versioned versus mutable.)_
 - **11.6** — What happens to a two-party message when one party hard-deletes? _(Decides the cascade, and is a privacy commitment.)_

@@ -78,15 +78,15 @@ Revised entries supersede earlier choices made during the same session.
 
 ### Social
 
-| Decision        | Value                                                                                                                                                         |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Follow model    | Asymmetric follow **[INFERRED — standard for this product shape; correct if you want mutual-friend semantics]**                                               |
-| Feed contents   | Listens (today-dated adds), relistens, ratings, reviews, list creation/updates. **Want to Listen additions will join this list — see §10.1**                  |
-| Feed exclusions | Likes and follows do **not** generate feed events — they'd dominate by volume and crowd out reviews                                                           |
-| Silent actions  | Undated and backdated adds populate the collection without generating feed events. This is what makes onboarding backfill possible without flooding followers |
-| Feed recency    | Feed shows relative time ("2h"). Profiles show no dates anywhere                                                                                              |
-| Interactions    | Likes only. **No comments in v1**                                                                                                                             |
-| Notifications   | In-app page only — new followers, likes on your reviews, likes on your lists, with an unread count. No email, no push                                         |
+| Decision        | Value                                                                                                                                                                                                                                                                                           |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Follow model    | Asymmetric follow **[INFERRED — standard for this product shape; correct if you want mutual-friend semantics]**                                                                                                                                                                                 |
+| Feed contents   | Interactive listens (collection adds), relistens, ratings, reviews, list creation/updates, **Want to Listen additions** (§10.1). Not a closed list — it grows by phase                                                                                                                          |
+| Feed exclusions | Likes and follows do **not** generate feed events — they'd dominate by volume and crowd out reviews                                                                                                                                                                                             |
+| Silent actions  | **Historical and backfilled collection data** populates the collection without generating feed events, which is what makes onboarding backfill possible without flooding followers. **A backdated `listened_on` is not itself a request for silence** — see the amended rule in `data-model.md` |
+| Feed recency    | Feed shows relative time ("2h"). Profiles show no dates anywhere                                                                                                                                                                                                                                |
+| Interactions    | Likes only. **No comments in v1**                                                                                                                                                                                                                                                               |
+| Notifications   | In-app page only — new followers, likes on your reviews, likes on your lists, with an unread count. No email, no push                                                                                                                                                                           |
 
 ### Lists
 
@@ -267,7 +267,7 @@ Listed rather than assumed. Each names who it blocks.
 
 Distinct users is the load-bearing choice: it stops one person relistening an album twenty times from manufacturing a chart position, and it means a user backfilling three hundred albums contributes at most +1 to each.
 
-Backdated and undated adds **do** count here, even though they generate no feed events. Silence in the feed is about not spamming followers; interest is still interest.
+**Backfilled collection data still counts here, even where it generates no feed events.** Feed silence is about not spamming followers; interest is still interest, and an album someone adds while backfilling is an album they cared enough to record. Note that this is measured by `added_at`, so a backdated `listened_on` has no effect on chart eligibility either way — the same separation the amended feed-eligibility rule makes.
 
 **Highest rated this week.** Albums that received at least one new rating in the last 7 days, ranked by **all-time average**, requiring **at least 5 ratings total** to qualify. Ties broken by rating count.
 
@@ -285,7 +285,9 @@ Never touches genuine behaviour — an enthusiastic user filling gaps might add 
 
 Since a collection entry carries no date requirement, membership is a trivial precondition rather than a meaningful barrier.
 
-**How the implicit add behaves:** it is created with `listened_on` unset and `added_at` set to now, which makes it a **silent add** under the feed-eligibility rule — it generates no `listened` event. The triggering action fires its own event normally, so rating produces a `rated` event and reviewing produces a `reviewed` event, while liking produces nothing in the feed.
+**How the implicit add behaves:** it is created with `listened_on` unset and `added_at` set to now, and it generates **no `listened` event**. The triggering action fires its own event normally, so rating produces a `rated` event and reviewing produces a `reviewed` event, while liking produces nothing in the feed.
+
+The reason is that **an event must reflect the action the user actually took.** They rated a record; they did not claim to have listened to it. (This used to be justified by `listened_on` being unset, which stopped being the discriminator when the eligibility rule was amended on 2026-08-18. The behaviour is unchanged; only its justification is, and the new one is sturdier.)
 
 This matters because the alternative would be a surprise: rating an album you'd never logged would otherwise announce to your followers that you'd just listened to it, which you may not have.
 
@@ -339,11 +341,9 @@ Three rules govern this section, and they matter more than the content:
 
 This is a deliberate departure from the volume argument in §4 that keeps likes and follows out of the feed, and it should be understood as such rather than as an oversight. Intent is treated as genuinely interesting social signal here — "I want to hear this" is closer to a review than to a like. The consequence is accepted: wishlist activity is high-frequency, and the feed will carry more of it than it carries listens.
 
-**How this sits against the silent-add rule — flagged, not decided.** `CLAUDE.md` states that _only today-dated adds and relistens generate feed events; undated and backdated adds are silent._ That rule exists to stop onboarding backfill flooding followers, and it is scoped to **collection adds**, which carry a user-supplied `listened_on` that can be backdated or omitted. It is already narrower than practice — §4 has ratings, reviews and list events generating feed events too.
+**How this sits against the feed-eligibility rule — resolved 2026-08-18.** The ambiguity flagged here has been closed. `CLAUDE.md` no longer says that only today-dated adds and relistens generate events; it now states the actual invariant — **feed events record interactions, not history** — and says explicitly that it is not an enumeration of event types.
 
-**Want to Listen has no user-supplied date.** You cannot backdate an intention; every wishlist add happens now. The rule therefore has nothing to bite on here, and its purpose — preventing a silent bulk backfill from becoming a feed flood — is not engaged.
-
-That reading is recorded rather than asserted. If the intent was that the rule enumerates _every_ feed event in the product, then ratings, reviews and lists already contradict it and the line needs rewording. **Raise it; do not resolve it in code.**
+Under that wording Want to Listen needs no special case. Adding to a wishlist is an interaction, it happens at the moment the user acts, and it generates an event. There was never a date to backdate.
 
 **Deferred, and deliberately not to be designed now:** a per-user setting to hide Want to Listen activity from the feed. It is anticipated, it is not being specified, and no schema should be shaped in advance to accommodate it.
 

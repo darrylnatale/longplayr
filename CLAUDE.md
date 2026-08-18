@@ -12,7 +12,7 @@ These are decided. Do not change them without raising the decision explicitly fi
 
 - **One collection entry per user per album, permanently.** longplayr is a collection, not a dated diary. An album appears in a collection exactly once no matter how many times it's played.
 - **Profiles never display dates.** Timestamps exist in the data and drive sort order and feed eligibility. They are not rendered on profiles or collections.
-- **Only today-dated adds and relistens generate feed events.** Undated and backdated adds are silent. Breaking this floods every follower's feed and cannot be undone.
+- **Feed events record interactions, not history.** An event is generated when a user acts, at the moment they act — that is the whole invariant. **A user-supplied `listened_on` never decides it**: an album added by hand is an interaction whether the listen was last night or in 1997. **Historical and backfilled collection data must never generate events** — a collection arriving in bulk is history being recorded, not hundreds of interactions, and treating it as the latter floods every follower's feed and cannot be undone. Adding to Want to Listen is an interaction and does generate an event. This sentence is the rule, **not the list of event types**; `docs/product-spec.md` and the owning phase define those, and the list grows.
 - **Singles are never ingested.** Catalogue scope is albums, EPs and mixtapes — including live albums, compilations and soundtracks. Enforced at ingest, not at query time.
 - **The catalogue is read-only downstream of MusicBrainz.** No user-authored metadata, ever.
 - **Ratings are optional, 0.0–10.0 to one decimal.** Unrated entries are excluded from averages.

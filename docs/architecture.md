@@ -261,7 +261,7 @@ Proportionate to risk, not uniform coverage.
 
 **Areas that specifically warrant tests**, because they're where quiet, hard-to-notice bugs live:
 
-- **Feed eligibility** — the silent-add rule is a single condition whose failure floods every follower's feed.
+- **Feed eligibility** — the anti-flood rule is a single condition whose failure floods every follower's feed. Test both directions: a backfill generates nothing, and an interactive add with a backdated `listened_on` still generates an event.
 - **Hard deletion** — cascades must be complete; an orphan is a privacy failure, not a bug.
 - **Rating aggregation** — nulls excluded, one-decimal rounding, thin-data behaviour.
 - **Catalogue scope** — singles must never enter the catalogue.

@@ -185,12 +185,13 @@ Not a blocking phase, but it must land **before Phase 2**, because Phase 2 is wh
 
 **Open decisions affecting this phase.** The line that stood here — "No open decisions block this phase" — was written before decision H was raised and before the product direction in `product-spec.md` §10 existed. It was wrong on both counts and is corrected rather than deleted, because a plan that once said a phase was unblocked should show that it changed its mind.
 
-| Item                                | State                                                                                                                                              |
-| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Want to Listen schema**           | **RESOLVED 2026-08-18.** Independent relation, own table; the collection table needs no status column. This was the real blocker and it is cleared |
-| **Decision H — album page caching** | **RESOLVED 2026-08-18.** Pages stay dynamic; catalogue caching moves to the data layer behind a cookie-free client. See `current-state.md` §7      |
-| Want to Listen profile visibility   | **[OPEN]** — affects the profile tab structure this phase builds. Answerable late, but answer it before the profile collection view is called done |
-| Want to Listen feed behaviour       | **[OPEN]** — Phase 3 concern. Events do not exist until then                                                                                       |
+| Item                                  | State                                                                                                                                                                                                           |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Want to Listen schema**             | **RESOLVED 2026-08-18.** Independent relation, own table; the collection table needs no status column. This was the real blocker and it is cleared                                                              |
+| **Decision H — album page caching**   | **RESOLVED 2026-08-18.** Pages stay dynamic; catalogue caching moves to the data layer behind a cookie-free client. See `current-state.md` §7                                                                   |
+| Want to Listen profile visibility     | **[OPEN]** — affects the profile tab structure this phase builds. Answerable late, but answer it before the profile collection view is called done                                                              |
+| Want to Listen feed behaviour         | **[OPEN]** — Phase 3 concern. Events do not exist until then                                                                                                                                                    |
+| **Manual bulk backfill and the feed** | **[OPEN]** — Phase 3. The amended eligibility rule keys on the write path, which covers a future import cleanly; a user hand-adding two hundred albums in one sitting is not covered. See `data-model.md` §11.9 |
 
 **Nothing now blocks Phase 2 from starting.**
 
@@ -225,7 +226,7 @@ Not a blocking phase, but it must land **before Phase 2**, because Phase 2 is wh
 
 - Follow and unfollow; follower and following lists
 - `Activity` writes for every event type: listened, relistened, rated, reviewed
-- **Feed eligibility rule** — only today-dated adds generate events; undated and backdated adds are silent
+- **Feed eligibility rule** — interactive actions generate events; historical and backfilled collection data does not. **`listened_on` is not the discriminator** (amended 2026-08-18 — see `data-model.md`, Feed eligibility rule)
 - Following feed, reverse-chronological, with relative timestamps
 - Likes on reviews
 - **Notifications page** — new followers and likes on your reviews, with an unread count. In-app only
@@ -243,7 +244,9 @@ Not a blocking phase, but it must land **before Phase 2**, because Phase 2 is wh
 
 **Tests required**
 
-- **The silent-add rule** — a backdated bulk add of many albums generates zero events. This is the single most important test in the phase: its failure floods every follower's feed and is not recoverable
+- **The anti-flood rule** — a bulk backfill of many albums generates zero events. This is the single most important test in the phase: its failure floods every follower's feed and is not recoverable. **The test's premise changed with the rule** — it can no longer be written as "backdate the adds and assert silence", because backdating is no longer what makes an add silent. It must exercise whatever write path backfill actually uses
+- **A backdated interactive add still generates an event** — the inverse of the above, and the case that would silently regress if anyone reinstated the old date-based condition
+- **Implicit adds generate no `listened` event** — rating an uncollected album fires `rated` and nothing else, now that the date no longer explains why
 - Feed returns only followed users' activity, correctly ordered
 - Editing a rating updates what the feed displays
 - Removing an album deletes its events
