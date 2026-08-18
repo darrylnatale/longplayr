@@ -16,17 +16,18 @@ Verified against the staging database and a clean-tree build on 2026-08-18.
 
 **Phase 1 implementation is complete.** **Phase 2 has NOT started** — no collection entries, ratings, likes, reviews, relistens, favourites, lists, follows or activity exist, in schema or in code.
 
-The design-foundation track is in progress. Album, artist, search, profile and Browse are migrated; **Home and Auth are not**.
+**The design-foundation track is complete.** Every surface is migrated and verified by screenshot at 390, 768 and 1440px — see §7.
 
 **New product direction was recorded on 2026-08-18 and none of it is implemented** — Want to Listen, taste overlap, profile photo/bio/city, and direct messaging. Want to Listen is intended to generate feed events; messaging is intended functionality rather than a possibility, and is blocked on legal research; dating-specific profile fields are explicitly excluded. See §12, and `docs/product-spec.md` §10 for the authoritative record.
 
-> ### ⚠️ Two unresolved contradictions with `CLAUDE.md`
+> ### ✅ The two `CLAUDE.md` contradictions are resolved
 >
-> **Line 5** still reads **"Current state: Phase 1 (catalogue), in progress."** That contradicts this document.
+> Both were carried as open items across three checkpoints and were closed by the maintainer on 2026-08-18, which is the only way a top-authority statement should ever change.
 >
-> **Line 97** still reads **"Styling is provisional. `globals.css` holds neutral placeholder tokens, deliberately not a design system."** That was true when written and is no longer: `globals.css` now carries the two-layer token system — primitives, semantic layer, the brass accent, both container widths — and six of the eight surfaces in §7's migration table render on it. The same line's forecast, that the real palette and grid arrive from the design-foundation track before Phase 2, is being met exactly as written.
+> - The status line now reads **"Design foundation complete. Phase 2 has not started."**
+> - The styling line no longer calls `globals.css` provisional placeholder tokens; it describes the semantic design-token system that is actually there.
 >
-> Per the authority table above, **`CLAUDE.md` wins** in both cases, and neither line has been changed. This is recorded rather than resolved: amending the top-authority document is a decision for the maintainer, not something a checkpoint should do to itself.
+> No contradiction between this document and `CLAUDE.md` is currently known.
 
 ---
 
@@ -76,7 +77,7 @@ Eight migrations applied; local and remote in sync, confirmed with `npx supabase
 
 The last commit is this documentation checkpoint. **The entire design-foundation implementation is uncommitted** in the working tree — **17 modified files, 8 new components and the 2-file development gallery**, listed in §7. It has been verified clean-tree at every step but deliberately left uncommitted while each surface was reviewed.
 
-Browse was the most recent surface migrated and is the first to have been inspected against real staging data at all three widths rather than by markup alone — see §7.
+Every surface has now been migrated, and the last four — Browse, Home, login/signup/onboarding — were inspected against a running app at all three widths rather than by markup alone. Browse used real staging data; Home and the auth surfaces were driven through the real signup, sign-in and handle-claiming flows against a local database, with the temporary accounts deleted afterwards.
 
 No branch protection — GitHub gates it behind a paid plan for private repositories, and that was declined. `rm -rf .next && npm run verify` before pushing is the compensating control.
 
@@ -205,23 +206,31 @@ Visual identity: **brass `#C9A227`** accent on a warm-neutral ground; **Newsread
 
 ### Components
 
-New: `Container`, `SectionHeader`, `ScoreBadge`, `ActionCard`, `CollectionTile`, `CollectionGrid`, `MobileTabBar`, `Avatar`.
+New: `Container`, `SectionHeader`, `ScoreBadge`, `ActionCard`, `CollectionTile`, `CollectionGrid`, `MobileTabBar`, `Avatar`, `AuthShell`, `Field`.
 Migrated: `AlbumCover`, `AlbumGrid`.
+
+`AuthShell` and `Field` exist because login and signup live in `(auth)/` while onboarding lives in `onboarding/`, so no route-group layout can cover all three. A user meets all three within a minute of arriving and any difference between them reads as a bug.
 
 `src/app/design/` is a **development-only** gallery making tokens, geometry and component states inspectable against real staging artwork. It 404s in production.
 
 ### Migration status
 
-| Surface                              | State                                                          |
-| ------------------------------------ | -------------------------------------------------------------- |
-| Root layout and navigation           | **migrated** — width cap removed, page width explicit per page |
-| Album detail                         | **migrated** — the canonical detail composition                |
-| Artist                               | **migrated** — the canonical discography composition           |
-| Search                               | **migrated**                                                   |
-| Profile                              | **migrated** — identity only                                   |
-| Browse                               | **migrated** — verified against staging at 390/768/1440        |
-| **Home**                             | **not migrated**                                               |
-| **Auth** (login, signup, onboarding) | **not migrated**                                               |
+| Surface                    | State                                                          |
+| -------------------------- | -------------------------------------------------------------- |
+| Root layout and navigation | **migrated** — width cap removed, page width explicit per page |
+| Album detail               | **migrated** — the canonical detail composition                |
+| Artist                     | **migrated** — the canonical discography composition           |
+| Search                     | **migrated**                                                   |
+| Profile                    | **migrated** — identity only                                   |
+| Browse                     | **migrated** — verified against staging at 390/768/1440        |
+| Home                       | **migrated** — three session states, no catalogue queries      |
+| Login                      | **migrated**                                                   |
+| Signup                     | **migrated**                                                   |
+| Onboarding                 | **migrated**                                                   |
+
+**All nine surfaces are migrated and screenshot-verified at 390, 768 and 1440px.** Earlier checkpoints counted eight rows because login, signup and onboarding shared one "Auth" row; they are listed separately here because they were migrated together but are three distinct routes across two route trees.
+
+The definition of done for this track in `docs/development-plan.md` — a component set and tokens verified by screenshot, with Phase 1's album and artist pages brought onto them — was met several surfaces ago. Everything past that was deliberate: retrofitting a design system across Phase 2's UI would cost far more than finishing it first.
 
 `docs/development-plan.md`'s definition of done for this track — a component set and tokens verified by screenshot, with Phase 1's album and artist pages brought onto them — **is met**. Search and profile went beyond it; Browse, Home and Auth remain.
 
@@ -252,6 +261,18 @@ Checked against real staging data at 390, 768 and 1440px, following the build-sc
 | Artwork scale                     | **CORRECTED** — `AlbumGrid` hardcoded the 250px asset, so `relaxed` cells were being interpolated upward. Now density-mapped                                                                               |
 
 The ranking itself was not touched. `getPopularAlbums`, `getRecentAlbums`, `getCatalogueSize`, the limits, `popularity_score` and the `PopularitySource` abstraction are all unchanged; the migration was presentation only.
+
+### Deferred design polish — none of these block Phase 2
+
+Recorded so they are not rediscovered as bugs. Each was found during migration, judged real, and deliberately left.
+
+| Item                                       | Detail                                                                                                                                                                                                                                                                                     |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Search focus and error tokens lag auth** | The auth migration moved focus to the full `accent` (5.94:1 against the resting border, where `accent-dim` measured 2.54:1) and error text to `--color-danger-text`. The search input still uses `accent-dim`, which makes it the outlier. One token each; no behaviour involved           |
+| **`text-muted` measures 4.14:1**           | `--ink-400` on `--ink-950`, marginally under the 4.5:1 WCAG AA needs for body text. Product-wide and pre-existing, so changing it is a palette decision rather than a fix — it would shift every metadata line in the product at once                                                      |
+| **Form values lost after a failed submit** | Uncontrolled inputs plus `useActionState`: a rejected sign-in clears the email you just typed. Fixing it means the server action echoing submitted values back in its state, which changes the action contract — a behaviour change, deliberately not made during a presentation-only pass |
+
+Two smaller ones, already fixed and recorded only so they are not re-introduced: every error message in the product used a raw Tailwind red before `--color-danger-text` existed, and `--color-danger` itself measures 2.96:1 and **cannot** carry text — it is for fills and borders only.
 
 ### Divergence from `design-reference.md`
 

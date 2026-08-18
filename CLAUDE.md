@@ -2,7 +2,7 @@
 
 A social music platform: users record the albums they've listened to, rate and review them, build lists, follow each other, and discover music through that activity.
 
-**Current state: Phase 1 (catalogue), in progress.** See `docs/current-state.md` for exactly where things stand and what to do next. `docs/development-plan.md` defines what belongs to which phase — do not build ahead of the current phase without saying so.
+**Current state: Design foundation complete. Phase 2 has not started.** See `docs/current-state.md` for exactly where things stand and what to do next. `docs/development-plan.md` defines what belongs to which phase — do not build ahead of the current phase without saying so.
 
 ---
 
@@ -102,7 +102,7 @@ npm run verify                       # exactly what CI runs — run before pushi
 - **Embedding `releases` from `albums` must name the foreign key**: `releases!releases_album_id_fkey(...)`. There are two relationships between those tables — `releases.album_id` and `albums.representative_release_id` — so a bare `releases(...)` embed fails with "more than one relationship was found". The same applies to any future table with two paths to the same relation.
 - **Expected failures return `Result`, not exceptions** (`src/services/result.ts`). A taken handle is an outcome the UI renders. Genuinely unexpected failures still throw.
 - **Auth goes through `src/services/auth/`**, never directly to Supabase — auth is the most expensive thing here to migrate.
-- **Styling is provisional.** `globals.css` holds neutral placeholder tokens, deliberately not a design system. The real palette, type scale and grid come from the design-foundation track before Phase 2.
+- **`globals.css` holds the project's semantic design-token system.** Two layers, and the separation is load-bearing: raw ramp primitives, and the semantic tokens components actually use. Re-palette the product by editing the semantic block rather than sweeping every file. The warm-neutral ground, the brass accent, the type scale and both container widths all live there, and every surface renders on them.
 
 ### Next.js 16 specifics
 
