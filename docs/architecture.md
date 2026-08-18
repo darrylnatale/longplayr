@@ -85,7 +85,9 @@ This is the single cheapest insurance policy in the architecture. It is what mak
 - Replacing the ListenBrainz popularity source with internally-computed popularity touches one module.
 - Extracting a standalone API later becomes a transport change, not a rewrite.
 
-Roughly: `catalogue` (albums, artists, ingestion), `collection` (entries, relistens, reviews), `social` (follows, blocks, feed, likes), `lists`, `discovery` (popularity, charts), `search`, `moderation`.
+Roughly: `catalogue` (albums, artists, ingestion), `collection` (entries, relistens, reviews, favourites, want-to-listen), `social` (follows, blocks, feed, likes), `lists`, `discovery` (popularity, charts), `search`, `moderation`.
+
+**Some invariants live in one function rather than in the schema, and those functions are mandatory.** The first is `ensure_collection_entry`: it is the only sanctioned way a collection entry comes to exist, because the Want to Listen clearing rule is a property of that path rather than of the tables. Writing to `collection_entries` directly produces a legal-looking row in a wrong state. Migrations and tests are exempt; nothing else is. See `docs/data-model.md`, "The single mutation path".
 
 ---
 

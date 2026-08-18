@@ -14,7 +14,7 @@
 
 Verified against the staging database and a clean-tree build on 2026-08-18.
 
-**Phase 1 implementation is complete.** **Phase 2 has NOT started** — no collection entries, ratings, likes, reviews, relistens, favourites, lists, follows or activity exist, in schema or in code.
+**Phase 1 implementation is complete.** **Phase 2 is in progress** — its first slice, the collection schema and service layer, is built and tested. No UI is wired to it. Lists, follows, activity, feed, notifications and messaging do not exist, in schema or in code.
 
 **The design-foundation track is complete.** Every surface is migrated and verified by screenshot at 390, 768 and 1440px — see §7.
 
@@ -24,7 +24,7 @@ Verified against the staging database and a clean-tree build on 2026-08-18.
 >
 > Both were carried as open items across three checkpoints and were closed by the maintainer on 2026-08-18, which is the only way a top-authority statement should ever change.
 >
-> - The status line now reads **"Design foundation complete. Phase 2 has not started."**
+> - The status line was corrected to read "Design foundation complete", replacing "Phase 1 (catalogue), in progress". It has since been advanced again as Phase 2 began.
 > - The styling line no longer calls `globals.css` provisional placeholder tokens; it describes the semantic design-token system that is actually there.
 >
 > No contradiction between this document and `CLAUDE.md` is currently known.
@@ -434,7 +434,52 @@ Four things a resuming session most often gets wrong about this list:
 
 ---
 
-## 13. Lessons carried forward
+## 13. Phase 2, slice one — collection schema and service layer
+
+Built and verified 2026-08-18. **No UI is wired to any of it**, deliberately: the data model and its invariants were proven before anything renders them.
+
+### What exists
+
+One migration, `20260818120000_create_collection.sql`: five tables, one function, one trigger, each with the `grant` block and RLS policies the Phase 0 convention requires.
+
+| Table                | Holds                                                                        |
+| -------------------- | ---------------------------------------------------------------------------- |
+| `collection_entries` | One row per user per album, permanently. Rating, like, relisten count, dates |
+| `relisten_events`    | Discrete relistens. The source of truth behind the counter                   |
+| `reviews`            | One-to-one with an entry, separately moderatable via `status`                |
+| `favourite_albums`   | Up to ten pinned albums, independent of the collection                       |
+| `want_to_listen`     | Intent. Independent of the collection; both may hold the same album          |
+
+Service layer at `src/services/collection/` — core mutations, relistens, reviews, favourites, want-to-listen, and read-time rating aggregates. Every mutation requires a completed profile and returns `Result`.
+
+### The four decisions taken in this slice
+
+| Decision                                                 | Rationale                                                                                                                           |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| **Favourites cap enforced in the database as well**      | The service check is racy under concurrency and provides the friendly error; the constraints are the invariant. See `data-model.md` |
+| **`relisten_count` maintained by trigger**               | supabase-js has no multi-statement transaction API, so a service-layer counter is two round-trips that can drift and lose updates   |
+| **`ensure_collection_entry` is `security invoker`**      | RLS still applies to callers, so the function is not a privilege-escalation path                                                    |
+| **Direct writes to `collection_entries` are prohibited** | The clearing rule is a property of that one path, not of the schema. Migrations and tests are exempt                                |
+
+The last one is the fragile invariant in this slice and is worth restating: **the Want to Listen clearing rule is enforced by convention, not by the database.** A trigger would make it self-enforcing but would also make it a schema property, which is the coupling the independence decision rejected. Not added. Revisit if a second writer appears.
+
+### Tests
+
+**11 unit** (121 total) — rating validation and one-decimal rounding, including that `0.0` survives a `if (!rating)`-shaped bug.
+
+**39 integration** (150 total) — concurrent duplicate creation, idempotent implicit adds, the clearing rule and its scoping, coexistence created in the reverse order, the canonical path clearing the wishlist for all four implicit actions, relisten counter under twenty concurrent writes, review uniqueness and length, favourite independence and cap under concurrency, ownership as a second signed-in user, profile-required, cascade across all five tables, and averages across every rating case including `0.0` counting and nulls excluded.
+
+One test bypasses `ensure_collection_entry` deliberately, to pin down what the schema does and does not guarantee. It is labelled a schema-contract test rather than a sanctioned pattern.
+
+### Two things worth knowing before the next slice
+
+**`coalesce(listened_on, added_at::date)` cannot be indexed** — casting timestamptz to date depends on the session time zone, so it is not `IMMUTABLE` and Postgres rejects it in an index expression. The collection sort is indexed on `added_at` with a companion index on `listened_on`. The interleaved ordering the collection view wants is not index-backed; at 338 albums that does not matter, and it becomes a Phase 5 question.
+
+**The generated RPC type has `isSetofReturn: false`**, so calling `.single()` on `ensure_collection_entry` narrows the result to `never`. Typecheck catches it; it cost a build to discover.
+
+---
+
+## 14. Lessons carried forward
 
 **A returned failure is not a raised failure.** This cost the most, twice. `fetchAndStoreArtwork` returns `{ status: 'failed' }` rather than throwing, and ingestion returned `null` for a failed tracklist. Both are right for their immediate caller and wrong for the one that owns retrying — nothing threw, no job failed, and 36 albums plus 44 tracklists were quietly never retried.
 

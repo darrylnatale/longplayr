@@ -149,7 +149,20 @@ Pinned albums summarising a user's taste, shown on their profile. **[DECIDED]**
 | `user_id`, `album_id` | Unique together          |
 | `position`            | User-controlled ordering |
 
-**Maximum ten per user**, enforced in the service layer. Independent of the collection — **[INFERRED]** you may favourite an album you haven't added, and favouriting does not add it, since a favourite is a statement about taste rather than a record of listening. Say if you'd rather favourites be restricted to your collection.
+**Maximum ten per user, enforced in two places and for two different reasons.** **[DECIDED — 2026-08-18]**
+
+| Layer         | What it provides                                                                                                                                      |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Service layer | The **friendly user-facing error** — a `favourites_full` `Result` the interface can render, checked before the write is attempted                     |
+| Database      | The **concurrency-safe invariant** — `check (position between 1 and 10)` plus `unique (user_id, position)` caps the table at ten rows by construction |
+
+The division matters. A count-then-insert check in application code is racy: two concurrent requests can each observe nine existing rows and each insert, yielding eleven. **The service-layer check is a courtesy, not a guarantee**, and it must never be treated as one. The constraints are what actually hold the line, and a request that loses the race still returns `favourites_full` rather than crashing, because the service catches the constraint violation and maps it back to the same outcome.
+
+This is the same division as handle uniqueness on `Profile`: the service checks availability for a good message, the unique index is the truth.
+
+The position constraint is `deferrable initially immediate` so a reorder can move several rows inside one transaction without tripping over itself mid-update.
+
+Independent of the collection — **[INFERRED]** you may favourite an album you haven't added, and favouriting does not add it, since a favourite is a statement about taste rather than a record of listening. Say if you'd rather favourites be restricted to your collection.
 
 ### Follow
 
@@ -194,6 +207,30 @@ An entry generates a `listened` activity event when a user **adds it interactive
 
 Without this, rating an album you'd never logged would announce to your followers that you had just listened to it, which may not be true. `FavouriteAlbum` is deliberately outside this behaviour.
 
+### The single mutation path
+
+**`ensure_collection_entry(user_id, album_id, listened_on)` is the only sanctioned way a collection entry comes to exist.** **[DECIDED — 2026-08-18]**
+
+Every action that causes an entry goes through it — the explicit add, and the implicit ones behind rating, liking, reviewing and relistening. One path rather than five, so the Want to Listen clearing rule is implemented once and cannot be forgotten in the fifth place.
+
+It is a database function because the upsert and the wishlist clear **must be atomic**. Two statements from the client would leave a window in which a collected album is still on the wishlist if the second call fails.
+
+**It runs `security invoker`.** **[DECIDED]** Row Level Security therefore still applies to whoever calls it, and the function is deliberately **not** a privilege-escalation path — it cannot be used to write an entry for somebody else. Authorisation remains the service layer's job, exactly as it is everywhere else; this is defence in depth, not a substitute.
+
+**It creates no activity event.** Activity belongs to the social phase, and an implicit add must never announce a listen the user did not claim.
+
+`listened_on` is applied only on creation. Re-running the function for an album already held never rewrites a date the user set.
+
+#### Direct writes to `CollectionEntry` are prohibited
+
+**No application code may insert into `collection_entries` directly.** All writes go through `ensure_collection_entry`. **[DECIDED — 2026-08-18]**
+
+The clearing rule is a property of that one code path, **not of the schema** — there is deliberately no trigger and no constraint enforcing it, because Want to Listen and the collection are independent relations that may legally hold the same album. A direct insert therefore creates an entry and silently leaves the wishlist row behind, which is a wrong state produced by a legal-looking write.
+
+The prohibition covers application code and service functions. **Migrations and tests are exempt** — a migration may need to backfill, and the integration suite asserts the schema's behaviour precisely by bypassing the function to show what the schema does and does not guarantee. Anything else needs explicit authorisation.
+
+**A trigger is not being added yet.** It would make the invariant self-enforcing, but it would also make the clearing rule a schema property, which is exactly the coupling the independence decision rejected. Revisit if a second writer ever appears.
+
 ### RelistenEvent
 
 Discrete, timestamped rows — one per relisten.
@@ -203,7 +240,15 @@ Discrete, timestamped rows — one per relisten.
 | `collection_entry_id` | Parent |
 | `occurred_at`         |        |
 
-**These must exist as rows, not merely as a counter.** Marking a relisten on Monday, Tuesday and Wednesday produces three separate feed items, which a single count column cannot express. `CollectionEntry.relisten_count` is a denormalised convenience for grid display; these rows are the truth.
+**These rows are the source of truth.** Marking a relisten on Monday, Tuesday and Wednesday produces three separate feed items, which a single count column cannot express.
+
+**`CollectionEntry.relisten_count` is denormalised, and it is maintained by a database trigger.** **[DECIDED — 2026-08-18]** The trigger fires on insert and delete of `RelistenEvent` and adjusts the counter in the same transaction as the row it is counting.
+
+**The reason is concurrency correctness, not convenience.** supabase-js exposes no multi-statement transaction API, so a service-layer counter would be two round-trips — insert the event, then update the count — with a window in between where a failure leaves the number permanently wrong, and where twenty concurrent relistens can interleave into a lost update. Making it atomic in application code would mean writing a database function anyway. The trigger holds the row lock for the duration, so the counter cannot drift and cannot lose a write.
+
+It also survives write paths that do not exist yet: a backfill, an admin tool or a future import gets a correct counter without knowing it was supposed to maintain one.
+
+**Nothing but arithmetic lives in the trigger.** No business rule reads `relisten_count`; it exists so a grid can render `×3` without a subquery. If the two ever disagree, the rows win and the counter is the thing to rebuild.
 
 ### Review
 
