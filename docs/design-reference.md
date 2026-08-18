@@ -240,3 +240,57 @@ This is worth resolving before mobile layouts are built. Either a narrow capture
 When UI work begins, per `docs/claude-code-playbook.md` §7: build, screenshot the implementation, compare against intent, iterate.
 
 **Comparison is against our own design, never against Letterboxd.** The reference informs structure; pixel-matching it would be both wrong and a violation of §1's boundaries. Browser automation is not set up yet and becomes worth adding when there's a real UI to capture.
+
+---
+
+## 11. Implementation decisions derived from the reference
+
+Recorded as the album detail page was built, and approved as the baseline other
+detail surfaces follow. Each is a point where applying the reference literally
+would have produced the wrong result for this product, so the divergence is
+written down rather than left implicit in a component.
+
+### 11.1 Square artwork uses a 200–240px detail column, not ~13%
+
+§3 measured the reference's poster column at roughly **13%** of the page. That
+proportion is calibrated to a **2:3 portrait** poster, which is tall enough to
+carry a detail page at a narrow width. Album art is **1:1**, so the same 13% of
+our 1120px content measure yields a ~145px square — too small to act as the
+page's primary identity element.
+
+**Decided: `minmax(200px, 240px)`**, roughly 21% of the content measure. This is
+§5.1's square-artwork divergence arriving on the detail page. Anything narrower
+made the cover read as a thumbnail rather than the subject.
+
+### 11.2 Tracklists are set in Geist, not Newsreader
+
+§4 borrows "serif for content, sans for chrome", and a tracklist is arguably
+content. In practice it is **scanned, not read**, and it sits directly against
+tabular figures for position and duration. Newsreader at 14px in a dense list
+was measurably worse to scan.
+
+**Decided: sans for tracklists**, with tabular figures and a right-aligned
+position rail so single-disc `7` and multi-disc `1.12` share an edge. Newsreader
+is reserved for the material that is genuinely read: titles and, from Phase 2,
+review bodies.
+
+### 11.3 Rating information sits in the right rail
+
+The reference places its ratings histogram beside the action panel rather than
+in the title block, and that placement transfers directly. Putting an average in
+the identity block would interrupt the run from title to credit to metadata, and
+would give the number more prominence than a product that deliberately avoids a
+score-obsessed register should.
+
+**Decided: average and rating count live in the right rail, beneath the action
+card.** The identity block stays title, credit, metadata — nothing else.
+
+### 11.4 The action card is capped below 1024px
+
+Once the three-column layout collapses, the card has the full content measure
+available and will take it. At 768px an uncapped card produced a 720px-wide
+primary button, which reads as a banner rather than a control.
+
+**Decided: `max-w-sm` below the three-column breakpoint, uncapped at and above
+it.** On a phone the cap is wider than the viewport, so it has no effect there —
+it exists solely for the tablet range.
