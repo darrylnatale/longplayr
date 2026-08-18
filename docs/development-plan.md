@@ -66,6 +66,8 @@ Phases 0–2 constitute the product's spine. If work stopped after Phase 2, long
 
 **Goal.** Albums and artists exist, are findable, and look right. This is the highest-risk phase — it owns every external dependency.
 
+**Status: complete.** Verified against staging — 338 albums, 241 artists, 6,388 releases, 4,751 tracks, 336 covers found and 2 exhausted. See `docs/current-state.md`.
+
 **Features**
 
 - MusicBrainz client with rate limiting and a descriptive User-Agent
@@ -138,7 +140,7 @@ Keep the run small — a few dozen requests at one per second — and check the 
 
 ---
 
-## Design foundation _(parallel track, begins when screenshots arrive)_
+## Design foundation _(parallel track, begins when screenshots arrive)_ — **complete**
 
 Not a blocking phase, but it must land **before Phase 2**, because Phase 2 is where UI starts multiplying and retrofitting a design system across built components is far more expensive than establishing one first.
 
@@ -173,7 +175,7 @@ Not a blocking phase, but it must land **before Phase 2**, because Phase 2 is wh
 - Optional edition selection, with lazy release fetching
 - Album averages computed on read, one decimal
 
-**Dependencies.** Phase 1 (albums must exist), design foundation.
+**Dependencies.** Phase 1 (albums must exist), design foundation. **Both are complete** — Phase 1 implementation closed with 338 albums on staging, and the design foundation is finished with all nine surfaces migrated and screenshot-verified. Neither needs re-checking.
 
 **Additional features from resolved decisions**
 
@@ -181,12 +183,22 @@ Not a blocking phase, but it must land **before Phase 2**, because Phase 2 is wh
 - Artist page sorting by date and rating
 - Implicit collection creation when rating, liking or reviewing an uncollected album
 
-**No open decisions block this phase.**
+**Open decisions affecting this phase.** The line that stood here — "No open decisions block this phase" — was written before decision H was raised and before the product direction in `product-spec.md` §10 existed. It was wrong on both counts and is corrected rather than deleted, because a plan that once said a phase was unblocked should show that it changed its mind.
+
+| Item                                | State                                                                                                                                              |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Want to Listen schema**           | **RESOLVED 2026-08-18.** Independent relation, own table; the collection table needs no status column. This was the real blocker and it is cleared |
+| **Decision H — album page caching** | **RESOLVED 2026-08-18.** Pages stay dynamic; catalogue caching moves to the data layer behind a cookie-free client. See `current-state.md` §7      |
+| Want to Listen profile visibility   | **[OPEN]** — affects the profile tab structure this phase builds. Answerable late, but answer it before the profile collection view is called done |
+| Want to Listen feed behaviour       | **[OPEN]** — Phase 3 concern. Events do not exist until then                                                                                       |
+
+**Nothing now blocks Phase 2 from starting.**
 
 **Architectural decisions settled here**
 
 - Collection entry uniqueness and upsert semantics
 - Dual-timestamp handling: `listened_on` versus `added_at`, and the sort fallback
+- **Where the Want to Listen clearing rule lives.** Not whether — that is decided — but whether it is a trigger or service-layer logic. Service-layer is more consistent with decision G, which asks that collection mutations have single write points so Phase 3 can add `Activity` writes without duplicating them
 - Rating aggregation query and index strategy
 - Review as a separate table with a status field
 
@@ -400,21 +412,27 @@ Comments, private accounts, track-level features, streaming integration, per-ite
 
 `docs/product-spec.md` §10 records four areas of **decided but unbuilt** product direction. They are named here so nobody re-derives them, and so nobody schedules them by accident. **None of them has a phase.**
 
-| Direction                                    | State                                                                                                            |
-| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| **Want to Listen** (§10.1)                   | Decided. Generates feed events. Six product questions unresolved — one of them decides the schema                |
-| **Taste overlap / social discovery** (§10.2) | Decided as direction. Algorithm explicitly undecided. Six product questions unresolved                           |
-| **Profile photo, bio, city** (§10.3)         | Photo and bio are **already in scope** (Phase 0/2). Only city is new. Dating-specific fields explicitly excluded |
-| **Direct messaging** (§10.4)                 | Decided. **Blocked on legal research.** Phase placement itself is unresolved — see below                         |
+| Direction                                    | State                                                                                                                                                       |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Want to Listen** (§10.1)                   | Decided. **Schema resolved** — independent relation, own table. Generates feed events. Four questions remain, none blocking a migration                     |
+| **Taste overlap / social discovery** (§10.2) | Decided as direction. Algorithm explicitly undecided. Six product questions unresolved                                                                      |
+| **Profile photo, bio, city** (§10.3)         | Photo and bio are **already in scope** (Phase 0/2). Only city is new. Dating-specific fields explicitly excluded                                            |
+| **Direct messaging** (§10.4)                 | Decided. **Unscheduled, and blocked on legal research.** Desired from the beginning of the social product; not required in the single-user collection phase |
 
 **Every unresolved question in §10 must be asked, not inferred.** That is the whole reason the section exists. A phase must not be planned around a guessed answer.
 
 ### Two things that block scheduling
 
-**Messaging phase placement is contradictory as stated and must be resolved by the maintainer.** The direction was given as "an intended Phase 2 feature", but Phase 2 above is the **single-user core loop** — follows and the social graph do not arrive until Phase 3, so there is nobody to message. The recorded intent is "from the beginning of the social product", which reads as Phase 3. **Ask. Do not resolve this by renumbering phases**, and do not quietly file messaging under Phase 3 on the strength of this paragraph.
+**Messaging placement, clarified 2026-08-18.** The earlier contradiction is resolved without renumbering anything. Messaging is **desired from the beginning of the social product** and is **not required in the single-user collection phase** — Phase 2 has no social graph, so there is nobody to message and its absence there costs nothing. Phase 2 is not "too early for messaging"; messaging is simply not part of what Phase 2 is.
 
-**Messaging has a blocking legal precondition.** Current DSA and German/EU obligations for a small service hosting user-generated content and private messaging must be researched, with legal requirements distinguished from good practice, current authoritative sources cited, and anything needing professional legal advice flagged as such. See `docs/product-spec.md` §10.4. **No messaging code before that research exists.**
+**It remains unscheduled**, and deliberately so: what gates it is a precondition rather than a phase number.
+
+**That precondition is a minimum viable safety and legal layer — not the whole of Phase 6.** An earlier reading held that messaging needed Phase 6's complete reports queue and admin tooling, which would have pushed it several phases out. That reading is rejected. What it needs is the smallest safety surface that discharges the obligations which actually apply, and determining that surface is precisely what the legal research is for.
+
+**The legal research is blocking.** Current DSA and German/EU obligations for a small service hosting user-generated content and private messaging must be researched, with legal requirements distinguished from good practice, current authoritative sources cited, and anything needing professional legal advice flagged as such rather than presented as settled. See `docs/product-spec.md` §10.4. **No messaging code, and no phase assignment, before that research exists** — the research is what tells us how large the prerequisite is, and therefore where messaging can sit.
 
 ### Where Want to Listen would land if scheduled
 
-Recorded as an observation, not a plan. Want to Listen shares the action card, the implicit-add logic and the profile tab structure with Phase 2, and it generates feed events, which is Phase 3 machinery. Building it during those phases is materially cheaper than retrofitting it afterwards — but it is **not** in either phase's scope today, and its schema question (`product-spec.md` §10.1, last bullet) is unanswered.
+Recorded as an observation, not a plan. Want to Listen shares the action card, the implicit-add logic and the profile tab structure with Phase 2, and it generates feed events, which is Phase 3 machinery. Building it during those phases is materially cheaper than retrofitting it afterwards — but it is **not** in either phase's scope today.
+
+**Its schema question is now answered**, which changes what deferring it costs. Because the two relations are independent and the collection table needs no status column, Phase 2 can be built in full without Want to Listen existing, and adding it later is an additive migration rather than a rewrite. Deferring it is now cheap; it was not before.

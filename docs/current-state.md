@@ -191,16 +191,16 @@ Established before Phase 2 deliberately: Phase 2 multiplies UI, and retrofitting
 
 ### Locked decisions
 
-| #   | Decision                                                                                                                                |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| A   | Design foundation built **before** Phase 2 implementation, not in parallel                                                              |
-| B   | Grid geometry: ~12-column square artwork grid at desktop, treated as an explicit system decision                                        |
-| C   | Favourites are independent of the collection                                                                                            |
-| D   | Collection grid uses a **user density toggle**: Compact (artwork only) is the default; Detailed adds title, credit and collection state |
-| E   | A completed profile is required before collecting; user-authored rows reference `profiles(id)`                                          |
-| F   | _(was the overlay question — resolved as D)_                                                                                            |
-| G   | `Activity` deferred entirely to Phase 3; Phase 2 mutations structured so write points can be added without duplicating logic            |
-| H   | No speculative caching decision; the mixed catalogue/personal album page needs investigation first                                      |
+| #   | Decision                                                                                                                                    |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| A   | Design foundation built **before** Phase 2 implementation, not in parallel                                                                  |
+| B   | Grid geometry: ~12-column square artwork grid at desktop, treated as an explicit system decision                                            |
+| C   | Favourites are independent of the collection                                                                                                |
+| D   | Collection grid uses a **user density toggle**: Compact (artwork only) is the default; Detailed adds title, credit and collection state     |
+| E   | A completed profile is required before collecting; user-authored rows reference `profiles(id)`                                              |
+| F   | _(was the overlay question — resolved as D)_                                                                                                |
+| G   | `Activity` deferred entirely to Phase 3; Phase 2 mutations structured so write points can be added without duplicating logic                |
+| H   | **RESOLVED 2026-08-18** — pages stay dynamically rendered; catalogue caching moves to the data layer behind a cookie-free client. See below |
 
 Visual identity: **brass `#C9A227`** accent on a warm-neutral ground; **Newsreader** for editorial content and titles, **Geist Sans** for chrome; monochrome scores, never tinted by value; content container **1120px**, wide container **min(94vw, 1680px)**; mobile navigation is a **bottom tab bar** below 768px with Browse · Search · You, where "You" is a stable destination whose label never changes.
 
@@ -261,6 +261,48 @@ Checked against real staging data at 390, 768 and 1440px, following the build-sc
 | Artwork scale                     | **CORRECTED** — `AlbumGrid` hardcoded the 250px asset, so `relaxed` cells were being interpolated upward. Now density-mapped                                                                               |
 
 The ranking itself was not touched. `getPopularAlbums`, `getRecentAlbums`, `getCatalogueSize`, the limits, `popularity_score` and the `PopularitySource` abstraction are all unchanged; the migration was presentation only.
+
+### Decision H — album page caching, resolved
+
+Investigated against the bundled Next.js 16 docs in `node_modules/next/dist/docs/` and against the build manifest, not from memory.
+
+#### What is actually happening today
+
+**The whole application is dynamically rendered, and the site header is why.**
+
+`cookies()` is a Request-time API, and in the caching model this project uses, touching it anywhere in a route's render tree opts that route into dynamic rendering. Three facts compound:
+
+1. `src/lib/supabase/server.ts` `createClient()` awaits `cookies()` — it is a session-bound client by design, so RLS applies as the signed-in user.
+2. Every service-layer read goes through it, including purely public catalogue reads.
+3. `RootLayout` and `SiteHeader` both call `getCurrentUser()` and `getCurrentProfile()`, and they wrap **every** route.
+
+The build manifest confirms it: every route renders `f` (dynamic) except `/design`, and that one is static only because it sets `dynamic = 'force-static'` explicitly.
+
+**So there is no leak today, and there is also no caching.** The album page cannot serve one user's collection state to another because nothing is cached at all. The risk decision H was raised against is not a bug that exists — it is the bug someone creates by adding `export const revalidate` or `force-static` to a route that renders personal state, in order to "fix" the performance this arrangement costs.
+
+**This project is not on Cache Components.** `next.config.ts` does not set `cacheComponents`, so `use cache`, `cacheLife`, `use cache: private` and the Suspense-shell prerendering model do not apply here. Enabling it is a whole-application migration with its own guide, and it changes the prerendering model for `GET` route handlers too — `/api/cron/drain-jobs` is one.
+
+#### Decided
+
+**Pages that render personal state stay dynamic. Catalogue caching happens at the data layer, behind a client that cannot see cookies.**
+
+1. **No route-level caching on any route that renders per-user state.** No `revalidate`, no `force-static`, no `dynamic` overrides. This is the rule that prevents the leak, and it is binding from day one of Phase 2.
+2. **Catalogue reads that are genuinely public get a cookie-free path.** A public Supabase client — anon key, no cookie binding — alongside the existing session-bound `createClient()`. The catalogue is read-only downstream of MusicBrainz and already carries `anon` grants, so this changes no authorisation.
+3. **Cache those reads, not the pages.** A cached catalogue read is leak-proof by construction: no session is in scope to leak.
+4. **Do not enable Cache Components during Phase 2.** Record it as the migration target afterwards, at which point `use cache` replaces the caching primitive and the header's session read moves behind `<Suspense>` so a static shell becomes possible.
+
+#### Why this and not the alternatives
+
+Caching the album page itself is the thing that leaks, and no amount of care makes a route-level cache safe while personal state renders in the same pass. Enabling Cache Components now would be correct in the long run and is where this eventually goes, but it is an application-wide change landing in the middle of the phase that introduces the collection — two large migrations at once, with a privacy leak as the failure mode of getting it wrong.
+
+#### The tradeoffs, stated plainly
+
+- **No static shell, no partial prerendering.** Every request still renders on the server. The saving is database round-trips, which is the real cost here — Supabase is in `eu-west-3` and the catalogue read is the expensive part, not the render.
+- **The caching primitive available today is deprecated.** `unstable_cache` is marked in the Next 16 docs as replaced by `use cache`. Anything written now is written knowing it gets replaced.
+- **A second Supabase client is a real service-layer addition**, and it must stay narrow: public catalogue reads only, never anything user-scoped. A cache scope cannot read cookies, so this is not stylistic — it is the only way to cache these reads at all.
+- **The header remains the ceiling.** Until the session read moves behind `<Suspense>`, no page can be static regardless of what its own data does.
+
+**This belongs in `docs/architecture.md` once implemented.** It is recorded here because decision H is recorded here, and no code has been written.
 
 ### Deferred design polish — none of these block Phase 2
 
@@ -364,12 +406,12 @@ See `docs/product-spec.md` §8 and `docs/data-model.md` §9 for the authoritativ
 
 New direction was recorded on 2026-08-18. **None of it is implemented.** Nothing below exists in schema or in code, nothing is scheduled into a phase, and no application code was written for any of it. The authoritative record is `docs/product-spec.md` §10; this is the pointer a resuming session will actually read first.
 
-| Direction                            | State                                                                                                                                 |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
-| **Want to Listen**                   | Decided. A wishlist relation separate from the collection. **Generates a normal feed event.** Six product questions unresolved        |
-| **Taste overlap / social discovery** | Decided as direction, in the spirit of Last.fm's compatibility notion. **Algorithm explicitly not decided.** Six questions unresolved |
-| **Profile photo, bio, city**         | Photo and bio were **already in scope**. Only city/location is new. Dating-specific fields **explicitly excluded**                    |
-| **Direct messaging**                 | Decided — intended from the beginning of the social product, **not merely a possibility.** Blocked on legal research                  |
+| Direction                            | State                                                                                                                                                                                                           |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Want to Listen**                   | Decided, and **schema resolved 2026-08-18** — independent relation, own table; the collection table needs no status column. **Generates a normal feed event.** Four questions remain, none blocking a migration |
+| **Taste overlap / social discovery** | Decided as direction, in the spirit of Last.fm's compatibility notion. **Algorithm explicitly not decided.** Six questions unresolved                                                                           |
+| **Profile photo, bio, city**         | Photo and bio were **already in scope**. Only city/location is new. Dating-specific fields **explicitly excluded**                                                                                              |
+| **Direct messaging**                 | Decided — intended from the beginning of the social product, **not merely a possibility.** Unscheduled. Not required in the single-user collection phase. Blocked on legal research                             |
 
 Four things a resuming session most often gets wrong about this list:
 
@@ -382,7 +424,9 @@ Four things a resuming session most often gets wrong about this list:
 
 **Legal research is a blocking precondition.** Current DSA and German/EU obligations for a small service hosting user-generated content and private messaging must be researched before any messaging code — legal requirements distinguished from good practice, current authoritative sources cited, anything needing professional legal advice flagged rather than presented as settled. Small does not mean exempt. Full brief in `product-spec.md` §10.4.
 
-**Phase placement is contradictory as given.** The direction says "an intended Phase 2 feature", but `development-plan.md` Phase 2 is the single-user core loop — the social graph does not exist until Phase 3, so there is nobody to message. The recorded intent, "from the beginning of the social product", reads as Phase 3. **This is an open question for the maintainer and must not be resolved by renumbering phases.**
+**Phase placement — clarified, and no longer a contradiction.** Messaging is desired from the beginning of the social product and is **not required in the single-user collection phase**. Phase 2 has no social graph, so messaging's absence there costs nothing; Phase 2 is not "too early", messaging is simply not part of what Phase 2 is. No phases were renumbered.
+
+**What gates it is a precondition, not a phase number**, and the precondition is a **minimum viable safety and legal layer — not the whole of Phase 6**. The earlier reading, that messaging needed Phase 6's complete reports queue and admin tooling, is rejected. The legal research is what determines how large that layer actually is, and therefore where messaging can sit.
 
 ### One finding worth carrying
 

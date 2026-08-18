@@ -363,9 +363,17 @@ Every catalogue entity has a unique MBID. Re-ingesting an album is an upsert on 
 
 `product-spec.md` §10 records four areas of decided-but-unbuilt direction. None of the entities below exist, none are designed, and none should be created without first asking the product questions §10 lists. They are named here so that a future migration does not discover them late.
 
-**Want to Listen** (§10.1). A user–album relation, held separately from the collection. It is the **third** independent user–album relation after collection entries and favourites, and that is the point at which a generic `user_album_relation` table starts to look attractive — it should be resisted, because it makes every read polymorphic and forces a discriminator into queries that are currently direct. Keep the relations as separate tables.
+**Want to Listen** (§10.1). **Schema resolved 2026-08-18.** A user–album relation held in **its own table**, separate from the collection. It is the **third** independent user–album relation after collection entries and favourites, and that is the point at which a generic `user_album_relation` table starts to look attractive — it should be resisted, because it makes every read polymorphic and forces a discriminator into queries that are currently direct. Keep the relations as separate tables.
 
-The unresolved question "can an album be both collected and on Want to Listen" (§10.1) **decides the schema** and cannot be deferred past the first migration: mutually exclusive states argue for a status column on a single relation, while independent coexistence argues for a separate table. Ask before writing the migration.
+The blocking question — _can an album be both collected and on Want to Listen?_ — is answered **yes**. They are independent concepts with independent lifecycles. Consequences for the schema:
+
+- Want to Listen is a separate table keyed on `(profile_id, album_id)`, unique, referencing `profiles(id)` per decision E.
+- **The collection table needs no status column.** This is what unblocks Phase 2: the collection migration can be written now without waiting on wishlist design.
+- The two tables must be able to hold the same album for the same user simultaneously. Nothing may enforce mutual exclusion — no partial unique index across the pair, no check constraint.
+
+**The clearing rule is one-directional.** _Any action that causes a collection entry to exist clears Want to Listen for that album_ — the explicit add and every implicit one (rating, liking, reviewing, relistening). It does **not** run in reverse, and it does not fire when a wishlist row is created. So the common path never leaves both rows present, while an album collected first and wished second does. Model it as an effect of collection-entry creation, in one place, so a sixth creation path inherits it rather than forgetting it.
+
+Whether that effect is a database trigger or service-layer logic is an open implementation choice, not a product one. Service-layer logic is more consistent with the existing architecture — the collection mutation already has to write an `Activity` event in Phase 3, and decision G asks that those write points be single rather than duplicated.
 
 Want to Listen additions generate feed events, so whatever `Activity` becomes in Phase 3 needs an event type for them.
 
@@ -386,9 +394,10 @@ Message retention is an open question with a legal dimension, so the schema must
 
 These duplicate `product-spec.md` §10 deliberately, because a schema author reads this document and not that one. **The authoritative list is in `product-spec.md` §10. Do not answer any of them here.**
 
-- **11.1** — Can an album be simultaneously collected and on Want to Listen? _(Decides the Want to Listen schema.)_
-- **11.2** — Do collection adds, ratings, likes, reviews or relistens remove an album from Want to Listen? _(Decides whether removal is a trigger, application logic, or nothing.)_
+- ~~**11.1** — Can an album be simultaneously collected and on Want to Listen?~~ **RESOLVED — yes, independent relations.** See §10.
+- ~~**11.2** — Do collection adds, ratings, likes, reviews or relistens remove an album from Want to Listen?~~ **RESOLVED — yes, all of them.** One rule: any action that causes a collection entry to exist clears Want to Listen. See §10.
 - **11.3** — Is Want to Listen public on the profile? _(Interacts with the all-public model, which currently admits no exceptions.)_
+- **11.8** — Should Want to Listen be offered on an album already in the collection? _(The schema permits the state; whether the interface should produce it is unanswered.)_
 - **11.4** — Is taste similarity symmetric? _(Decides the key shape of any cache.)_
 - **11.5** — Is location free text or structured, and is history retained? _(Decides column versus reference, and versioned versus mutable.)_
 - **11.6** — What happens to a two-party message when one party hard-deletes? _(Decides the cascade, and is a privacy commitment.)_

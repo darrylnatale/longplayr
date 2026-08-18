@@ -339,18 +339,34 @@ Three rules govern this section, and they matter more than the content:
 
 This is a deliberate departure from the volume argument in §4 that keeps likes and follows out of the feed, and it should be understood as such rather than as an oversight. Intent is treated as genuinely interesting social signal here — "I want to hear this" is closer to a review than to a like. The consequence is accepted: wishlist activity is high-frequency, and the feed will carry more of it than it carries listens.
 
+**How this sits against the silent-add rule — flagged, not decided.** `CLAUDE.md` states that _only today-dated adds and relistens generate feed events; undated and backdated adds are silent._ That rule exists to stop onboarding backfill flooding followers, and it is scoped to **collection adds**, which carry a user-supplied `listened_on` that can be backdated or omitted. It is already narrower than practice — §4 has ratings, reviews and list events generating feed events too.
+
+**Want to Listen has no user-supplied date.** You cannot backdate an intention; every wishlist add happens now. The rule therefore has nothing to bite on here, and its purpose — preventing a silent bulk backfill from becoming a feed flood — is not engaged.
+
+That reading is recorded rather than asserted. If the intent was that the rule enumerates _every_ feed event in the product, then ratings, reviews and lists already contradict it and the line needs rewording. **Raise it; do not resolve it in code.**
+
 **Deferred, and deliberately not to be designed now:** a per-user setting to hide Want to Listen activity from the feed. It is anticipated, it is not being specified, and no schema should be shaped in advance to accommodate it.
+
+#### Resolved 2026-08-18
+
+**The two relations are independent.** An album **can** be both collected and on Want to Listen. Collection means _listened to / held_; Want to Listen means _intent to listen_. They are separate relations with separate lifecycles, not two states of one thing.
+
+This settles the schema question that was blocking Phase 2: Want to Listen is **its own table**, and the collection table needs no status column to accommodate it.
+
+**The clearing rule.** _Any action that causes a collection entry to exist clears Want to Listen for that album._
+
+That covers the explicit add and every implicit one — rating, liking, reviewing and relistening all create a collection entry under §8.5, and all of them therefore clear the wishlist entry. One rule rather than five, so a sixth path added later inherits it automatically instead of being forgotten.
+
+**These two facts are not in tension, and the distinction matters when implementing.** The relations are independent in the _schema_; the clearing rule is a **one-directional side effect triggered by collection-entry creation only**. It does not run in the other direction, and it does not run when a wishlist entry is created. An album that is already collected and is _then_ added to Want to Listen therefore stays in both — which is why the schema must permit coexistence even though the common path never produces it.
+
+**Newly surfaced by that resolution, and unresolved:** should the interface _offer_ Want to Listen on an album already in the collection? The data model permits it. Whether it is a sensible thing to show a user is a product question, and it is not answered here. **Ask.**
 
 **Ask before implementing.** None of these may be answered by inference:
 
-- Does adding an album to the collection automatically remove it from Want to Listen?
-- Does rating, liking, reviewing or relistening automatically remove it from Want to Listen?
 - Is Want to Listen visible on the public profile?
 - Does _removing_ an album from Want to Listen generate a feed event? (Expected no — still ask.)
 - Does Want to Listen contribute to any popularity or discovery ranking, or is it purely a social and personal signal?
-- Can an album be simultaneously collected and on Want to Listen, or is that state impossible?
-
-The last question is load-bearing: it decides whether this is a separate relation with its own lifecycle or a mutually exclusive state machine, and it cannot be deferred past the first migration.
+- Should Want to Listen be offered on an album that is already collected? _(surfaced by the resolution above)_
 
 ### 10.2 Taste overlap and social discovery
 
@@ -392,6 +408,14 @@ EXIF stripping and location granularity interact — photo metadata can carry pr
 **Constraint.** The simplest viable system. The maintainer is a solo developer and is not building a large ongoing moderation operation.
 
 **This constraint does not imply that zero moderation work is legally or operationally available**, and no design may assume it does.
+
+**Timing, stated precisely (2026-08-18).** Three separate claims, which had been collapsed into one and read as a scheduling instruction:
+
+1. Messaging is **desired from the beginning of the social product**.
+2. It is **not necessarily required to exist in the single-user collection phase** — the phase where there is no social graph and therefore nobody to message.
+3. What must exist before it ships is a **minimum viable safety and legal layer, not the entire Phase 6 moderation system**.
+
+The third point is the one that changes the plan's shape. The earlier reading — that messaging needs Phase 6's full reports queue and admin tooling — would have pushed it several phases out. It does not. It needs the smallest safety surface that discharges the actual obligations, which is what the legal research below exists to determine. **It remains unscheduled until that research says what that surface is.**
 
 **Initial assumptions, to be treated as NO unless explicitly approved:** no image or file attachments; no read receipts; no typing indicators.
 
