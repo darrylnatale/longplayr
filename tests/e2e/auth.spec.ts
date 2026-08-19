@@ -30,9 +30,16 @@ test('sign up, choose a handle, sign out, sign back in', async ({ page }) => {
 
   await expect(page).toHaveURL(`/${user.handle}`);
   await expect(page.getByRole('heading', { name: user.handle })).toBeVisible();
-  await expect(page.getByText('This is you')).toBeVisible();
+  // The migrated profile marks your own page with a "You" chip beside the
+  // heading, rather than the sentence Phase 0 used.
+  // Scoped to main: the mobile tab bar also has a "You" destination, which is
+  // in the DOM at every width.
+  await expect(page.getByRole('main').getByText('You', { exact: true })).toBeVisible();
 
-  const nav = page.getByRole('navigation');
+  // The site header is a banner landmark, not a navigation one — the only
+  // navigation landmark is the mobile tab bar, which carries no account
+  // controls. Account state lives in the header at every width.
+  const nav = page.getByRole('banner');
 
   await nav.getByRole('button', { name: 'Sign out' }).click();
   await expect(nav.getByRole('link', { name: 'Sign in' })).toBeVisible();

@@ -69,6 +69,13 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
+      # The integration suite truncates albums and artists between cases and
+      # again on the way out, so it hands the end-to-end suite an empty
+      # catalogue. Anything that opens an album page needs this, and without it
+      # the failure looks like a broken page rather than missing data.
+      - name: Seed the fixture catalogue for end-to-end tests
+        run: npm run db:seed:fixtures
+
       - name: End-to-end tests
         run: npm run test:e2e
 
