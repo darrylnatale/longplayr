@@ -79,7 +79,7 @@ Lists, follows, activity, feed, notifications, messaging, taste overlap and prof
 | `catalogue_additions` | 3                                                     |
 | `profiles`            | 3 (test accounts — see §8)                            |
 
-**Nine migrations applied; local and staging are in sync**, confirmed with `npx supabase migration list --linked` on 2026-08-19. The collection migration `20260818120000_create_collection` was applied to staging that day, closing a one-migration drift that existed while the slice was built locally. Staging can be queried read-only with `npx supabase db query --linked "<sql>"`, which is how these numbers were checked.
+**Ten migrations applied; local and staging are in sync**, confirmed with `npx supabase migration list --linked` on 2026-08-19. Two were pushed to staging that day: `20260818120000_create_collection`, and `20260819100000_clear_wishlist_on_create_only` correcting the clearing rule (§15). Staging can be queried read-only with `npx supabase db query --linked "<sql>"`, which is how these numbers were checked.
 
 ### Git state
 
@@ -526,7 +526,55 @@ One observation, not a finding: `anon` holds `TRUNCATE`, `TRIGGER` and `REFERENC
 
 ---
 
-## 15. Lessons carried forward
+## 15. Review readiness — decisions and service corrections
+
+Reviews are **not implemented**: no UI exists, and the three `Write a review…` / `Edit review…` links in the action card remain inert. What follows are decisions taken and defects fixed **before** building anything, in response to a readiness review on 2026-08-19.
+
+### Three decisions
+
+| #   | Decision                                                                                                                                                                                                                                                       |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A   | **An author deleting their own review is a hard delete.** `status = 'removed'` stays a moderation state and is not the mechanism for ordinary author deletion. **No third status, no `removed_by` column** — the two are distinguished by which code path runs |
+| B   | **Editing preserves review identity.** `id` and `created_at` survive an edit; only `body` and `updated_at` change. No edit history, no versioning                                                                                                              |
+| C   | **The clearing rule fires on creation, not on invocation.** Creating a collection entry clears Want to Listen; calling `ensure_collection_entry` for an album already held clears nothing                                                                      |
+
+**B is load-bearing rather than cosmetic.** Phase 3 hangs review likes, notifications and reports off the review id. A delete-and-insert would satisfy every visible behaviour and silently orphan all three, so it is pinned by test rather than left to whoever next simplifies the query.
+
+### One migration
+
+`20260819100000_clear_wishlist_on_create_only` rewrites `ensure_collection_entry`. The original deleted the wishlist row unconditionally, so for an album already in the collection **any** rate, like, review or relisten destroyed a Want to Listen row it had no business touching — silent loss on a relation the independence decision deliberately keeps separate.
+
+The fix turns the upsert's `do update` into `do nothing`, which is what makes the two cases distinguishable: a returned row means this call created the entry, an empty result means it already existed. A `do update` returns a row either way and cannot tell them apart. Everything else is unchanged — still the single sanctioned path, still `security invoker`, still never overwriting a `listened_on` the user set, still creating no activity event.
+
+**Applied to staging on 2026-08-19** and verified by reading the deployed definition back with `pg_get_functiondef`: the insert uses `on conflict … do nothing`, the early return guards on `entry.id is null`, and the function is still `security invoker`. The catalogue was unchanged by the migration — 338 / 241 / 6,388 / 4,751, identical to the pre-apply baseline — and all five collection tables remain empty.
+
+Behaviour was verified statically rather than by exercising it, deliberately: proving the create-only path by running it would have meant writing collection and wishlist rows into staging, and staging holds no user data on purpose.
+
+### Two service defects fixed
+
+**`deleteReview` no longer calls `ensureEntry`.** It used to, so deleting a review you did not have, on an album you did not hold, created a collection entry and cleared your wishlist. It now looks the entry up and does nothing when there isn't one.
+
+**`getAlbumReviews` carries author identity.** It previously returned no handle, display name or avatar, which made the result unrenderable — a review with no one attached to it. The embed reaches `profiles` through `collection_entries.user_id`; only one relationship exists between those tables, so it needs no disambiguation. **Moderation visibility is unchanged**: live reviews are public, removed ones remain readable only by their author.
+
+### Still open before the UI is built
+
+None of these blocks the service work, and none affects the schema.
+
+| Question                                              | Recommendation offered, not adopted                                   |
+| ----------------------------------------------------- | --------------------------------------------------------------------- |
+| Edit interaction — immediate, or explicit save/cancel | Explicit save/cancel, counter only near the limit                     |
+| Is `status = removed` shown to its author             | Moderation-only for now; revisit with Phase 6                         |
+| Activity on edit and delete                           | Unspecified; §8.5 covers creation only. Answer before Phase 3         |
+| URLs in review text                                   | Plain text, no autolinking                                            |
+| Profile review activity                               | Album page first; profile when it gains its overview                  |
+| Editor accessibility                                  | Labelled textarea, `aria-describedby`, `role="alert"`, no unload trap |
+| Client-side length enforcement                        | `maxLength` plus the server check                                     |
+
+One wrinkle worth remembering on the last: HTML `maxLength` counts UTF-16 code units while Postgres `char_length` counts code points, so a review heavy in astral characters would be blocked by the client while the server would accept it. That is the safe direction — it cannot lose writing — but the client is slightly stricter than the rule.
+
+---
+
+## 16. Lessons carried forward
 
 **A returned failure is not a raised failure.** This cost the most, twice. `fetchAndStoreArtwork` returns `{ status: 'failed' }` rather than throwing, and ingestion returned `null` for a failed tracklist. Both are right for their immediate caller and wrong for the one that owns retrying — nothing threw, no job failed, and 36 albums plus 44 tracklists were quietly never retried.
 

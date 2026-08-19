@@ -357,6 +357,8 @@ This settles the schema question that was blocking Phase 2: Want to Listen is **
 
 That covers the explicit add and every implicit one — rating, liking, reviewing and relistening all create a collection entry under §8.5, and all of them therefore clear the wishlist entry. One rule rather than five, so a sixth path added later inherits it automatically instead of being forgotten.
 
+**Read "causes to exist" literally.** **[Clarified 2026-08-19]** The trigger is the entry being _created_, not the mutation being _attempted_. Rating an album already in the collection does not cause the entry to exist — it was already there — so it clears nothing. The first implementation got this wrong and cleared the wishlist on every call, which silently destroyed the legal coexistence the independence decision permits.
+
 **These two facts are not in tension, and the distinction matters when implementing.** The relations are independent in the _schema_; the clearing rule is a **one-directional side effect triggered by collection-entry creation only**. It does not run in the other direction, and it does not run when a wishlist entry is created. An album that is already collected and is _then_ added to Want to Listen therefore stays in both — which is why the schema must permit coexistence even though the common path never produces it.
 
 **Newly surfaced by that resolution, and unresolved:** should the interface _offer_ Want to Listen on an album already in the collection? The data model permits it. Whether it is a sensible thing to show a user is a product question, and it is not answered here. **Ask.**

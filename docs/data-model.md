@@ -265,6 +265,18 @@ One standing review per user per album, editable in place.
 
 Editing replaces the body; no version history is kept, per the rating-and-review decision.
 
+#### Three invariants, decided 2026-08-19
+
+**An author deleting their own review is a hard delete.** **[DECIDED — A]** The row goes. `status = 'removed'` is a **moderation** state and is not the mechanism for ordinary author deletion — a hidden copy is the opposite of what a delete control promises. There is deliberately **no third status and no `removed_by` column**: the two mechanisms are distinguished by which code path runs, not by a discriminator on the row.
+
+**Editing a review preserves its identity.** **[DECIDED — B]** `id` and `created_at` survive an edit; only `body` and `updated_at` change. This is load-bearing rather than incidental: Phase 3 hangs review likes, notifications and reports off the review id, and an id that changed on edit would orphan all three. It is guaranteed by writing edits as an update — an `upsert` on the unique `collection_entry_id` resolves to `insert … on conflict do update`, which keeps the row. **A delete-and-insert would satisfy every visible behaviour and silently break Phase 3**, so this is pinned by test rather than left to whoever next simplifies the query.
+
+**No edit history, no versioning.** Editing replaces the body outright.
+
+#### Author identity on a review
+
+A review reaches its author through `collection_entries.user_id`, which references `profiles(id)`. Reads that render reviews must embed the profile — a review without an author is not renderable, and the reference already exists, so this is a query concern rather than a schema one. Moderation visibility is unaffected: live reviews are public, removed ones remain readable only by their author.
+
 ---
 
 ## 5. Lists and interactions
@@ -424,7 +436,15 @@ The blocking question — _can an album be both collected and on Want to Listen?
 - **The collection table needs no status column.** This is what unblocks Phase 2: the collection migration can be written now without waiting on wishlist design.
 - The two tables must be able to hold the same album for the same user simultaneously. Nothing may enforce mutual exclusion — no partial unique index across the pair, no check constraint.
 
-**The clearing rule is one-directional.** _Any action that causes a collection entry to exist clears Want to Listen for that album_ — the explicit add and every implicit one (rating, liking, reviewing, relistening). It does **not** run in reverse, and it does not fire when a wishlist row is created. So the common path never leaves both rows present, while an album collected first and wished second does. Model it as an effect of collection-entry creation, in one place, so a sixth creation path inherits it rather than forgetting it.
+**The clearing rule is one-directional, and it fires on creation only.** **[DECIDED — C, corrected 2026-08-19]**
+
+_Any action that **causes a collection entry to exist** clears Want to Listen for that album_ — the explicit add and every implicit one (rating, liking, reviewing, relistening). It does **not** run in reverse, and it does not fire when a wishlist row is created.
+
+**The precise trigger is the creation of the entry, not the invocation of the function.** The distinction matters and was originally implemented wrongly: `ensure_collection_entry` deleted the wishlist row unconditionally, so for an album already held, _any_ subsequent rate, like, review or relisten destroyed a wishlist entry it had no business touching. For an album already in the collection the action does not cause the entry to exist, so nothing is cleared.
+
+That mattered because the two relations are deliberately independent and may legally hold the same album — an album collected first and wished second stays in both, and the unconditional delete quietly removed that state. Silent loss of a row on an independent relation is exactly the failure the independence decision exists to prevent.
+
+Model it as an effect of collection-entry **creation**, in one place, so a sixth creation path inherits it rather than forgetting it.
 
 Whether that effect is a database trigger or service-layer logic is an open implementation choice, not a product one. Service-layer logic is more consistent with the existing architecture — the collection mutation already has to write an `Activity` event in Phase 3, and decision G asks that those write points be single rather than duplicated.
 
