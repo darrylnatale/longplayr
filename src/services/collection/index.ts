@@ -155,6 +155,131 @@ export async function getMyCollectionState(albumId: string): Promise<{
   return { entry, review: data ?? null };
 }
 
+/**
+ * One album in a user's collection, shaped for the collection grid.
+ *
+ * Flattened at the service boundary rather than handed over as a nested
+ * PostgREST row, so the page maps presentation concerns and nothing else.
+ */
+export type CollectionListItem = {
+  entryId: string;
+  albumId: string;
+  mbid: string;
+  title: string;
+  credit: string;
+  /** Null when the catalogue holds no release date — never invented. */
+  year: number | null;
+  hasArtwork: boolean;
+  /** Null is unrated. `0.0` is a real score and must survive the mapping. */
+  score: number | null;
+  liked: boolean;
+  relistens: number;
+};
+
+/**
+ * A user's collection, newest addition first.
+ *
+ * **Ordered by `added_at` descending, deliberately — not by
+ * `coalesce(listened_on, added_at)`.** The collection answers "what have I most
+ * recently added", which is a fact about the account. `listened_on` is a
+ * user-asserted claim about the past that may be backdated to 1997, so ordering
+ * by it would let a backfill of old records displace everything someone added
+ * this week, and the grid would reshuffle around a date nothing on the page
+ * displays.
+ *
+ * Two consequences worth knowing:
+ *
+ *  - It is **index-backed**. `collection_entries_user_idx` is
+ *    `(user_id, added_at desc)`, which is exactly this query. The coalesce
+ *    ordering cannot be indexed at all — casting timestamptz to date depends on
+ *    the session time zone, so the expression is not IMMUTABLE and Postgres
+ *    rejects it in an index. The cheaper ordering is also the correct one here.
+ *  - `listened_on` is untouched and still selected by nothing here. It remains
+ *    available for explicit sorting later, which is a separate slice.
+ *
+ * Public by decision: everything user-generated is public, so this takes a
+ * `userId` and applies no viewer filtering. The RLS policy is
+ * `for select using (true)` and `anon` holds `select`, so a signed-out visitor
+ * reads exactly what a signed-in one does.
+ */
+export async function listCollection(userId: string): Promise<CollectionListItem[]> {
+  const supabase = await createClient();
+
+  // `collection_entries.album_id` is the only relationship to `albums`, so this
+  // embed needs no foreign-key disambiguation — unlike `releases`, which has
+  // two paths and must name the key.
+  const { data, error } = await supabase
+    .from('collection_entries')
+    .select(
+      'id, album_id, rating, liked, relisten_count, albums(mbid, title, display_credit, artwork_status, first_release_date)',
+    )
+    .eq('user_id', userId)
+    .order('added_at', { ascending: false });
+
+  if (error) throw error;
+  return (data ?? []).flatMap(toCollectionListItem);
+}
+
+/**
+ * One joined row, flattened for the grid.
+ *
+ * Exported and pure so it can be tested directly. The integration suite proves
+ * the query — ordering, isolation, what the database actually returns — but it
+ * cannot call this service, because `createClient` is cookie-bound and there is
+ * no request scope in a test. Without this seam the mapping itself would be the
+ * one part of the read path nothing exercised, and it is where the sharp edges
+ * are: a real `0.0` score, an album with no release date, artwork that is
+ * `failed` rather than merely missing.
+ *
+ * Returns an array so callers can `flatMap`: an entry whose album did not come
+ * back cannot be rendered, and dropping it keeps the return type honest instead
+ * of inventing a placeholder album to stand in for it. The foreign key makes
+ * that unreachable in practice.
+ */
+export function toCollectionListItem(row: {
+  id: string;
+  album_id: string;
+  rating: number | null;
+  liked: boolean;
+  relisten_count: number;
+  albums: {
+    mbid: string;
+    title: string;
+    display_credit: string;
+    artwork_status: Database['public']['Enums']['artwork_status'];
+    first_release_date: string | null;
+  } | null;
+}): CollectionListItem[] {
+  if (!row.albums) return [];
+
+  return [
+    {
+      entryId: row.id,
+      albumId: row.album_id,
+      mbid: row.albums.mbid,
+      title: row.albums.title,
+      credit: row.albums.display_credit,
+      // A partial date is stored as a full date with a precision marker, so the
+      // leading four characters are the year under every precision.
+      year: row.albums.first_release_date
+        ? Number(row.albums.first_release_date.slice(0, 4))
+        : null,
+      // Only `found` means there is an image to fetch. `absent` and `failed`
+      // are different facts — one about the artwork, one about the network —
+      // and both render the placeholder, which is why they collapse here and
+      // nowhere else.
+      hasArtwork: row.albums.artwork_status === 'found',
+      // Compared against null explicitly so a stored `0.0` survives. `rating ||
+      // null` or a falsiness check would silently turn the lowest real score in
+      // the product into "unrated", which is the bug this shape exists to
+      // prevent and which the unit test pins.
+      score: row.rating === null ? null : Number(row.rating),
+      liked: row.liked,
+      relistens: row.relisten_count,
+    },
+  ];
+}
+
 /** Explicit add. The date is optional and freely backdated. */
 export async function addToCollection(albumId: string, listenedOn?: string | null) {
   return ensureEntry(albumId, listenedOn);

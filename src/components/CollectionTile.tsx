@@ -33,7 +33,13 @@ export type TileAlbum = {
   mbid: string;
   title: string;
   credit: string;
-  year: number;
+  /**
+   * Null when the catalogue holds no release date. Not currently rendered in
+   * either mode — it is carried so a tile can show a year without the caller
+   * having to re-query, and widened to nullable so real collection data can be
+   * mapped without inventing a year the catalogue does not hold.
+   */
+  year: number | null;
   hasArtwork: boolean;
   score: number | null;
   liked: boolean;

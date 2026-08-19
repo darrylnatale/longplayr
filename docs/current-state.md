@@ -24,7 +24,8 @@ Verified against the staging database and a clean-tree build on 2026-08-19.
 | Like                                     | **complete and committed** (`957cf5f`)            |
 | Relisten                                 | **complete and committed** (`e40874a`)            |
 | Review service corrections               | **complete and committed** (`0715c50`)            |
-| Review interface                         | **complete, verified, _not committed_** — see §16 |
+| Review interface                         | **complete and committed** (`c486093`)            |
+| Collection read path (profile)           | **complete, verified, _not committed_** — see §18 |
 
 Lists, follows, activity, feed, notifications, messaging, taste overlap and profile photo/city do not exist, in schema or in code. **Favourites and the Want to Listen interface** have schema and service support but no interface — their controls render visibly unavailable until each is wired.
 
@@ -47,9 +48,9 @@ Lists, follows, activity, feed, notifications, messaging, taste overlap and prof
 
 |                  |                                                       |
 | ---------------- | ----------------------------------------------------- |
-| Unit + component | **110**                                               |
-| Integration      | **111** (need a local database)                       |
-| End-to-end       | **4** (Playwright)                                    |
+| Unit + component | **134**                                               |
+| Integration      | **253** (need a local database)                       |
+| End-to-end       | **15** (Playwright)                                   |
 | Repository       | <https://github.com/darrylnatale/longplayr> (private) |
 | **Staging app**  | <https://longplayr.vercel.app>                        |
 | **Staging DB**   | `oexuqjpvyeijmlirxtal.supabase.co`                    |
@@ -87,9 +88,9 @@ Lists, follows, activity, feed, notifications, messaging, taste overlap and prof
 
 ### Git state
 
-The last commit is this documentation checkpoint. **The design foundation and every Phase 2 slice through the review service corrections are committed** — `96325d4` through `0715c50`, plus the test-infrastructure fix in `4ee628d`.
+**The design foundation and every Phase 2 slice through the review interface are committed** — `96325d4` through `c486093`. Two commits landed on 2026-08-19 after the previous checkpoint: `e1f29c3`, recording the Want to Listen profile-visibility decision, and `c486093`, the review interface plus the auth-row cleanup fix.
 
-**One slice is uncommitted: the review interface.** Eight files in the working tree — four of application code, three of tests, and this document. Verified green and held for review, which is the practice every slice has followed. See §16.
+**One slice is uncommitted: the collection read path.** Six files in the working tree — three changed, three new — plus this document. Verified green and held for review, which is the practice every slice has followed. See §18.
 
 The habit of leaving implementation uncommitted while documentation lands ahead of it is deliberate, but it has a cost worth naming: for several checkpoints this paragraph described a working tree that no longer existed. A checkpoint that describes the wrong tree is worse than one that says nothing.
 
@@ -342,22 +343,23 @@ Two smaller ones, already fixed and recorded only so they are not re-introduced:
 
 None of these reopen Phase 1.
 
-| Item                                              | Status                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `absent` artwork unobserved against real CAA data | §4 — verify opportunistically; do not manufacture it                                                                                                                                                                                                                                                                                                                                                                        |
-| Two exhausted artwork jobs (CAA 502)              | §4 — deliberate sweep whenever wanted                                                                                                                                                                                                                                                                                                                                                                                       |
-| Live album never observed                         | §3 — soundtrack covers the secondary-type path                                                                                                                                                                                                                                                                                                                                                                              |
-| **Longer, jittered MusicBrainz backoff**          | **[OPEN]** — see §9                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `"Added — view"` unreachable                      | After a successful add the page revalidates and the upstream row unmounts before its `useActionState` can render the link. Harmless; the album appears in local results                                                                                                                                                                                                                                                     |
-| Staging rejects `@example.com` on public signup   | GoTrue validates the domain on self-signup but not via the admin API, so `tests/e2e/auth.spec.ts` would fail against staging                                                                                                                                                                                                                                                                                                |
-| Email confirmation disabled on staging            | Turned off deliberately so signup works without SMTP. **Production must have it on**, which means real SMTP configured before launch                                                                                                                                                                                                                                                                                        |
-| Three test accounts on staging                    | Two own `catalogue_additions` rows; deleting them nulls `user_id` and leaves the rows as anonymous audit records, which is the designed behaviour                                                                                                                                                                                                                                                                           |
-| Local Node drifted to v20                         | CI pins Node 22. `@supabase/supabase-js` needs a global WebSocket, so integration and seed commands need `NODE_OPTIONS=--experimental-websocket` until the local runtime is restored                                                                                                                                                                                                                                        |
-| Artists have at most 3 releases                   | The seed capped at 2 per artist, so the deep-discography case is untested against real data                                                                                                                                                                                                                                                                                                                                 |
-| Design-foundation code uncommitted                | §1 — verified clean-tree at every step, held for review                                                                                                                                                                                                                                                                                                                                                                     |
-| **Integration tests leak a few local auth rows**  | **[DEFERRED]** — `afterAll` deletes the users each file tracked, but a mid-test `deleteUser` splices ids out of the tracking array and a couple of paths create users it never sees, so a full run leaves roughly six rows in the local `auth.users`. Local only, harmless, unrelated to any product behaviour. **Fix when those test files are next modified**, not before                                                 |
-| **Browse is very tall at phone width**            | **[OPEN]** — 8,122px at 390px. `relaxed` is 2-up on a phone, so Popular's 24 captioned albums run 12 rows before Recently added begins. Observation, not a defect: consistency with the migrated artist page was the stronger constraint, and the alternatives were changing the query limit or inventing a per-breakpoint density. Revisit when the real charts arrive and a "show more" boundary has to be decided anyway |
-| **`AlbumGrid` passes no `priority`**              | **[OPEN]** — Next flags the first Popular cover as LCP and asks for eager loading. Pre-existing and identical on the artist page. Deliberately not fixed during a presentation-only migration: choosing how many leading cells get `priority` is its own decision and it affects every grid surface at once                                                                                                                 |
+| Item                                                | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `absent` artwork unobserved against real CAA data   | §4 — verify opportunistically; do not manufacture it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Two exhausted artwork jobs (CAA 502)                | §4 — deliberate sweep whenever wanted                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Live album never observed                           | §3 — soundtrack covers the secondary-type path                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **Longer, jittered MusicBrainz backoff**            | **[OPEN]** — see §9                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `"Added — view"` unreachable                        | After a successful add the page revalidates and the upstream row unmounts before its `useActionState` can render the link. Harmless; the album appears in local results                                                                                                                                                                                                                                                                                                                                                                     |
+| Staging rejects `@example.com` on public signup     | GoTrue validates the domain on self-signup but not via the admin API, so `tests/e2e/auth.spec.ts` would fail against staging                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Email confirmation disabled on staging              | Turned off deliberately so signup works without SMTP. **Production must have it on**, which means real SMTP configured before launch                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Three test accounts on staging                      | Two own `catalogue_additions` rows; deleting them nulls `user_id` and leaves the rows as anonymous audit records, which is the designed behaviour                                                                                                                                                                                                                                                                                                                                                                                           |
+| Local Node drifted to v20                           | CI pins Node 22. `@supabase/supabase-js` needs a global WebSocket, so integration and seed commands need `NODE_OPTIONS=--experimental-websocket` until the local runtime is restored                                                                                                                                                                                                                                                                                                                                                        |
+| Artists have at most 3 releases                     | The seed capped at 2 per artist, so the deep-discography case is untested against real data                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Design-foundation code uncommitted                  | §1 — verified clean-tree at every step, held for review                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ~~Integration tests leak local auth rows~~          | **RESOLVED 2026-08-19, and the attribution was wrong.** It was never the integration suite: measured from an empty `auth.users`, a full run of 253 tests across 15 files returns it to **zero**. The leak was entirely `tests/e2e/auth.spec.ts`, which created three real users per run and had no cleanup hook at all — three runs had left exactly nine rows. Fixed in `c486093` with the pattern `collection.spec.ts` already used, and confirmed at zero after a full `verify:full`                                                     |
+| **Intermittent sign-out failure in `auth.spec.ts`** | **[OPEN] — flaky, cause not established.** One run of `verify:full` failed `sign up, choose a handle, sign out, sign back in` on a 30s test timeout: the click on Sign out landed, but the header never swapped to the signed-out state. **Not reproduced in four subsequent runs**, including a cold-`.next` run and two full `verify:full` runs, so cold compilation was tested and ruled out. Unrelated to the review and collection slices — it predates both. Watch it; do not "fix" it with a longer timeout until the cause is known |
+| **Browse is very tall at phone width**              | **[OPEN]** — 8,122px at 390px. `relaxed` is 2-up on a phone, so Popular's 24 captioned albums run 12 rows before Recently added begins. Observation, not a defect: consistency with the migrated artist page was the stronger constraint, and the alternatives were changing the query limit or inventing a per-breakpoint density. Revisit when the real charts arrive and a "show more" boundary has to be decided anyway                                                                                                                 |
+| **`AlbumGrid` passes no `priority`**                | **[OPEN]** — Next flags the first Popular cover as LCP and asks for eager loading. Pre-existing and identical on the artist page. Deliberately not fixed during a presentation-only migration: choosing how many leading cells get `priority` is its own decision and it affects every grid surface at once                                                                                                                                                                                                                                 |
 
 ---
 
@@ -582,11 +584,11 @@ One wrinkle worth remembering on the last: HTML `maxLength` counts UTF-16 code u
 
 ---
 
-## 16. Review slice — implemented and verified, **not committed**
+## 16. Review slice — implemented, verified and **committed**
 
-Built 2026-08-19. **The application code is in the working tree, not in history**, held for review like every slice before it. Everything below has been exercised, not assumed.
+Built and committed 2026-08-19 as `c486093`. Everything below has been exercised, not assumed.
 
-### Verified state
+### Verified state at the point of commit
 
 | Suite            | Count   |
 | ---------------- | ------- |
@@ -623,7 +625,9 @@ Rendering is `whitespace-pre-wrap` with React's default escaping. `dangerouslySe
 
 This is the **second** time this exact failure has appeared — the rating control had it too — and both times **only the end-to-end test caught it** while every integration test passed. Any future disclosure control on this card should be assumed to have it until proven otherwise.
 
-### Test-infrastructure change, not a product change
+### Test-infrastructure changes, not product changes
+
+`tests/e2e/auth.spec.ts` also gained the account cleanup it never had — see §8. That file created three real users per run and deleted none, which is the whole of the local `auth.users` growth previously recorded against the integration suite.
 
 `tests/e2e/auth.spec.ts` gained a scoped 15s budget on the navigations that follow a server action. **No assertion, expectation or test was changed** — a timeout argument was added to existing `toHaveURL` calls.
 
@@ -636,6 +640,69 @@ Sign-up, handle claim and sign-in each round-trip to GoTrue and then redirect. T
 ### Not implemented
 
 Favourites, the Want to Listen interface, Activity, review likes, reports, notifications, messaging, taste overlap, and profile photo or city. None exists in code. Their controls where present render visibly unavailable.
+
+---
+
+## 18. Collection read path — implemented and verified, **not committed**
+
+Built 2026-08-19. **The application code is in the working tree, not in history**, held for review like every slice before it.
+
+### Verified state
+
+| Suite            | Count   |
+| ---------------- | ------- |
+| Unit + component | **134** |
+| Integration      | **253** |
+| Seed             | **1**   |
+| End-to-end       | **15**  |
+
+`rm -rf .next && npm run verify:full` — green, all four suites. Inspected at 390, 768 and 1440px signed out, with a populated collection and with an empty one; no horizontal overflow at any width.
+
+### What it is
+
+`listCollection(userId)` in `src/services/collection/`, joined to `albums`, rendered on the public profile through the existing `CollectionGrid` and `CollectionTile`. No new grid was written.
+
+### Decisions implemented
+
+| Decision                                                                                                                                                                                                    |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Default ordering is `added_at desc`** — never `coalesce(listened_on, added_at)`. The collection answers "what have I most recently added", a fact about the account; `listened_on` is a backdatable claim |
+| **`listened_on` is untouched** and stays available for explicit sorting, which is a later slice                                                                                                             |
+| **Compact is the locked default on the profile, with no density control** — see below                                                                                                                       |
+| **No tab bar.** The resolved structure is `Collection \| Want to Listen \| Favourites`, and rendering two inert tabs would be an interface for features this slice does not build                           |
+| **No stat cluster.** The album count sits on the section header, where it counts something that exists                                                                                                      |
+| **`TileAlbum.year` widened to `number \| null`** — carried but rendered in neither mode, and real albums may hold no release date                                                                           |
+
+**The ordering decision is index-backed, which is worth knowing.** `collection_entries_user_idx` is `(user_id, added_at desc)` — exactly this query. The coalesce ordering cannot be indexed at all, because casting timestamptz to date is not `IMMUTABLE` and Postgres rejects the expression. The correct ordering is also the cheap one; that is a coincidence, but a load-bearing one if the default is ever revisited.
+
+### The density toggle — considered, built, and explicitly deferred
+
+A user-facing Compact / Detailed switch was built during this slice and **removed before commit, by decision.** It is not deferred by oversight and should not be reintroduced without a decision.
+
+The reasoning that produced it: `CollectionTile`'s two modes are user-selectable by design, and **score, like and relisten markers render only in Detailed** — Compact is bare artwork. Without a way to reach Detailed, no product surface shows a score.
+
+The reasoning that removed it: a density switch is a **product control**, and adding one as a side effect of building a read path decides a question that was never asked. Compact is the locked default until that control is decided on its own terms.
+
+**The consequence is deliberate and must not be mistaken for a bug: the profile currently shows no scores, no like indicators and no `×N` markers.** The data is correct and tested; the surface does not draw it. An end-to-end test pins this, so reintroducing a control or flipping the default fails loudly rather than shipping a postponed decision by accident.
+
+Detailed mode remains in the design system and in the gallery at `/design`, which renders both densities. That is where marker rendering stays inspectable.
+
+### Where marker correctness is covered
+
+Not end to end, because no surface renders it. Two levels instead:
+
+- **Unit** — `toCollectionListItem` is exported and pure precisely so it can be tested: `0.0` surviving as a real score, a null release date, artwork `found` versus `absent`/`failed`/`pending`, relisten counts.
+- **Integration** — the rows themselves: rated versus unrated with `0.0` distinguished from null, liked versus unliked, the trigger-maintained relisten count, and that one user's score, like and relisten count never appear in another user's row.
+
+### One test deleted rather than kept
+
+A component test for `CollectionTile` was written to cover marker rendering, and removed. **The `component` vitest project has never run a file** — it matches `src/**/*.test.tsx` and no such file existed — and adding the first one surfaced that **jsdom cannot load on the local Node 20**: `html-encoding-sniffer` requires an ES module, which needs Node 22.12 or later. CI pins Node 22, so it may well pass there, but a test that cannot run locally breaks the documented development loop.
+
+Fixing that is test-infrastructure work, not part of a read path, so the test was removed rather than left broken or committed unverified. **The `component` project is configured and non-functional on the local runtime** — worth knowing before anyone writes the first component test.
+
+### Not implemented
+
+Sorting, filtering, the Want to Listen tab, the Favourites tab, inert tabs, Activity, and the density control. None exists in code.
 
 ---
 
