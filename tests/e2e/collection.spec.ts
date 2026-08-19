@@ -91,3 +91,48 @@ test('a signed-out visitor is invited to sign in rather than shown a control tha
   await expect(page.getByRole('link', { name: 'Sign in to add' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Add to collection' })).toBeHidden();
 });
+
+test('rate an album, change the score, then clear it', async ({ page }) => {
+  const user = uniqueUser();
+  createdEmails.push(user.email);
+
+  await page.goto('/signup');
+  await page.getByLabel('Email').fill(user.email);
+  await page.getByLabel('Password').fill(user.password);
+  await page.getByRole('button', { name: 'Create account' }).click();
+
+  await expect(page).toHaveURL('/onboarding');
+  await page.getByLabel('Handle').fill(user.handle);
+  await page.getByRole('button', { name: 'Claim handle' }).click();
+  await expect(page).toHaveURL(`/${user.handle}`);
+
+  // Uncollected to begin with.
+  await page.goto(`/albums/${ALBUM_MBID}`);
+  await expect(page.getByRole('button', { name: 'Add to collection' })).toBeVisible();
+
+  // Rating an uncollected album collects it.
+  await page.getByRole('button', { name: 'Rate', exact: true }).click();
+  await page.getByLabel('Your score').fill('8.5');
+  await page.getByRole('button', { name: 'Save' }).click();
+
+  await expect(page.getByText('Your score')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTitle('Your score')).toHaveText('8.5');
+  await expect(page.getByRole('button', { name: 'Add to collection' })).toBeHidden();
+
+  // The album average is computed on read and shown separately from the chip.
+  await expect(page.getByTitle('Average score')).toContainText('8.5');
+
+  // Changing the score.
+  await page.getByRole('button', { name: 'Change score' }).click();
+  await page.getByLabel('Your score').fill('4.0');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByTitle('Your score')).toHaveText('4.0', { timeout: 30_000 });
+
+  // Clearing returns it to collected-but-unrated, not to zero.
+  await page.getByRole('button', { name: 'Change score' }).click();
+  await page.getByRole('button', { name: 'Clear score' }).click();
+
+  await expect(page.getByText('In your collection')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTitle('Your score')).toBeHidden();
+  await expect(page.getByText('Not yet rated.')).toBeVisible();
+});

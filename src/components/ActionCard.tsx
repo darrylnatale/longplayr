@@ -36,6 +36,7 @@ import { ScoreBadge } from '@/components/ScoreBadge';
 export type ActionCardActions = {
   add?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
   remove?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
+  rate?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
 };
 
 export type ActionCardState =
@@ -229,6 +230,135 @@ function AddRow({ action }: { action: NonNullable<ActionCardActions['add']> }) {
   );
 }
 
+/**
+ * The score input.
+ *
+ * Numeric, not stars. The score is 0.0-10.0 to one decimal by decision, and a
+ * five-star control cannot express that — the reference product itself displays
+ * a decimal average while collecting stars, which is the tell that the
+ * underlying quantity was always numeric (docs/design-reference.md §3).
+ *
+ * `inputMode="decimal"` brings up the numeric keypad on a phone, and `step` of
+ * 0.1 makes the desktop spinner move in the units the scale actually has.
+ * Validation is deliberately duplicated: `min`, `max` and `step` catch most
+ * mistakes before a round-trip, the service rejects anything that gets past
+ * them, and a check constraint rejects anything that gets past the service.
+ *
+ * Clearing is submitting an empty field. That returns the entry to **unrated**,
+ * which is null rather than zero — different claims, and conflating them would
+ * invent an opinion and move the album's average.
+ */
+function RatingControl({
+  action,
+  current,
+  triggerLabel,
+  dominant,
+}: {
+  action: NonNullable<ActionCardActions['rate']>;
+  current: number | null;
+  triggerLabel: string;
+  dominant: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [state, formAction] = useActionState(action, {});
+
+  if (!open) {
+    return (
+      <>
+        {dominant ? (
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className={`${PRIMARY} hover:bg-accent-hover`}
+          >
+            {triggerLabel}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="flex-1 rounded-sm border border-border bg-raised px-3 py-1.5 text-xs text-text-secondary transition-colors hover:border-border-strong hover:text-text"
+          >
+            {triggerLabel}
+          </button>
+        )}
+        {state.error && (
+          <div className="mt-2">
+            <Failure message={state.error} />
+          </div>
+        )}
+      </>
+    );
+  }
+
+  return (
+    <form action={formAction} className="flex w-full flex-col gap-2.5">
+      <label htmlFor="rating" className="text-xs uppercase tracking-widest text-text-muted">
+        Your score
+      </label>
+      <div className="flex gap-2">
+        <input
+          id="rating"
+          name="rating"
+          type="number"
+          inputMode="decimal"
+          step="0.1"
+          min="0"
+          max="10"
+          autoFocus
+          defaultValue={current === null ? '' : current.toFixed(1)}
+          placeholder="0.0-10.0"
+          aria-describedby={state.error ? 'rating-error' : undefined}
+          className="tabular w-full min-w-0 rounded-md border border-border bg-surface px-3 py-2.5 text-base text-text outline-none transition-colors placeholder:text-text-faint focus:border-accent"
+        />
+        <RatingSubmit />
+      </div>
+
+      <div className="flex items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="text-xs text-text-muted transition-colors hover:text-text"
+        >
+          Cancel
+        </button>
+        {current !== null && (
+          // Clearing submits the same form with an empty field, so it travels
+          // the one code path rather than needing an action of its own.
+          <button
+            type="submit"
+            name="intent"
+            value="clear"
+            className="text-xs text-text-muted underline decoration-border-strong underline-offset-4 transition-colors hover:text-text"
+          >
+            Clear score
+          </button>
+        )}
+      </div>
+
+      {state.error && (
+        <div id="rating-error">
+          <Failure message={state.error} />
+        </div>
+      )}
+    </form>
+  );
+}
+
+function RatingSubmit() {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      aria-busy={pending}
+      className="shrink-0 rounded-sm bg-accent px-4 py-2.5 text-sm font-medium text-accent-contrast transition-colors hover:bg-accent-hover disabled:cursor-wait disabled:opacity-70"
+    >
+      {pending ? 'Saving…' : 'Save'}
+    </button>
+  );
+}
+
 /** An inert stacked action, for the same reason as `PrimaryButton`. */
 function StackedLink({ children }: { children: ReactNode }) {
   return (
@@ -297,8 +427,17 @@ export function ActionCard({
           )}
         </Row>
         <Row>
-          <div className="flex gap-2">
-            <QuietAction>Rate</QuietAction>
+          <div className="flex flex-wrap gap-2">
+            {actions.rate ? (
+              <RatingControl
+                action={actions.rate}
+                current={null}
+                triggerLabel="Rate"
+                dominant={false}
+              />
+            ) : (
+              <QuietAction>Rate</QuietAction>
+            )}
             <QuietAction>Like</QuietAction>
           </div>
           {/* Rating or liking an uncollected album adds it silently, so the
@@ -321,7 +460,16 @@ export function ActionCard({
         </Row>
         <Row>
           {/* Rate is dominant here: it is the obvious next thing to do. */}
-          <PrimaryButton>Rate this album</PrimaryButton>
+          {actions.rate ? (
+            <RatingControl
+              action={actions.rate}
+              current={null}
+              triggerLabel="Rate this album"
+              dominant
+            />
+          ) : (
+            <PrimaryButton>Rate this album</PrimaryButton>
+          )}
         </Row>
         <Row>
           <div className="flex gap-2">
@@ -363,9 +511,23 @@ export function ActionCard({
         </PrimaryButton>
       </Row>
       <Row>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <QuietAction active={liked}>{liked ? 'Liked' : 'Like'}</QuietAction>
-          <QuietAction>Change score</QuietAction>
+          {actions.rate ? (
+            <RatingControl
+              // Keyed on the confirmed score, so the control resets and
+              // collapses once the server acknowledges a change. Without this
+              // it stays open showing a stale value, because the card's kind
+              // has not changed and React preserves the component's state.
+              key={`rate-${score}`}
+              action={actions.rate}
+              current={score}
+              triggerLabel="Change score"
+              dominant={false}
+            />
+          ) : (
+            <QuietAction>Change score</QuietAction>
+          )}
         </div>
       </Row>
       <Row>

@@ -4,12 +4,14 @@ import { notFound } from 'next/navigation';
 import { ActionCard, type ActionCardState } from '@/components/ActionCard';
 import { AlbumCover } from '@/components/AlbumCover';
 import { Container } from '@/components/Container';
+import { ScoreBadge } from '@/components/ScoreBadge';
 import { SectionHeader } from '@/components/SectionHeader';
 import { getAlbumByMbid } from '@/services/catalogue/queries';
 import { getMyCollectionState } from '@/services/collection';
+import { getAlbumRating } from '@/services/collection/ratings';
 import { getCurrentProfile, getCurrentUser } from '@/services/profiles';
 
-import { addAlbumAction, removeAlbumAction } from './actions';
+import { addAlbumAction, rateAlbumAction, removeAlbumAction } from './actions';
 
 /**
  * Album page — the canonical detail composition.
@@ -99,6 +101,10 @@ export default async function AlbumPage({ params }: PageProps<'/albums/[mbid]'>)
 
   const actionState = await resolveActionState(album.id);
 
+  // Computed on read from non-null ratings, never stored. Deletion therefore
+  // needs no recomputation step, and no counter can drift.
+  const rating = await getAlbumRating(album.id);
+
   // Secondary types qualify the primary one: a live album is an Album that is
   // also Live.
   const typeLabel = [
@@ -173,21 +179,32 @@ export default async function AlbumPage({ params }: PageProps<'/albums/[mbid]'>)
             actions={{
               add: addAlbumAction.bind(null, album.id),
               remove: removeAlbumAction.bind(null, album.id),
+              rate: rateAlbumAction.bind(null, album.id),
             }}
           />
 
           <div>
             <SectionHeader as="h3">Rating</SectionHeader>
             {/*
-             * Averages are computed on read from collection entries, and those
-             * do not exist until Phase 2. Every album is therefore genuinely
-             * unrated right now — this is the real thin-data state
-             * (design-reference.md §6.6), not a stand-in for one.
+             * The average is a bare numeral and the user's own score is a
+             * bordered chip carrying the accent. That separation is the whole
+             * point of `ScoreBadge`'s two variants: yours is a statement, the
+             * average is a fact, and colour is never used to encode value
+             * (docs/design-reference.md §6.2).
+             *
+             * An album nobody has rated says so plainly. This is the real
+             * thin-data state, not a stand-in for one.
              */}
-            <p className="text-sm text-text-muted">Not yet rated.</p>
-            <p className="mt-1 text-xs text-text-faint">
-              Scores appear once people start rating this album.
-            </p>
+            {rating.average === null ? (
+              <>
+                <p className="text-sm text-text-muted">Not yet rated.</p>
+                <p className="mt-1 text-xs text-text-faint">
+                  Scores appear once people start rating this album.
+                </p>
+              </>
+            ) : (
+              <ScoreBadge score={rating.average} variant="average" size="lg" count={rating.count} />
+            )}
           </div>
         </aside>
 
