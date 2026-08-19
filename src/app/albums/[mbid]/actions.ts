@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 
 import { addToCollection, rateAlbum, removeFromCollection, setLiked } from '@/services/collection';
 import { markRelisten } from '@/services/collection/relistens';
+import { REVIEW_MAX_LENGTH, deleteReview, saveReview } from '@/services/collection/reviews';
 
 /**
  * Album page mutations.
@@ -143,6 +144,59 @@ export async function markRelistenAction(
   _formData: FormData,
 ): Promise<CollectionActionState> {
   const result = await markRelisten(albumId);
+  if (!result.ok) return { error: result.message };
+
+  revalidatePath(`/albums/[mbid]`, 'page');
+  return {};
+}
+
+/**
+ * Creates or replaces the caller's review.
+ *
+ * Writing about an album implicitly adds it, through the same canonical path as
+ * everything else, so the wishlist is cleared and no activity event is written.
+ * A `reviewed` event is decided direction, but Activity does not exist yet and
+ * inventing one here would be building ahead.
+ *
+ * Whitespace-only bodies are rejected and the stored body is trimmed. The limit
+ * is enforced three times over — `maxLength` on the field, this check, and a
+ * check constraint — because the outer two produce a message a person can act
+ * on and the innermost one is the guarantee.
+ */
+export async function saveReviewAction(
+  albumId: string,
+  _prev: CollectionActionState,
+  formData: FormData,
+): Promise<CollectionActionState> {
+  const body = String(formData.get('body') ?? '');
+
+  if (body.trim().length === 0) {
+    return { error: 'A review needs some words in it.' };
+  }
+  if (body.trim().length > REVIEW_MAX_LENGTH) {
+    return { error: `Reviews are capped at ${REVIEW_MAX_LENGTH.toLocaleString()} characters.` };
+  }
+
+  const result = await saveReview(albumId, body);
+  if (!result.ok) return { error: result.message };
+
+  revalidatePath(`/albums/[mbid]`, 'page');
+  return {};
+}
+
+/**
+ * Deletes the caller's review. A hard delete, by decision.
+ *
+ * Never creates a collection entry and never clears Want to Listen — deleting
+ * writing is not a reason to collect anything. The service enforces that; this
+ * only routes to it.
+ */
+export async function deleteReviewAction(
+  albumId: string,
+  _prev: CollectionActionState,
+  _formData: FormData,
+): Promise<CollectionActionState> {
+  const result = await deleteReview(albumId);
   if (!result.ok) return { error: result.message };
 
   revalidatePath(`/albums/[mbid]`, 'page');

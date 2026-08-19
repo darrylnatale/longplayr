@@ -16,6 +16,18 @@ config({ path: '.env.test.local', quiet: true });
 config({ path: '.env.local', quiet: true });
 
 /** Seeded by `npm run db:seed:fixtures`. */
+/**
+ * Navigations that follow a server action get a longer budget than Playwright's
+ * 5s default.
+ *
+ * Sign-up, handle claim and sign-in each round-trip to GoTrue and then redirect.
+ * On a loaded local dev server that lands around five seconds — measured at 5.7s
+ * for the first auth test in isolation — so the default was failing on work that
+ * had merely been slow. The test timeout stays at Playwright's 30s default, so a
+ * flow that genuinely hangs still fails.
+ */
+const NAV = { timeout: 15_000 };
+
 const ALBUM_MBID = '0b0e4f1e-1111-4000-8000-000000000001';
 
 function uniqueUser() {
@@ -55,10 +67,10 @@ test('add an album to the collection, then remove it', async ({ page }) => {
   await page.getByLabel('Password').fill(user.password);
   await page.getByRole('button', { name: 'Create account' }).click();
 
-  await expect(page).toHaveURL('/onboarding');
+  await expect(page).toHaveURL('/onboarding', NAV);
   await page.getByLabel('Handle').fill(user.handle);
   await page.getByRole('button', { name: 'Claim handle' }).click();
-  await expect(page).toHaveURL(`/${user.handle}`);
+  await expect(page).toHaveURL(`/${user.handle}`, NAV);
 
   await page.goto(`/albums/${ALBUM_MBID}`);
 
@@ -101,10 +113,10 @@ test('rate an album, change the score, then clear it', async ({ page }) => {
   await page.getByLabel('Password').fill(user.password);
   await page.getByRole('button', { name: 'Create account' }).click();
 
-  await expect(page).toHaveURL('/onboarding');
+  await expect(page).toHaveURL('/onboarding', NAV);
   await page.getByLabel('Handle').fill(user.handle);
   await page.getByRole('button', { name: 'Claim handle' }).click();
-  await expect(page).toHaveURL(`/${user.handle}`);
+  await expect(page).toHaveURL(`/${user.handle}`, NAV);
 
   // Uncollected to begin with.
   await page.goto(`/albums/${ALBUM_MBID}`);
@@ -146,10 +158,10 @@ test('like an uncollected album, then unlike it', async ({ page }) => {
   await page.getByLabel('Password').fill(user.password);
   await page.getByRole('button', { name: 'Create account' }).click();
 
-  await expect(page).toHaveURL('/onboarding');
+  await expect(page).toHaveURL('/onboarding', NAV);
   await page.getByLabel('Handle').fill(user.handle);
   await page.getByRole('button', { name: 'Claim handle' }).click();
-  await expect(page).toHaveURL(`/${user.handle}`);
+  await expect(page).toHaveURL(`/${user.handle}`, NAV);
 
   await page.goto(`/albums/${ALBUM_MBID}`);
   await expect(page.getByRole('button', { name: 'Add to collection' })).toBeVisible();
@@ -184,10 +196,10 @@ test('relisten an uncollected album, then relisten again', async ({ page }) => {
   await page.getByLabel('Password').fill(user.password);
   await page.getByRole('button', { name: 'Create account' }).click();
 
-  await expect(page).toHaveURL('/onboarding');
+  await expect(page).toHaveURL('/onboarding', NAV);
   await page.getByLabel('Handle').fill(user.handle);
   await page.getByRole('button', { name: 'Claim handle' }).click();
-  await expect(page).toHaveURL(`/${user.handle}`);
+  await expect(page).toHaveURL(`/${user.handle}`, NAV);
 
   await page.goto(`/albums/${ALBUM_MBID}`);
   await expect(page.getByRole('button', { name: 'Add to collection' })).toBeVisible();
@@ -209,4 +221,88 @@ test('relisten an uncollected album, then relisten again', async ({ page }) => {
   // Still collected, still unrated — relistening claims nothing about a score.
   await expect(page.getByText('In your collection')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Rate this album' })).toBeVisible();
+});
+
+test('write a review, edit it, then delete it', async ({ page }) => {
+  const user = uniqueUser();
+  createdEmails.push(user.email);
+
+  await page.goto('/signup');
+  await page.getByLabel('Email').fill(user.email);
+  await page.getByLabel('Password').fill(user.password);
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await expect(page).toHaveURL('/onboarding', NAV);
+  await page.getByLabel('Handle').fill(user.handle);
+  await page.getByRole('button', { name: 'Claim handle' }).click();
+  await expect(page).toHaveURL(`/${user.handle}`, NAV);
+
+  await page.goto(`/albums/${ALBUM_MBID}`);
+  await expect(page.getByRole('button', { name: 'Add to collection' })).toBeVisible();
+
+  // Writing about an uncollected album collects it.
+  await page.getByRole('button', { name: 'Write a review…' }).click();
+  const editor = page.getByLabel('Your review');
+  await expect(editor).toBeVisible();
+  await editor.fill('First thoughts.\n\nA second paragraph.');
+  await page.getByRole('button', { name: 'Save review' }).click();
+
+  await expect(page.getByText('In your collection')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Edit review…' })).toBeVisible();
+
+  // Editing prefills with what is already there, rather than making them retype.
+  await page.getByRole('button', { name: 'Edit review…' }).click();
+  await expect(page.getByLabel('Your review')).toHaveValue(
+    'First thoughts.\n\nA second paragraph.',
+  );
+  await page.getByLabel('Your review').fill('Revised thoughts entirely.');
+  await page.getByRole('button', { name: 'Save review' }).click();
+
+  await expect(page.getByRole('button', { name: 'Edit review…' })).toBeVisible({
+    timeout: 30_000,
+  });
+  await page.getByRole('button', { name: 'Edit review…' }).click();
+  await expect(page.getByLabel('Your review')).toHaveValue('Revised thoughts entirely.');
+
+  // Deleting warns first, and leaves the album collected.
+  await page.getByRole('button', { name: 'Delete review' }).click();
+  await expect(page.getByText('Delete this review?')).toBeVisible();
+  await page.getByRole('button', { name: 'Delete', exact: true }).click();
+
+  await expect(page.getByRole('button', { name: 'Write a review…' })).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByText('In your collection')).toBeVisible();
+});
+
+test('the review editor works at phone width', async ({ page }) => {
+  const user = uniqueUser();
+  createdEmails.push(user.email);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  await page.goto('/signup');
+  await page.getByLabel('Email').fill(user.email);
+  await page.getByLabel('Password').fill(user.password);
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await expect(page).toHaveURL('/onboarding', NAV);
+  await page.getByLabel('Handle').fill(user.handle);
+  await page.getByRole('button', { name: 'Claim handle' }).click();
+
+  await page.goto(`/albums/${ALBUM_MBID}`);
+  await page.getByRole('button', { name: 'Write a review…' }).click();
+
+  const editor = page.getByLabel('Your review');
+  await expect(editor).toBeVisible();
+
+  // 16px or larger, otherwise iOS zooms the viewport the moment it is focused.
+  const fontSize = await editor.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+  expect(fontSize).toBeGreaterThanOrEqual(16);
+
+  // The field must fit the viewport, not overflow it.
+  const box = await editor.boundingBox();
+  expect(box!.width).toBeLessThanOrEqual(390);
+
+  await editor.fill('Written on a phone.');
+  await page.getByRole('button', { name: 'Save review' }).click();
+  await expect(page.getByText('In your collection')).toBeVisible({ timeout: 30_000 });
 });

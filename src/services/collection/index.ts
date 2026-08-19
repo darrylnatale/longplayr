@@ -127,25 +127,32 @@ export async function getMyEntry(albumId: string): Promise<CollectionEntry | nul
 /**
  * Everything the album page needs to render personal state, in one read.
  *
- * `hasReview` is here because removal warns before destroying writing, and the
- * warning has to know whether there is any. Reviews cascade from the entry, so
- * without this the user would lose up to 10,000 characters to a control that
- * said only "Remove".
+ * The review comes back whole rather than as a boolean. Two things need it: the
+ * removal warning, which has to know whether there is writing to lose before
+ * offering a control that says only "Remove", and the editor, which has to
+ * prefill with what is already there rather than making someone retype it.
  */
-export async function getMyCollectionState(
-  albumId: string,
-): Promise<{ entry: CollectionEntry | null; hasReview: boolean }> {
+export async function getMyCollectionState(albumId: string): Promise<{
+  entry: CollectionEntry | null;
+  /** The caller's own review, body included so the editor can prefill it. */
+  review: { id: string; body: string; status: string; updated_at: string } | null;
+}> {
   const entry = await getMyEntry(albumId);
-  if (!entry) return { entry: null, hasReview: false };
+  if (!entry) return { entry: null, review: null };
 
   const supabase = await createClient();
-  const { count, error } = await supabase
+  // No status filter: RLS already limits this to rows the caller may read, and
+  // an author keeps access to their own removed review. Filtering to `live`
+  // here would make a moderated review look deleted to the person who wrote it,
+  // and they would write it again.
+  const { data, error } = await supabase
     .from('reviews')
-    .select('id', { count: 'exact', head: true })
-    .eq('collection_entry_id', entry.id);
+    .select('id, body, status, updated_at')
+    .eq('collection_entry_id', entry.id)
+    .maybeSingle();
 
   if (error) throw error;
-  return { entry, hasReview: (count ?? 0) > 0 };
+  return { entry, review: data ?? null };
 }
 
 /** Explicit add. The date is optional and freely backdated. */

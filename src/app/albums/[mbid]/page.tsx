@@ -9,13 +9,17 @@ import { SectionHeader } from '@/components/SectionHeader';
 import { getAlbumByMbid } from '@/services/catalogue/queries';
 import { getMyCollectionState } from '@/services/collection';
 import { getAlbumRating } from '@/services/collection/ratings';
+import { getAlbumReviews } from '@/services/collection/reviews';
+import { Avatar } from '@/components/Avatar';
 import { getCurrentProfile, getCurrentUser } from '@/services/profiles';
 
 import {
   addAlbumAction,
+  deleteReviewAction,
   markRelistenAction,
   rateAlbumAction,
   removeAlbumAction,
+  saveReviewAction,
   toggleLikeAction,
 } from './actions';
 
@@ -78,7 +82,7 @@ async function resolveActionState(albumId: string): Promise<ActionCardState> {
   const profile = await getCurrentProfile();
   if (!profile) return { kind: 'onboarding-required' };
 
-  const { entry, hasReview } = await getMyCollectionState(albumId);
+  const { entry, review } = await getMyCollectionState(albumId);
   if (!entry) return { kind: 'not-collected' };
 
   const relistens = entry.relisten_count;
@@ -92,11 +96,20 @@ async function resolveActionState(albumId: string): Promise<ActionCardState> {
       score: Number(entry.rating),
       liked: entry.liked,
       relistens,
-      hasReview,
+      hasReview: review !== null,
+      reviewBody: review?.body ?? null,
+      reviewUpdatedAt: review?.updated_at ?? null,
     };
   }
 
-  return { kind: 'collected-unrated', liked: entry.liked, relistens, hasReview };
+  return {
+    kind: 'collected-unrated',
+    liked: entry.liked,
+    relistens,
+    hasReview: review !== null,
+    reviewBody: review?.body ?? null,
+    reviewUpdatedAt: review?.updated_at ?? null,
+  };
 }
 
 export default async function AlbumPage({ params }: PageProps<'/albums/[mbid]'>) {
@@ -110,6 +123,15 @@ export default async function AlbumPage({ params }: PageProps<'/albums/[mbid]'>)
   // Computed on read from non-null ratings, never stored. Deletion therefore
   // needs no recomputation step, and no counter can drift.
   const rating = await getAlbumRating(album.id);
+
+  // Live reviews only — removed ones are excluded by the query, and their
+  // author keeps access through RLS rather than through this page. The
+  // caller's own review is dropped because it already has a home in the action
+  // card, and printing it twice would read as a duplicate rather than a list.
+  const viewer = await getCurrentProfile();
+  const reviews = (await getAlbumReviews(album.id)).filter(
+    (review) => review.author.id !== viewer?.id,
+  );
 
   // Secondary types qualify the primary one: a live album is an Album that is
   // also Live.
@@ -188,6 +210,8 @@ export default async function AlbumPage({ params }: PageProps<'/albums/[mbid]'>)
               rate: rateAlbumAction.bind(null, album.id),
               like: toggleLikeAction.bind(null, album.id),
               relisten: markRelistenAction.bind(null, album.id),
+              saveReview: saveReviewAction.bind(null, album.id),
+              deleteReview: deleteReviewAction.bind(null, album.id),
             }}
           />
 
@@ -243,6 +267,50 @@ export default async function AlbumPage({ params }: PageProps<'/albums/[mbid]'>)
             </ol>
           )}
         </section>
+
+        {/*
+         * Reviews from other people.
+         *
+         * Rendered as plain text with `whitespace-pre-wrap`: line breaks
+         * survive, and React escapes the content. There is deliberately no
+         * Markdown, no autolinking and no `dangerouslySetInnerHTML` anywhere
+         * near this — it is the first free-text input in the product and the
+         * only safe way to render it is not to interpret it.
+         */}
+        {reviews.length > 0 && (
+          <section className="min-w-0 lg:col-start-2 lg:row-start-3">
+            <SectionHeader trailing={`${reviews.length}`}>Reviews</SectionHeader>
+            <ul className="flex flex-col divide-y divide-border/60">
+              {reviews.map((review) => (
+                <li key={review.id} className="py-5 first:pt-3">
+                  <div className="flex items-center gap-3">
+                    <Avatar
+                      handle={review.author.handle}
+                      displayName={review.author.displayName}
+                      url={review.author.avatarUrl}
+                      px={32}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <Link
+                        href={`/${review.author.handle}`}
+                        className="text-sm text-text underline decoration-border-strong underline-offset-4 transition-colors hover:decoration-accent"
+                      >
+                        {review.author.displayName ?? review.author.handle}
+                      </Link>
+                    </div>
+                    {/* Their score sits with their words: a review reads very
+                        differently next to the number its author gave. */}
+                    <ScoreBadge score={review.rating} variant="user" size="sm" />
+                  </div>
+
+                  <p className="mt-3 whitespace-pre-wrap font-serif text-base leading-[1.65] text-text-secondary">
+                    {review.body}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </article>
     </Container>
   );

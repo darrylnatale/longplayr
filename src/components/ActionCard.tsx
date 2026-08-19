@@ -39,19 +39,35 @@ export type ActionCardActions = {
   rate?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
   like?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
   relisten?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
+  saveReview?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
+  deleteReview?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
 };
+
+/** Matches the check constraint and the service; the field enforces it too. */
+export const REVIEW_LIMIT = 10_000;
+/** Where the counter stops hiding. Far enough out to be a warning, not a meter. */
+const COUNTER_THRESHOLD = REVIEW_LIMIT - 500;
 
 export type ActionCardState =
   | { kind: 'signed-out' }
   | { kind: 'onboarding-required' }
   | { kind: 'not-collected' }
-  | { kind: 'collected-unrated'; liked?: boolean; relistens?: number; hasReview?: boolean }
+  | {
+      kind: 'collected-unrated';
+      liked?: boolean;
+      relistens?: number;
+      hasReview?: boolean;
+      reviewBody?: string | null;
+      reviewUpdatedAt?: string | null;
+    }
   | {
       kind: 'collected-rated';
       score: number;
       liked?: boolean;
       relistens?: number;
       hasReview?: boolean;
+      reviewBody?: string | null;
+      reviewUpdatedAt?: string | null;
     };
 
 function Shell({ children }: { children: ReactNode }) {
@@ -229,6 +245,175 @@ function AddRow({ action }: { action: NonNullable<ActionCardActions['add']> }) {
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * The review editor.
+ *
+ * Plain text, and plain text all the way down: no Markdown, no autolinking, and
+ * nothing on the render side that could interpret what someone typed. Reviews
+ * are displayed with `whitespace-pre-wrap`, which keeps line breaks while React
+ * escapes the content — `dangerouslySetInnerHTML` must never appear near this.
+ *
+ * Explicit Save and Cancel rather than saving as you type. Someone writing a
+ * paragraph should be able to change their mind, and an autosave that commits
+ * half a sentence to a public page is worse than a button.
+ *
+ * The counter stays hidden until the last 500 characters. A live count from the
+ * first word turns a writing surface into a form, and the limit is high enough
+ * that almost nobody will ever see it.
+ */
+function ReviewControl({
+  save,
+  remove,
+  body,
+}: {
+  save: NonNullable<ActionCardActions['saveReview']>;
+  remove?: ActionCardActions['deleteReview'];
+  body: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(body ?? '');
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [state, formAction] = useActionState(save, {});
+  const noop = async (): Promise<{ error?: string }> => ({});
+  const [removeState, removeAction] = useActionState<{ error?: string }, FormData>(
+    remove ?? noop,
+    {},
+  );
+
+  const existing = body !== null && body.length > 0;
+
+  if (!open) {
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => {
+            setDraft(body ?? '');
+            setOpen(true);
+          }}
+          className="block py-1.5 text-left text-sm text-text-secondary transition-colors hover:text-text"
+        >
+          {existing ? 'Edit review…' : 'Write a review…'}
+        </button>
+        {(state.error || removeState.error) && (
+          <Failure message={state.error ?? removeState.error!} />
+        )}
+      </>
+    );
+  }
+
+  const remaining = REVIEW_LIMIT - draft.length;
+  const showCounter = draft.length >= COUNTER_THRESHOLD;
+
+  return (
+    <div className="flex flex-col gap-2.5 py-1">
+      <form action={formAction} className="flex flex-col gap-2.5">
+        <label htmlFor="review-body" className="text-xs uppercase tracking-widest text-text-muted">
+          Your review
+        </label>
+        <textarea
+          id="review-body"
+          name="body"
+          rows={8}
+          autoFocus
+          maxLength={REVIEW_LIMIT}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          aria-describedby={state.error ? 'review-error' : showCounter ? 'review-count' : undefined}
+          placeholder="What did you make of it?"
+          className="w-full resize-y rounded-md border border-border bg-surface px-3 py-2.5 text-base leading-relaxed text-text outline-none transition-colors placeholder:text-text-faint focus:border-accent"
+        />
+
+        {showCounter && (
+          <p
+            id="review-count"
+            aria-live="polite"
+            className={`tabular text-xs ${remaining <= 0 ? 'text-danger-text' : 'text-text-muted'}`}
+          >
+            {remaining.toLocaleString()} characters left
+          </p>
+        )}
+
+        {state.error && (
+          <p id="review-error" role="alert" className="text-xs leading-relaxed text-danger-text">
+            {state.error}
+          </p>
+        )}
+
+        <div className="flex gap-2">
+          <ReviewSubmit />
+          <button
+            type="button"
+            onClick={() => {
+              setDraft(body ?? '');
+              setOpen(false);
+              setConfirmingDelete(false);
+            }}
+            className="rounded-sm border border-border bg-raised px-3 py-1.5 text-xs text-text-secondary transition-colors hover:border-border-strong hover:text-text"
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
+
+      {existing && remove && !confirmingDelete && (
+        <button
+          type="button"
+          onClick={() => setConfirmingDelete(true)}
+          className="self-start text-xs text-text-muted underline decoration-border-strong underline-offset-4 transition-colors hover:text-text"
+        >
+          Delete review
+        </button>
+      )}
+
+      {existing && remove && confirmingDelete && (
+        <div className="flex flex-col gap-2">
+          <p className="text-xs leading-relaxed text-text-secondary">
+            Delete this review? It cannot be undone. The album stays in your collection.
+          </p>
+          <div className="flex gap-2">
+            <form action={removeAction}>
+              <button
+                type="submit"
+                className="rounded-sm border border-danger/50 bg-danger/10 px-3 py-1.5 text-xs font-medium text-danger-text transition-colors hover:bg-danger/20"
+              >
+                Delete
+              </button>
+            </form>
+            <button
+              type="button"
+              onClick={() => setConfirmingDelete(false)}
+              className="rounded-sm border border-border bg-raised px-3 py-1.5 text-xs text-text-secondary transition-colors hover:border-border-strong hover:text-text"
+            >
+              Keep
+            </button>
+          </div>
+        </div>
+      )}
+
+      {removeState.error && (
+        <p role="alert" className="text-xs leading-relaxed text-danger-text">
+          {removeState.error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ReviewSubmit() {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      aria-busy={pending}
+      className="rounded-sm bg-accent px-4 py-1.5 text-xs font-medium text-accent-contrast transition-colors hover:bg-accent-hover disabled:cursor-wait disabled:opacity-70"
+    >
+      {pending ? 'Saving…' : 'Save review'}
+    </button>
   );
 }
 
@@ -569,7 +754,11 @@ export function ActionCard({
           <p className="mt-2 text-xs text-text-faint">Rating, liking or a relisten adds it too.</p>
         </Row>
         <Row>
-          <StackedLink>Write a review…</StackedLink>
+          {actions.saveReview ? (
+            <ReviewControl save={actions.saveReview} remove={actions.deleteReview} body={null} />
+          ) : (
+            <StackedLink>Write a review…</StackedLink>
+          )}
         </Row>
       </Shell>
     );
@@ -617,7 +806,20 @@ export function ActionCard({
           </div>
         </Row>
         <Row>
-          <StackedLink>Write a review…</StackedLink>
+          {actions.saveReview ? (
+            <ReviewControl
+              // Keyed on the timestamp the server last confirmed, so a saved
+              // edit collapses the editor. Without it the control stays open
+              // showing a stale draft: the card's kind does not change on an
+              // edit, so React preserves the component's state.
+              key={`review-${state.reviewUpdatedAt ?? 'none'}`}
+              save={actions.saveReview}
+              remove={actions.deleteReview}
+              body={state.reviewBody ?? null}
+            />
+          ) : (
+            <StackedLink>Write a review…</StackedLink>
+          )}
           <StackedLink>Edition…</StackedLink>
           {actions.remove && (
             <RemoveControl
@@ -675,7 +877,16 @@ export function ActionCard({
         </div>
       </Row>
       <Row>
-        <StackedLink>Edit review…</StackedLink>
+        {actions.saveReview ? (
+          <ReviewControl
+            key={`review-${state.reviewUpdatedAt ?? 'none'}`}
+            save={actions.saveReview}
+            remove={actions.deleteReview}
+            body={state.reviewBody ?? null}
+          />
+        ) : (
+          <StackedLink>Edit review…</StackedLink>
+        )}
         <StackedLink>Edition…</StackedLink>
         {actions.remove && (
           <RemoveControl

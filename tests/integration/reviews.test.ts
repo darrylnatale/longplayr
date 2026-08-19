@@ -311,3 +311,127 @@ describe('reviews carry their author', () => {
     expect(mine![0].status).toBe('removed');
   });
 });
+
+describe('writing a review', () => {
+  it('stores the body and collects the album implicitly', async () => {
+    const user = await createUser();
+    await admin.from('want_to_listen').insert({ user_id: user.id, album_id: albumA });
+    const client = await clientFor(user.email);
+
+    const { data, error } = await saveReview(client, user.id, albumA, 'A considered paragraph.');
+    expect(error).toBeNull();
+    expect(data!.body).toBe('A considered paragraph.');
+    expect(data!.status).toBe('live');
+
+    const { count: entries } = await admin
+      .from('collection_entries')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('album_id', albumA);
+    expect(entries).toBe(1);
+
+    // Writing about an album is one of the actions that causes the entry to
+    // exist, so the wishlist entry goes with it.
+    const { count: wishes } = await admin
+      .from('want_to_listen')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('album_id', albumA);
+    expect(wishes).toBe(0);
+  });
+
+  it('accepts exactly 10,000 characters and refuses 10,001', async () => {
+    const user = await createUser();
+    const client = await clientFor(user.email);
+    const entry = await ensure(client, user.id, albumA);
+
+    const ok = await client
+      .from('reviews')
+      .insert({ collection_entry_id: entry.id, body: 'x'.repeat(10_000) });
+    expect(ok.error).toBeNull();
+
+    await client.from('reviews').delete().eq('collection_entry_id', entry.id);
+
+    const tooLong = await client
+      .from('reviews')
+      .insert({ collection_entry_id: entry.id, body: 'x'.repeat(10_001) });
+    expect(tooLong.error?.code).toBe('23514');
+  });
+
+  it('refuses an empty body at the schema level', async () => {
+    const user = await createUser();
+    const client = await clientFor(user.email);
+    const entry = await ensure(client, user.id, albumA);
+
+    const { error } = await client
+      .from('reviews')
+      .insert({ collection_entry_id: entry.id, body: '' });
+    expect(error?.code).toBe('23514');
+  });
+
+  it('would accept whitespace-only, which is why the service trims first', async () => {
+    // Deliberately documents a gap rather than a guarantee. `char_length('   ')`
+    // is 3, so the check constraint is satisfied and the database alone would
+    // store a blank review. Rejecting whitespace-only is a service rule, and
+    // this test exists so that nobody removes it believing the schema covers it.
+    const user = await createUser();
+    const client = await clientFor(user.email);
+    const entry = await ensure(client, user.id, albumA);
+
+    const { error } = await client
+      .from('reviews')
+      .insert({ collection_entry_id: entry.id, body: '   ' });
+    expect(error).toBeNull();
+
+    expect('   '.trim().length).toBe(0);
+  });
+
+  it('round-trips line breaks and never interprets markup', async () => {
+    // Plain text means plain text: what goes in comes out byte for byte,
+    // including anything that looks like HTML. Escaping is the renderer's job
+    // and React does it; storage must not "helpfully" alter anything.
+    const user = await createUser();
+    const client = await clientFor(user.email);
+    const body =
+      'First line.\n\nSecond line.\n<script>alert(1)</script> & <b>bold</b> **not bold**';
+
+    const { data } = await saveReview(client, user.id, albumA, body);
+    expect(data!.body).toBe(body);
+    expect(data!.body).toContain('\n\n');
+  });
+});
+
+describe('one author cannot touch another’s review', () => {
+  it('refuses an edit', async () => {
+    const owner = await createUser();
+    const intruder = await createUser();
+    const ownerClient = await clientFor(owner.email);
+    const { data: review } = await saveReview(ownerClient, owner.id, albumA, 'Mine.');
+
+    const intruderClient = await clientFor(intruder.email);
+    await intruderClient.from('reviews').update({ body: 'Theirs.' }).eq('id', review!.id);
+
+    const { data: after } = await admin
+      .from('reviews')
+      .select('body')
+      .eq('id', review!.id)
+      .single();
+    expect(after!.body).toBe('Mine.');
+  });
+
+  it('refuses a delete', async () => {
+    const owner = await createUser();
+    const intruder = await createUser();
+    const ownerClient = await clientFor(owner.email);
+    const { data: review } = await saveReview(ownerClient, owner.id, albumA, 'Mine.');
+
+    const intruderClient = await clientFor(intruder.email);
+    await intruderClient.from('reviews').delete().eq('id', review!.id);
+
+    const { count } = await admin
+      .from('reviews')
+      .select('id', { count: 'exact', head: true })
+      .eq('id', review!.id);
+    expect(count).toBe(1);
+  });
+});
