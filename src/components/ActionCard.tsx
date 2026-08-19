@@ -37,13 +37,14 @@ export type ActionCardActions = {
   add?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
   remove?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
   rate?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
+  like?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
 };
 
 export type ActionCardState =
   | { kind: 'signed-out' }
   | { kind: 'onboarding-required' }
   | { kind: 'not-collected' }
-  | { kind: 'collected-unrated'; relistens?: number; hasReview?: boolean }
+  | { kind: 'collected-unrated'; liked?: boolean; relistens?: number; hasReview?: boolean }
   | {
       kind: 'collected-rated';
       score: number;
@@ -227,6 +228,61 @@ function AddRow({ action }: { action: NonNullable<ActionCardActions['add']> }) {
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * The like toggle.
+ *
+ * Restrained by construction: it reuses the quiet-action treatment already in
+ * the card, and "liked" is expressed as the accent border and accent text that
+ * every active quiet control in this product uses. No heart, no colour outside
+ * the palette, and nothing that competes with the dominant action above it.
+ *
+ * The desired next value is submitted rather than derived, so a double click or
+ * a resubmitted form settles on one state instead of toggling twice.
+ * `aria-pressed` is what makes this a toggle to a screen reader rather than a
+ * button whose label happens to change.
+ */
+function LikeButton({
+  action,
+  liked,
+}: {
+  action: NonNullable<ActionCardActions['like']>;
+  liked: boolean;
+}) {
+  const [state, formAction] = useActionState(action, {});
+
+  return (
+    <>
+      <form action={formAction} className="flex-1">
+        <input type="hidden" name="liked" value={liked ? 'false' : 'true'} />
+        <LikeSubmit liked={liked} />
+      </form>
+      {state.error && (
+        <div className="w-full">
+          <Failure message={state.error} />
+        </div>
+      )}
+    </>
+  );
+}
+
+function LikeSubmit({ liked }: { liked: boolean }) {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      aria-pressed={liked}
+      className={`w-full rounded-sm border px-3 py-1.5 text-xs transition-colors disabled:cursor-wait disabled:opacity-70 ${
+        liked
+          ? 'border-accent-dim bg-bg text-accent hover:border-accent'
+          : 'border-border bg-raised text-text-secondary hover:border-border-strong hover:text-text'
+      }`}
+    >
+      {pending ? '…' : liked ? 'Liked' : 'Like'}
+    </button>
   );
 }
 
@@ -438,7 +494,11 @@ export function ActionCard({
             ) : (
               <QuietAction>Rate</QuietAction>
             )}
-            <QuietAction>Like</QuietAction>
+            {actions.like ? (
+              <LikeButton action={actions.like} liked={false} />
+            ) : (
+              <QuietAction>Like</QuietAction>
+            )}
           </div>
           {/* Rating or liking an uncollected album adds it silently, so the
               controls are offered rather than hidden (product-spec.md §8.5). */}
@@ -472,8 +532,12 @@ export function ActionCard({
           )}
         </Row>
         <Row>
-          <div className="flex gap-2">
-            <QuietAction>Like</QuietAction>
+          <div className="flex flex-wrap gap-2">
+            {actions.like ? (
+              <LikeButton action={actions.like} liked={Boolean(state.liked)} />
+            ) : (
+              <QuietAction>Like</QuietAction>
+            )}
             <QuietAction>
               Relisten
               {state.relistens ? <span className="tabular"> ×{state.relistens}</span> : null}
@@ -512,7 +576,11 @@ export function ActionCard({
       </Row>
       <Row>
         <div className="flex flex-wrap gap-2">
-          <QuietAction active={liked}>{liked ? 'Liked' : 'Like'}</QuietAction>
+          {actions.like ? (
+            <LikeButton action={actions.like} liked={Boolean(liked)} />
+          ) : (
+            <QuietAction active={liked}>{liked ? 'Liked' : 'Like'}</QuietAction>
+          )}
           {actions.rate ? (
             <RatingControl
               // Keyed on the confirmed score, so the control resets and

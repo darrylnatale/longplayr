@@ -11,7 +11,7 @@ import { getMyCollectionState } from '@/services/collection';
 import { getAlbumRating } from '@/services/collection/ratings';
 import { getCurrentProfile, getCurrentUser } from '@/services/profiles';
 
-import { addAlbumAction, rateAlbumAction, removeAlbumAction } from './actions';
+import { addAlbumAction, rateAlbumAction, removeAlbumAction, toggleLikeAction } from './actions';
 
 /**
  * Album page — the canonical detail composition.
@@ -90,7 +90,7 @@ async function resolveActionState(albumId: string): Promise<ActionCardState> {
     };
   }
 
-  return { kind: 'collected-unrated', relistens, hasReview };
+  return { kind: 'collected-unrated', liked: entry.liked, relistens, hasReview };
 }
 
 export default async function AlbumPage({ params }: PageProps<'/albums/[mbid]'>) {
@@ -180,6 +180,7 @@ export default async function AlbumPage({ params }: PageProps<'/albums/[mbid]'>)
               add: addAlbumAction.bind(null, album.id),
               remove: removeAlbumAction.bind(null, album.id),
               rate: rateAlbumAction.bind(null, album.id),
+              like: toggleLikeAction.bind(null, album.id),
             }}
           />
 

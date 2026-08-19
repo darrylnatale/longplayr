@@ -136,3 +136,41 @@ test('rate an album, change the score, then clear it', async ({ page }) => {
   await expect(page.getByTitle('Your score')).toBeHidden();
   await expect(page.getByText('Not yet rated.')).toBeVisible();
 });
+
+test('like an uncollected album, then unlike it', async ({ page }) => {
+  const user = uniqueUser();
+  createdEmails.push(user.email);
+
+  await page.goto('/signup');
+  await page.getByLabel('Email').fill(user.email);
+  await page.getByLabel('Password').fill(user.password);
+  await page.getByRole('button', { name: 'Create account' }).click();
+
+  await expect(page).toHaveURL('/onboarding');
+  await page.getByLabel('Handle').fill(user.handle);
+  await page.getByRole('button', { name: 'Claim handle' }).click();
+  await expect(page).toHaveURL(`/${user.handle}`);
+
+  await page.goto(`/albums/${ALBUM_MBID}`);
+  await expect(page.getByRole('button', { name: 'Add to collection' })).toBeVisible();
+
+  const like = page.getByRole('button', { name: 'Like', exact: true });
+  await expect(like).toHaveAttribute('aria-pressed', 'false');
+  await like.click();
+
+  // Liking collects the album and marks it liked, in one action.
+  await expect(page.getByText('In your collection')).toBeVisible({ timeout: 30_000 });
+  const liked = page.getByRole('button', { name: 'Liked', exact: true });
+  await expect(liked).toBeVisible();
+  await expect(liked).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'Add to collection' })).toBeHidden();
+
+  // Unliking leaves the album collected — it is not a way out of the collection.
+  await liked.click();
+  await expect(page.getByRole('button', { name: 'Like', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+    { timeout: 30_000 },
+  );
+  await expect(page.getByText('In your collection')).toBeVisible();
+});

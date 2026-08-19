@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 
-import { addToCollection, rateAlbum, removeFromCollection } from '@/services/collection';
+import { addToCollection, rateAlbum, removeFromCollection, setLiked } from '@/services/collection';
 
 /**
  * Album page mutations.
@@ -91,6 +91,32 @@ export async function rateAlbumAction(
   }
 
   const result = await rateAlbum(albumId, rating);
+  if (!result.ok) return { error: result.message };
+
+  revalidatePath(`/albums/[mbid]`, 'page');
+  return {};
+}
+
+/**
+ * Sets or clears the like.
+ *
+ * Independent of the rating — a liked album may be unrated, and clearing a
+ * score never touches the like. The desired next value travels in the form
+ * rather than being derived server-side, so a stale page cannot toggle twice
+ * from one click: submitting `liked=true` twice leaves it liked.
+ *
+ * Liking an album the user does not hold adds it, through the same canonical
+ * path as everything else, so Want to Listen is cleared and no activity event
+ * is written.
+ */
+export async function toggleLikeAction(
+  albumId: string,
+  _prev: CollectionActionState,
+  formData: FormData,
+): Promise<CollectionActionState> {
+  const liked = formData.get('liked') === 'true';
+
+  const result = await setLiked(albumId, liked);
   if (!result.ok) return { error: result.message };
 
   revalidatePath(`/albums/[mbid]`, 'page');
