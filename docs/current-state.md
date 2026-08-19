@@ -12,9 +12,17 @@
 | 4. What gets built and when                  | `docs/development-plan.md`                   |
 | 5. Where we are right now                    | this file                                    |
 
-Verified against the staging database and a clean-tree build on 2026-08-18.
+Verified against the staging database and a clean-tree build on 2026-08-19.
 
-**Phase 1 implementation is complete.** **Phase 2 is in progress** — its first slice, the collection schema and service layer, is built and tested. No UI is wired to it. Lists, follows, activity, feed, notifications and messaging do not exist, in schema or in code.
+**Phase 1 implementation is complete.** **The design foundation is complete.** **Phase 2 is in progress:**
+
+| Slice                                    | State                                  |
+| ---------------------------------------- | -------------------------------------- |
+| Collection schema and service layer      | **complete and committed** (`7ce0851`) |
+| Add / remove collection, wired to the UI | **complete and committed** (`da83b82`) |
+| Rating                                   | **complete and committed**             |
+
+Lists, follows, activity, feed, notifications, messaging, taste overlap and profile photo/city do not exist, in schema or in code. Liking, relistening, reviews, favourites and the Want to Listen interface have schema and service support but **no interface** — their controls render visibly unavailable until each is wired.
 
 **The design-foundation track is complete.** Every surface is migrated and verified by screenshot at 390, 768 and 1440px — see §7.
 
@@ -71,7 +79,7 @@ Verified against the staging database and a clean-tree build on 2026-08-18.
 | `catalogue_additions` | 3                                                     |
 | `profiles`            | 3 (test accounts — see §8)                            |
 
-Eight migrations applied; local and remote in sync, confirmed with `npx supabase migration list --linked`. Staging can be queried read-only with `npx supabase db query --linked "<sql>"`, which is how these numbers were checked.
+**Nine migrations applied; local and staging are in sync**, confirmed with `npx supabase migration list --linked` on 2026-08-19. The collection migration `20260818120000_create_collection` was applied to staging that day, closing a one-migration drift that existed while the slice was built locally. Staging can be queried read-only with `npx supabase db query --linked "<sql>"`, which is how these numbers were checked.
 
 ### Git state
 
@@ -479,7 +487,46 @@ One test bypasses `ensure_collection_entry` deliberately, to pin down what the s
 
 ---
 
-## 14. Lessons carried forward
+## 14. Phase 2 progress and staging schema state
+
+### Slices delivered
+
+**Add and remove**, wired to the album action card (`da83b82`). All five card states render from real session and collection state. Removal semantics were locked on 2026-08-19 after being found unspecified: the review and relisten history are deleted by cascade and **the interface warns first**, naming what this particular removal destroys; favourites and Want to Listen are untouched, because the clearing rule runs one way only.
+
+**Rating.** Numeric input, never stars. 0.0-10.0 to one decimal, `0.0` a real score, unrated is `null`. Rating an uncollected album collects it through the canonical path, which clears Want to Listen and writes no activity event. Clearing a score returns the entry to unrated without leaving the collection. The album average is computed on read and rendered as a bare numeral beside the user's own score as a brass chip — `ScoreBadge`'s two variants, which exist for exactly that separation.
+
+Three defects in the rating slice were found by running it rather than by reading it, and are worth remembering as a class:
+
+- **Clearing silently re-saved the score.** The clear button and the input shared the field name, and `FormData.get` returns the first entry, so the input's value won. Clearing now carries its own intent. **Only the end-to-end test could have caught this** — every integration test passed throughout.
+- **The control stayed open after a save**, showing a stale value, because the card's kind does not change on a rated-to-rated edit and React preserves component state. It is now keyed to the confirmed score.
+- **The expanded form squashed a sibling control into a sliver.** Visible only in a screenshot.
+
+### Verification
+
+CI runs the full path — format, lint, typecheck, unit tests, build, integration against a real database, fixture seed, then Playwright. `npm run verify:full` runs the same sequence locally and is now the documented pre-push check; `npm run verify` remains the fast loop. That distinction exists because `verify` alone let a commit break two end-to-end assertions and leave `main` red for three commits.
+
+### Staging schema
+
+**The collection migration was applied to staging on 2026-08-19** and verified rather than assumed:
+
+| Check                     | Result                                                                                                 |
+| ------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Five tables present       | `collection_entries`, `relisten_events`, `reviews`, `favourite_albums`, `want_to_listen`               |
+| RLS                       | enabled on all five, two policies each                                                                 |
+| Grants                    | `anon` select; `authenticated` write; `service_role` full                                              |
+| `ensure_collection_entry` | present, `security invoker` — not a privilege-escalation path                                          |
+| `sync_relisten_count`     | present, `security definer`                                                                            |
+| Catalogue                 | **unchanged** — 338 / 241 / 6,388 / 4,751, identical to the pre-apply baseline                         |
+| Collection rows           | **zero** across all five tables. Nothing was seeded                                                    |
+| Deployed app              | album, browse, profile, login and signup all 200; `/onboarding` still redirects to `/login` signed out |
+
+**No collection data exists on staging and none was created.** The integration suite cannot reach it: `tests/setup/integration.ts` throws on any non-localhost URL, because those tests truncate tables.
+
+One observation, not a finding: `anon` holds `TRUNCATE`, `TRIGGER` and `REFERENCES` on the new tables. That is a **project-wide Supabase default** — `albums` and `profiles` carry exactly the same set — and was not introduced by this migration. RLS is what actually constrains access.
+
+---
+
+## 15. Lessons carried forward
 
 **A returned failure is not a raised failure.** This cost the most, twice. `fetchAndStoreArtwork` returns `{ status: 'failed' }` rather than throwing, and ingestion returned `null` for a failed tracklist. Both are right for their immediate caller and wrong for the one that owns retrying — nothing threw, no job failed, and 36 albums plus 44 tracklists were quietly never retried.
 

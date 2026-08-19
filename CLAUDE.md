@@ -80,10 +80,17 @@ Listed in authority order. When two disagree, the higher one wins.
 ```bash
 npm run db:start && npm run db:env   # local Supabase (Docker), then write .env.local
 npm run dev                          # http://localhost:3000
-npm run verify                       # exactly what CI runs — run before pushing
+npm run verify                       # fast loop — no database, no browser
+npm run verify:full                  # what CI runs — use before commit and push
 ```
 
-`npm run verify` covers format, lint, typecheck, unit and component tests, and build. Integration and end-to-end tests need the database and run separately: `npm run test:integration`, `npm run test:e2e`.
+**Two levels of verification, and the difference matters.**
+
+`npm run verify` is the fast development loop: format, lint, typecheck, unit and component tests, and a production build. It touches neither a database nor a browser, deliberately — that is what makes it fast enough to run constantly.
+
+`npm run verify:full` is the CI-equivalent: everything `verify` does, then the integration suite against the local database, then the fixture catalogue seed, then Playwright. It is the same sequence CI runs, in the same order.
+
+**Substantive changes go through `verify:full` before commit and push.** `verify` alone is not sufficient evidence that a change is safe to land — it cannot see a broken query, a broken RLS policy or a broken page. Both suites can also still be run on their own: `npm run test:integration`, `npm run test:e2e`.
 
 > **⚠️ `npm run test:integration` DELETES ALL CATALOGUE DATA.**
 >
@@ -93,7 +100,9 @@ npm run verify                       # exactly what CI runs — run before pushi
 
 **Always verify from a clean build.** `rm -rf .next && npm run verify`. This is a standing requirement, not a suggestion: `PageProps` and `LayoutProps` are generated into `.next/types`, so a stale directory can make typecheck pass locally while failing in CI. That exact discrepancy has already put a red commit on `main` once.
 
-**There is no branch protection.** GitHub gates it behind a paid plan for private repositories, and paying or going public purely for that has been declined. Nothing mechanically prevents a red commit landing on `main`, so the clean-build check above is the actual safety net. Treat it accordingly.
+**There is no branch protection.** GitHub gates it behind a paid plan for private repositories, and paying or going public purely for that has been declined. Nothing mechanically prevents a red commit landing on `main`, so **`rm -rf .next && npm run verify:full` before pushing is the actual safety net.** Treat it accordingly.
+
+This was learned the expensive way. The rule here previously named `verify` as the compensating control, which was wrong: `verify` does not run Playwright, so a commit that broke two end-to-end assertions passed the documented pre-push check and left `main` red for three commits before anyone noticed.
 
 ### Conventions established in Phase 0
 
