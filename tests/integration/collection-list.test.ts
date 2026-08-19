@@ -89,17 +89,28 @@ async function setAddedAt(entryId: string, iso: string) {
  * Kept identical on purpose — if the service's select or ordering changes and
  * this does not, these tests stop describing the thing they claim to.
  */
-async function readCollection(client: SupabaseClient<Database>, userId: string) {
-  const { data, error } = await client
+async function readPage(
+  client: SupabaseClient<Database>,
+  userId: string,
+  { limit = 100, offset = 0 }: { limit?: number; offset?: number } = {},
+) {
+  const { data, count, error } = await client
     .from('collection_entries')
     .select(
       'id, album_id, rating, liked, relisten_count, albums(mbid, title, display_credit, artwork_status, first_release_date)',
+      { count: 'exact' },
     )
     .eq('user_id', userId)
-    .order('added_at', { ascending: false });
+    .order('added_at', { ascending: false })
+    .range(offset, offset + limit - 1);
 
   if (error) throw error;
-  return data ?? [];
+  return { items: data ?? [], total: count ?? 0 };
+}
+
+/** The rows alone, for the cases that predate pagination. */
+async function readCollection(client: SupabaseClient<Database>, userId: string) {
+  return (await readPage(client, userId)).items;
 }
 
 const titlesOf = (rows: Awaited<ReturnType<typeof readCollection>>) =>
@@ -171,6 +182,118 @@ describe('ordering', () => {
 
     expect(rows[0].album_id).toBe(oldListen.album_id);
     expect(rows[1].album_id).toBe(noListen.album_id);
+  });
+});
+
+describe('bounded reads', () => {
+  /**
+   * The page size is 60 and the preview is 12, but the local fixture catalogue
+   * holds three albums — so these exercise the **mechanism** at small numbers
+   * rather than the production constants. What has to hold is that a window
+   * returns only its own rows while the count reports the whole collection,
+   * and that the windows tile the set without gaps or repeats.
+   */
+  it('returns only the requested window, and counts the whole collection', async () => {
+    const user = await createProfiledUser();
+
+    const first = await ensureEntry(user.id, albumA);
+    const second = await ensureEntry(user.id, albumB);
+    const third = await ensureEntry(user.id, albumC);
+    await setAddedAt(first.id, '2026-01-01T00:00:00Z');
+    await setAddedAt(second.id, '2026-06-01T00:00:00Z');
+    await setAddedAt(third.id, '2026-08-01T00:00:00Z');
+
+    const page = await readPage(admin, user.id, { limit: 2, offset: 0 });
+
+    expect(page.items).toHaveLength(2);
+    // The count is the size of the collection, not of the window. The preview's
+    // "N albums" and the destination's page count both read this.
+    expect(page.total).toBe(3);
+  });
+
+  it('tiles the collection across pages without gaps or repeats', async () => {
+    const user = await createProfiledUser();
+
+    const first = await ensureEntry(user.id, albumA);
+    const second = await ensureEntry(user.id, albumB);
+    const third = await ensureEntry(user.id, albumC);
+    await setAddedAt(first.id, '2026-01-01T00:00:00Z');
+    await setAddedAt(second.id, '2026-06-01T00:00:00Z');
+    await setAddedAt(third.id, '2026-08-01T00:00:00Z');
+
+    const pageOne = await readPage(admin, user.id, { limit: 2, offset: 0 });
+    const pageTwo = await readPage(admin, user.id, { limit: 2, offset: 2 });
+
+    expect(pageOne.items.map((r) => r.album_id)).toEqual([albumC, albumB]);
+    expect(pageTwo.items.map((r) => r.album_id)).toEqual([albumA]);
+
+    // Ordering is continuous across the boundary: every album once, newest first.
+    const seen = [...pageOne.items, ...pageTwo.items].map((r) => r.album_id);
+    expect(seen).toEqual([albumC, albumB, albumA]);
+    expect(new Set(seen).size).toBe(3);
+  });
+
+  it('rejects an offset past the end rather than returning an empty window', async () => {
+    // The contract that forces `listCollection` to have a fallback, pinned here
+    // so nobody removes that branch believing PostgREST returns []. It does not
+    // — it fails the request outright, and the count does not come back with
+    // the failure, so the total has to be re-read to decide the page count.
+    //
+    // Found by the Collection destination 500ing on `?page=2` where it meant to
+    // 404. Only an end-to-end test could have caught that; every integration
+    // test at the time passed.
+    const user = await createProfiledUser();
+    await ensureEntry(user.id, albumA);
+
+    const { error } = await admin
+      .from('collection_entries')
+      .select('id', { count: 'exact' })
+      .eq('user_id', user.id)
+      .order('added_at', { ascending: false })
+      .range(60, 119);
+
+    expect(error?.code).toBe('PGRST103');
+
+    // And the count is still readable on its own, which is what the fallback does.
+    const { count } = await admin
+      .from('collection_entries')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id);
+
+    expect(count).toBe(1);
+  });
+
+  it('reports zero for an empty collection rather than failing', async () => {
+    const user = await createProfiledUser();
+    const page = await readPage(admin, user.id, { limit: 12, offset: 0 });
+
+    expect(page.items).toEqual([]);
+    expect(page.total).toBe(0);
+  });
+
+  it('counts only the requested user’s entries', async () => {
+    // A count that ignored user_id would make one person's profile advertise
+    // everybody's albums, and the page count would be wrong for every user.
+    const mine = await createProfiledUser();
+    const theirs = await createProfiledUser();
+
+    await ensureEntry(mine.id, albumA);
+    await ensureEntry(theirs.id, albumB);
+    await ensureEntry(theirs.id, albumC);
+
+    expect((await readPage(admin, mine.id, { limit: 12 })).total).toBe(1);
+    expect((await readPage(admin, theirs.id, { limit: 12 })).total).toBe(2);
+  });
+
+  it('is readable signed out, count included', async () => {
+    const user = await createProfiledUser();
+    await ensureEntry(user.id, albumA);
+    await ensureEntry(user.id, albumB);
+
+    const page = await readPage(anon, user.id, { limit: 1, offset: 0 });
+
+    expect(page.items).toHaveLength(1);
+    expect(page.total).toBe(2);
   });
 });
 

@@ -207,13 +207,38 @@ Primary: identity (avatar, display name, handle, bio) and a stat cluster (albums
 
 **Tabs: Collection | Want to Listen | Favourites.** **[DECIDED 2026-08-19]** Want to Listen is public and sits on the profile as its own tab; see §10.1. This is the eventual structure — only Collection is built.
 
+**The profile root is an overview, and each full set is its own destination.** **[DECIDED 2026-08-19]** This restates what this section always said — _"the full collection behind its own tab rather than dumped onto the profile"_ — after an implementation rendered the entire collection on the profile root with no limit and no destination to link to.
+
+| Destination            | Holds                                                                                                         | State         |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------- | ------------- |
+| `/<handle>`            | **Profile overview.** Identity, available statistics, favourites, and a **bounded preview** of the collection | **Built**     |
+| `/<handle>/collection` | **Full Collection.** The whole collection, `wide` container, paginated                                        | **Built**     |
+| `/<handle>/wishlist`   | **Want to Listen.** Reserved. Schema and service exist; no interface                                          | **Not built** |
+| `/<handle>/favourites` | **Favourites.** Reserved. Schema and service exist; no interface                                              | **Not built** |
+
+**These are four distinct things and the distinction is load-bearing.** The overview is a summary that links onward; the other three are full sets. The overview is not "the collection page with less on it", and the Collection destination is not "the profile" — they answer different questions and take different containers.
+
+**The two unbuilt paths are reserved, not stubbed.** Nothing renders for them: no route, no tab, no empty section, no placeholder. **The tab bar arrives with the second destination, not before** — one tab is not a tab bar, and inert tabs are an interface for features that do not exist. Reserving a path means the naming is decided so the second destination does not force the first to be renamed; it does not mean anything is drawn.
+
+**The same applies to favourites on the overview.** Its place in the overview's running order is decided — above the collection preview — but until the feature is built the overview renders identity and collection only. An empty `FAVOURITES` heading on every profile would be the scaffold of zeroed counters this spec already rejects.
+
+**The preview's count is the navigation.** The section header's count becomes the link to the full collection, which is the borrowed "count or MORE at the far right" pattern in `design-reference.md` §3 doing the job it was borrowed for.
+
+**A profile must never render an unbounded collection.** The overview shows a fixed preview; the collection destination pages. A 400-album account is the size this product is designed for, and 400 covers on the profile root is not a page.
+
 **Favourites: up to ten pinned albums**, user-ordered, shown as an artwork row near the top of the profile. **[DECIDED]** Ten is more than Letterboxd's four, which changes the layout — it reads as a grid rather than a single row, and at square proportions likely sits as 5×2 or 10-across depending on breakpoint.
 
 ### Collection view
 
-An artwork grid, each item showing its cover, your score if any, a like indicator if liked, and a `×N` marker if relistened. Sortable by date (using `listened_on` falling back to `added_at`), rating, title, artist, release year. Filterable by rated/unrated, liked, and reviewed.
+An artwork grid, each item showing its cover, your score if any, a like indicator if liked, and a `×N` marker if relistened. **No title and no credit** — the grid is artwork plus a minimal state line, which is the reading `design-reference.md` §11.9 settles. Sortable by date, rating, title, artist, release year. Filterable by rated/unrated, liked, and reviewed.
 
 No dates are displayed, by decision — the date only orders the grid.
+
+**Default order is `added_at` descending** — most recently added first. **[DECIDED 2026-08-19]** Not `coalesce(listened_on, added_at)`: the collection answers "what have I most recently added", which is a fact about the account, while `listened_on` is a backdatable claim about the past. Ordering by it would let a backfill of old records displace everything added this week, around a date the page never shows. `listened_on` remains available as an explicit sort.
+
+**The full collection is paginated.** **[DECIDED 2026-08-19]** The overview previews **12**; the Collection destination shows **60 per page** with `?page=n`, server-rendered, navigated by `← Newer` / `Page n of m` / `Older →`. The preview count links to the destination **only when there is more to see** — at 12 or fewer it stays plain text rather than pointing at a page showing the same covers.
+
+Sort and filter are not yet built.
 
 ### Feed
 

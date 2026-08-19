@@ -338,6 +338,72 @@ Recorded as a design rule rather than a delivery detail because on these
 surfaces the artwork **is** the content (§8). A soft cover is not a performance
 characteristic, it is a degraded product.
 
+### 11.8 Grid surfaces take the `wide` container. The profile did not.
+
+**Decided: every grid of covers renders in `wide`, including the profile's.**
+
+§3 measured the reference's member films grid — named in §2 as our collection
+view's closest analogue — at **~93% of viewport width**. `Container`'s `wide`
+variant is `min(94vw, 1680px)`, which is that measurement. `content` is 1120px
+and exists for reading measure.
+
+The profile collection shipped in `content`, because the profile was an identity
+surface before it held a grid and the container was never revisited when one
+arrived. The cost was measured on staging rather than estimated:
+
+| Surface            | Container | Density  | Cols @1440 | Cover @1440 |
+| ------------------ | --------- | -------- | ---------- | ----------- |
+| Browse — Popular   | `wide`    | relaxed  | 7          | ~175px      |
+| Artist discography | `wide`    | relaxed  | 7          | ~175px      |
+| Profile collection | `content` | standard | 11         | **83px**    |
+
+`Container`'s own documentation warns that a twelve-across grid at 1120px yields
+~78px cells, _"too small to recognise a cover by"_, and §11.5 puts the ceiling of
+`standard` near 105px. At 83px the profile was rendering **below the floor this
+document sets and 20% under the size its own density intends** — and the loss is
+not subtle: twelve real covers occupy two thirds of one row and the record-shelf
+reading disappears entirely.
+
+The same density in `wide` yields ~105px, which is the intended figure. **The fix
+is the container, not the density** — no new ramp value, and Browse and the
+artist page are unaffected.
+
+### 11.9 The collection grid carries state, not captions
+
+§3 and §5.3 have been read as contradicting each other, and the tension is
+recorded here so it is resolved once rather than rediscovered.
+
+- **§3**, describing the reference: _"no titles, no captions, nothing but
+  artwork — with tiny heart glyphs beneath liked entries as the only overlay."_
+- **§5.3**, describing ours: _"a cover grid with sort and filter controls,
+  per-item score, like indicator, and relisten marker."_
+
+**They do not conflict.** §3 rules out **captions** — title and credit. §5.3
+requires **state** — score, like, relisten. The reference itself carries state
+(the heart glyphs) while carrying no captions, so both statements describe the
+same object: artwork-forward, dense, with a minimal state overlay.
+
+**Decided: the collection's default presentation is square artwork plus a state
+line — score, like indicator and `×N` where each applies — and no title or
+credit.**
+
+This does not reopen §11.5. That decision ties **captions** to `relaxed` cells
+because _"`standard` tops out near 105px, where a caption is unreadable"_, and it
+is right: "Jay-Z & Kanye West" is not legible at 105px. A state line is not a
+caption. `9.6`, a heart glyph and `×3` are three characters, a glyph and two
+characters set in tabular figures — legible at 105px where a credit is not. The
+bargain §11.5 strikes is that metadata must buy the cell that pays for it;
+state costs one short line and pays for itself at the existing density.
+
+**Consequence for `CollectionTile`.** Its Compact mode currently draws artwork
+alone, which satisfies §3 and fails §5.3 — a profile that shows what someone
+holds and nothing about what they think of it, which is the whole difference
+between a collection and the catalogue. Compact gains the state line. Detailed
+keeps its captions and stays in the design system and the gallery.
+
+**This is a collection-context presentation, not a new global density.** No ramp
+value is added and no catalogue surface changes.
+
 ### 11.7 A page title is serif only when it names something the catalogue holds
 
 §4 borrows "serif for content, sans for chrome". That settles album titles and

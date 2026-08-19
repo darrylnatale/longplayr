@@ -1,10 +1,11 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { Avatar } from '@/components/Avatar';
 import { CollectionGrid } from '@/components/CollectionGrid';
 import { Container } from '@/components/Container';
 import { SectionHeader } from '@/components/SectionHeader';
-import { listCollection } from '@/services/collection';
+import { COLLECTION_PREVIEW_LIMIT, listCollection } from '@/services/collection';
 import { getCurrentUser, getProfileByHandle } from '@/services/profiles';
 
 export async function generateMetadata({ params }: PageProps<'/[handle]'>) {
@@ -15,31 +16,70 @@ export async function generateMetadata({ params }: PageProps<'/[handle]'>) {
 }
 
 /**
- * Public profile.
+ * The profile **overview**.
+ *
+ * An overview, not the collection (product-spec.md §6). It summarises and links
+ * onward; `/<handle>/collection` holds the whole set. The previous version
+ * rendered every entry a user held, unbounded, with nowhere to link to — a
+ * 400-album account would have been 400 covers on one page.
  *
  * Everything user-generated is public by decision, so there is no viewer
  * permission filtering here and there is not meant to be
  * (docs/architecture.md §15). The collection read takes a profile id and
  * applies no viewer scoping: signed out, you see exactly what a signed-in
- * visitor sees, which is what the end-to-end test asserts.
+ * visitor sees.
  *
- * **The collection is the only tab built.** The resolved profile structure is
- * `Collection | Want to Listen | Favourites` (product-spec.md §10.1), and the
- * other two have schema and service support but no interface. No tab bar is
- * rendered for a single tab: two inert tabs would be an interface for features
- * this slice does not build, and the decision that fixed the structure
- * explicitly did not schedule them.
+ * **`wide`, like every other grid surface.** The overview carries a grid, and
+ * grids take the wide container (design-reference.md §11.8). In `content` the
+ * covers rendered at 83px — below the ~105px ceiling `standard` density
+ * intends, and below the size the design system calls too small to recognise a
+ * cover by. The identity block keeps its own reading measure, so widening the
+ * page moves the grid and the rules, not the text.
  *
- * Still absent, and still deliberately so: the stat cluster. A cluster reading
- * "0 following · 0 followers" would imply those surfaces are live and merely
- * unused, which is untrue — follows are Phase 3. The album count sits on the
- * section header instead, where it is a count of something that genuinely
- * exists (docs/design-reference.md §3).
+ * **Two things are deliberately not drawn here.**
+ *
+ * The **stat cluster**: the only statistic that exists is the album count, and
+ * it already appears as the section header's count. Printing it twice to make a
+ * cluster of one, or padding it with "0 following · 0 followers", would imply
+ * surfaces that are Phase 3. It arrives when it has companions.
+ *
+ * **Favourites**: its place in the running order is decided — above the
+ * collection preview — and nothing renders for it until the feature exists. An
+ * empty `FAVOURITES` heading on every profile is the same scaffold of zeroed
+ * counters, wearing a different label.
  */
 
 /** "August 2026" — from created_at, the one profile fact not currently shown. */
 function joinedLabel(iso: string): string {
   return new Date(iso).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+}
+
+/**
+ * The collection count, and the way through to the whole collection.
+ *
+ * This is the borrowed "count or MORE link at the far right" pattern
+ * (design-reference.md §3) doing the job it was borrowed for, rather than a
+ * separate control competing with it.
+ *
+ * **It only becomes a link when there is more to see.** At or below the preview
+ * limit the overview already shows every album the person holds, so linking on
+ * would lead to a page displaying exactly the same covers — an affordance that
+ * promises something and delivers nothing.
+ */
+function CollectionCount({ handle, total }: { handle: string; total: number }) {
+  if (total === 0) return null;
+
+  const label = `${total} ${total === 1 ? 'album' : 'albums'}`;
+  if (total <= COLLECTION_PREVIEW_LIMIT) return <span className="tabular">{label}</span>;
+
+  return (
+    <Link
+      href={`/${handle}/collection`}
+      className="tabular text-text-muted transition-colors hover:text-text"
+    >
+      {label} <span aria-hidden>→</span>
+    </Link>
+  );
 }
 
 export default async function ProfilePage({ params }: PageProps<'/[handle]'>) {
@@ -56,14 +96,16 @@ export default async function ProfilePage({ params }: PageProps<'/[handle]'>) {
   const viewer = await getCurrentUser();
   const isOwnProfile = viewer?.id === profile.id;
 
-  const collection = await listCollection(profile.id);
+  const { items: preview, total } = await listCollection(profile.id, {
+    limit: COLLECTION_PREVIEW_LIMIT,
+  });
 
   // The handle is the h1 when there is no display name, so repeating it
   // underneath would just print the same string twice.
   const hasDistinctName = Boolean(profile.display_name);
 
   return (
-    <Container variant="content">
+    <Container variant="wide">
       <header className="border-b border-border pb-8">
         <div className="flex items-start gap-5 sm:gap-6">
           <Avatar
@@ -98,20 +140,18 @@ export default async function ProfilePage({ params }: PageProps<'/[handle]'>) {
         )}
       </header>
 
+      {/*
+       * Favourites belongs here, above the collection preview
+       * (product-spec.md §6). Reserved, not stubbed: nothing renders until the
+       * feature exists.
+       */}
+
       <section className="mt-8">
-        <SectionHeader
-          trailing={
-            collection.length > 0 ? (
-              <span className="tabular">
-                {collection.length} {collection.length === 1 ? 'album' : 'albums'}
-              </span>
-            ) : undefined
-          }
-        >
+        <SectionHeader trailing={<CollectionCount handle={profile.handle} total={total} />}>
           Collection
         </SectionHeader>
 
-        {collection.length === 0 ? (
+        {total === 0 ? (
           /*
            * The empty state is the real one, not a stand-in. It is framed as a
            * deliberate panel rather than a stray line of grey text so it reads as
@@ -129,23 +169,7 @@ export default async function ProfilePage({ params }: PageProps<'/[handle]'>) {
             </p>
           </div>
         ) : (
-          /*
-           * Rendered at `DEFAULT_COLLECTION_MODE` with no density control.
-           *
-           * `CollectionTile` supports Detailed, and it stays in the design
-           * system and in the gallery — but a user-facing switch is a product
-           * control, and adding one was deliberately deferred rather than
-           * slipped in alongside the read path. Compact is the locked default
-           * here until that control is decided on its own terms.
-           *
-           * The consequence is deliberate and worth stating: score, like and
-           * relisten markers live in Detailed, so they do not render on this
-           * surface yet. Their correctness is covered where it currently lives
-           * — the mapping in `collection-list.test.ts` and the rows themselves
-           * in the integration suite — and Detailed stays inspectable in the
-           * gallery at /design.
-           */
-          <CollectionGrid albums={collection} />
+          <CollectionGrid albums={preview} />
         )}
       </section>
     </Container>

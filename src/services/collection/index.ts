@@ -41,6 +41,9 @@ export type MutationError =
 /** Postgres error code we turn into an outcome rather than an exception. */
 const CHECK_VIOLATION = '23514';
 
+/** PostgREST's code for a range whose offset is past the end of the result. */
+const RANGE_NOT_SATISFIABLE = 'PGRST103';
+
 /** The maximum number of pinned favourites. Also enforced by the schema. */
 export const MAX_FAVOURITES = 10;
 
@@ -176,6 +179,19 @@ export type CollectionListItem = {
   relistens: number;
 };
 
+/** The overview previews this many albums. `product-spec.md` §6. */
+export const COLLECTION_PREVIEW_LIMIT = 12;
+
+/** The Collection destination shows this many per page. `product-spec.md` §6. */
+export const COLLECTION_PAGE_SIZE = 60;
+
+/** One bounded window onto a collection, plus the size of the whole thing. */
+export type CollectionPage = {
+  items: CollectionListItem[];
+  /** Total entries the user holds, not the number returned. Drives the count and the page count. */
+  total: number;
+};
+
 /**
  * A user's collection, newest addition first.
  *
@@ -201,23 +217,56 @@ export type CollectionListItem = {
  * `userId` and applies no viewer filtering. The RLS policy is
  * `for select using (true)` and `anon` holds `select`, so a signed-out visitor
  * reads exactly what a signed-in one does.
+ *
+ * **`limit` is required, deliberately.** A profile must never render an
+ * unbounded collection (`product-spec.md` §6), and the first implementation of
+ * this function had no limit at all — a 400-album account would have rendered
+ * 400 rows and 400 images on one page. Making the bound part of the type means
+ * a caller cannot forget it rather than being asked to remember.
  */
-export async function listCollection(userId: string): Promise<CollectionListItem[]> {
+export async function listCollection(
+  userId: string,
+  { limit, offset = 0 }: { limit: number; offset?: number },
+): Promise<CollectionPage> {
   const supabase = await createClient();
 
   // `collection_entries.album_id` is the only relationship to `albums`, so this
   // embed needs no foreign-key disambiguation — unlike `releases`, which has
   // two paths and must name the key.
-  const { data, error } = await supabase
+  //
+  // `count: 'exact'` returns the size of the whole collection rather than of
+  // this window, so the preview's count and the destination's page count both
+  // come back with the rows instead of costing a second round trip.
+  const { data, count, error } = await supabase
     .from('collection_entries')
     .select(
       'id, album_id, rating, liked, relisten_count, albums(mbid, title, display_credit, artwork_status, first_release_date)',
+      { count: 'exact' },
     )
     .eq('user_id', userId)
-    .order('added_at', { ascending: false });
+    .order('added_at', { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  // PostgREST answers an offset past the end with an error rather than an empty
+  // window — `PGRST103`, "Requested range not satisfiable". That is a fact
+  // about the request, not a fault: the Collection destination has to be able
+  // to ask for page 9 of a collection that now has two pages and be told so,
+  // and without this it raised and the page 500'd where it meant to 404.
+  //
+  // The count does not come back on that response, so this is the one case that
+  // costs a second round trip. The happy path stays a single query.
+  if (error?.code === RANGE_NOT_SATISFIABLE) {
+    const { count: total, error: countError } = await supabase
+      .from('collection_entries')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId);
+
+    if (countError) throw countError;
+    return { items: [], total: total ?? 0 };
+  }
 
   if (error) throw error;
-  return (data ?? []).flatMap(toCollectionListItem);
+  return { items: (data ?? []).flatMap(toCollectionListItem), total: count ?? 0 };
 }
 
 /**

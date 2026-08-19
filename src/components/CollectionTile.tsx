@@ -2,12 +2,24 @@ import { AlbumCover } from '@/components/AlbumCover';
 import { formatScore } from '@/components/ScoreBadge';
 
 /**
- * A collection grid tile, in one of two user-selectable modes.
+ * A collection grid tile, in one of two modes.
  *
- * **Compact is the default.** The primary browsing experience stays an
- * artwork-led record shelf: nothing is burned into the cover, and the wall of
- * squares reads uninterrupted. Detailed is the explicit opt-in for people who
- * want more information on screen at once.
+ * **Compact is the collection's presentation everywhere.** An artwork-led
+ * record shelf — nothing is burned into the cover, and the wall of squares
+ * reads uninterrupted — with a **minimal state line** beneath: score, like
+ * indicator and `×N`, each only when it applies.
+ *
+ * That state line is the difference between a collection and the catalogue
+ * (`design-reference.md` §11.9). Browse already shows what exists; a profile
+ * exists to show what someone thinks of it, and a wall of covers carrying no
+ * score says nothing a catalogue page does not. The line is **not** a caption
+ * and does not reopen §11.5: that decision ties title and credit to `relaxed`
+ * cells because `standard` tops out near 105px where a credit is unreadable.
+ * `9.6`, a heart and `×3` are three characters, a glyph and two characters in
+ * tabular figures, which are legible at that size where a credit is not.
+ *
+ * Detailed adds title and credit on top, and is not currently used by any
+ * product surface — it stays in the design system and the gallery.
  *
  * Detailed keeps a strict hierarchy, and the order is the whole point:
  *
@@ -97,7 +109,17 @@ export function CollectionTile({ album, mode }: { album: TileAlbum; mode: Collec
     />
   );
 
-  if (mode === 'compact') return <div>{cover}</div>;
+  // Compact renders the cover and, only when there is something to say, the
+  // state line. `CollectionState` returns null for an unrated, unliked, never
+  // relistened album, so no empty row is reserved and a sparse collection still
+  // reads as an uninterrupted wall rather than a broken table.
+  if (mode === 'compact')
+    return (
+      <div>
+        {cover}
+        <CollectionState album={album} />
+      </div>
+    );
 
   return (
     <div>

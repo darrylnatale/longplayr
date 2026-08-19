@@ -171,7 +171,9 @@ Not a blocking phase, but it must land **before Phase 2**, because Phase 2 is wh
 - Relisten: increment, producing discrete events
 - Remove from collection
 - Album page in all three states — not collected, collected unrated, collected rated
-- Collection view on profile: cover grid, sortable and filterable, showing score, like indicator and `×N` marker
+- **Profile overview** — identity, available statistics, favourites, and a bounded collection preview whose count links onward
+- **Collection destination** at `/<handle>/collection` — the full collection in the `wide` container, paginated
+- Collection view: cover grid showing score, like indicator and `×N` marker, **no captions** (`design-reference.md` §11.9); sort and filter follow later
 - Optional edition selection, with lazy release fetching
 - Album averages computed on read, one decimal
 
@@ -215,6 +217,8 @@ Not a blocking phase, but it must land **before Phase 2**, because Phase 2 is wh
 - End-to-end: search → add → rate → review → appears in collection
 
 **Definition of done.** A user can find an album, add it, score it, write a review, mark relistens, and see it once in their collection with the correct markers. The album page shows an average drawn from real ratings and lists reviews from other users.
+
+**Ordering within the phase.** The profile architecture — overview, collection destination, `wide` container, pagination, and the state line on the tile — lands **before Favourites**. Favourites is specified to sit near the top of the profile, so it needs the overview to exist; adding a second grid to a profile that is already an unbounded first grid would double the problem rather than reveal it. Recorded because the reverse order looks equally reasonable and is not.
 
 ---
 

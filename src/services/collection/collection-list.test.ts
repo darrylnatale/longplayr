@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { toCollectionListItem } from './index';
+import { COLLECTION_PAGE_SIZE, COLLECTION_PREVIEW_LIMIT, toCollectionListItem } from './index';
 
 /**
  * The collection-grid mapping, in isolation.
@@ -113,5 +113,23 @@ describe('a row whose album did not come back', () => {
     // Unreachable behind the foreign key. Dropping it keeps the return type
     // honest without inventing a title to stand in for the missing one.
     expect(toCollectionListItem({ ...row, albums: null })).toEqual([]);
+  });
+});
+
+describe('the bounds the surfaces render at', () => {
+  /**
+   * Pinned because they are product decisions (`product-spec.md` §6), not
+   * tuning constants. Nothing breaks if they drift, which is exactly why a
+   * change to either should have to be deliberate.
+   */
+  it('previews 12 on the overview and pages 60 on the destination', () => {
+    expect(COLLECTION_PREVIEW_LIMIT).toBe(12);
+    expect(COLLECTION_PAGE_SIZE).toBe(60);
+  });
+
+  it('never previews more than a page holds', () => {
+    // A preview larger than a page would make the count link lead somewhere
+    // showing fewer albums than the page that linked to it.
+    expect(COLLECTION_PREVIEW_LIMIT).toBeLessThanOrEqual(COLLECTION_PAGE_SIZE);
   });
 });

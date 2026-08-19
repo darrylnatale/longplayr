@@ -11,13 +11,17 @@ import { expect, test, type Page } from '@playwright/test';
  * album on the wrong profile, an ordering that quietly follows `listened_on` —
  * are invisible to a test that reads the rows back.
  *
- * **The profile renders Compact, which is artwork only.** Score, like and
- * relisten markers therefore cannot be asserted here: no product surface shows
- * them, because the density control was deliberately deferred. Their
- * correctness is covered where it currently lives — the mapping in
- * `src/services/collection/collection-list.test.ts`, and the rows themselves in
- * `tests/integration/collection-list.test.ts`. This file asserts what the
- * profile actually renders: which albums, in which order, to whom.
+ * **The collection renders artwork plus a minimal state line** — score, like
+ * and `×N` — and no captions (`design-reference.md` §11.9). Both halves of that
+ * are asserted here: the markers appear, and the title and credit do not.
+ *
+ * **Two limits are not exercised end to end.** The overview previews 12 and the
+ * destination pages at 60, and the local fixture catalogue holds seven albums,
+ * so no account reachable from here can exceed either bound. The windowing is
+ * covered at the query level in `tests/integration/collection-list.test.ts`;
+ * what this file can and does assert is the behaviour at the small end — the
+ * count staying plain text, pagination not rendering, and a page past the end
+ * being a 404.
  *
  * Albums come from the local fixture catalogue (`npm run db:seed:fixtures`) and
  * are never modified. Only the users' own collection rows are written, and the
@@ -131,16 +135,7 @@ test('a collection appears on the profile, newest addition first', async ({ page
   await expect(covers.nth(2)).toHaveAccessibleName(/In Rainbows/);
 });
 
-test('the profile renders artwork only, with no density control', async ({ page }) => {
-  // Locks the deferral. Compact is the locked default on this surface and the
-  // density switch was deliberately not built, so a collection carrying every
-  // marker must still render as a bare wall of covers. If a future change
-  // introduces a control or flips the default, this fails rather than silently
-  // shipping a product decision that was explicitly postponed.
-  //
-  // The markers themselves are correct in the data — see the service unit tests
-  // and the integration suite. What is asserted here is that this surface does
-  // not draw them yet.
+test('artwork carries a state line, and never a caption', async ({ page }) => {
   const user = await signUp(page);
 
   await rate(page, WATCH_THE_THRONE, '8.5');
@@ -149,21 +144,133 @@ test('the profile renders artwork only, with no density control', async ({ page 
   await page.getByRole('button', { name: 'Like', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Liked' })).toBeVisible(ACTION);
 
+  // Two relistens, so this tile shows ×2.
   await page.goto(`/albums/${UNKNOWN_PLEASURES}`);
+  await page.getByRole('button', { name: 'Relisten', exact: true }).click();
+  await expect(page.getByText('In your collection')).toBeVisible(ACTION);
+  await page.getByRole('button', { name: /Relisten/ }).click();
+  await expect(page.getByText('×2')).toBeVisible(ACTION);
+
+  await page.goto(`/${user.handle}`);
+
+  // The state each album carries, on its own tile and no other.
+  await expect(tileFor(page, 'Watch the Throne')).toContainText('8.5');
+  await expect(tileFor(page, 'In Rainbows')).toContainText('Liked.');
+  await expect(tileFor(page, 'Unknown Pleasures')).toContainText('×2');
+
+  await expect(tileFor(page, 'In Rainbows')).not.toContainText('8.5');
+  await expect(tileFor(page, 'Watch the Throne')).not.toContainText('Liked.');
+  await expect(tileFor(page, 'Watch the Throne')).not.toContainText('×2');
+
+  // No captions. The credit is the giveaway: a title can coincide with other
+  // copy on the page, an artist credit cannot.
+  await expect(page.getByText('Radiohead')).toBeHidden();
+  await expect(page.getByText('Jay-Z & Kanye West')).toBeHidden();
+  await expect(page.getByText('Joy Division')).toBeHidden();
+});
+
+test('a relisten count of one is not drawn', async ({ page }) => {
+  // ×1 is noise: an entry is not itself a relisten, so the marker only earns
+  // its place above one. The fixture profile leans on this too.
+  const user = await signUp(page);
+
+  await page.goto(`/albums/${IN_RAINBOWS}`);
   await page.getByRole('button', { name: 'Relisten', exact: true }).click();
   await expect(page.getByText('In your collection')).toBeVisible(ACTION);
 
   await page.goto(`/${user.handle}`);
 
-  // Every album is there.
-  await expect(page.getByRole('listitem').getByRole('img')).toHaveCount(3);
-  await expect(page.getByText('3 albums')).toBeVisible();
+  await expect(tileFor(page, 'In Rainbows')).toBeVisible();
+  await expect(page.getByText('×1')).toBeHidden();
+});
 
-  // None of their state is drawn, and there is no way to ask for it.
-  await expect(page.getByText('8.5')).toBeHidden();
-  await expect(page.getByText('Radiohead')).toBeHidden();
-  await expect(page.getByRole('link', { name: 'Detailed' })).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Compact' })).toHaveCount(0);
+test('a score of 0.0 is drawn as a score, not as unrated', async ({ page }) => {
+  // The lowest score in the product is falsy, and every plausible shortcut in
+  // the mapping turns it into "never rated".
+  const user = await signUp(page);
+
+  await rate(page, IN_RAINBOWS, '0.0');
+  await page.goto(`/${user.handle}`);
+
+  await expect(tileFor(page, 'In Rainbows')).toContainText('0.0');
+});
+
+test('an album with no state draws no line at all', async ({ page }) => {
+  const user = await signUp(page);
+
+  await collect(page, IN_RAINBOWS);
+  await page.goto(`/${user.handle}`);
+
+  const tile = tileFor(page, 'In Rainbows');
+  await expect(tile).toBeVisible();
+  // Nothing but the cover: no score, no heart, no marker, and no reserved row.
+  await expect(tile.locator('p')).toHaveCount(0);
+});
+
+test('the count does not link when the overview already shows everything', async ({ page }) => {
+  // Seven fixture albums is under the preview limit, so the destination would
+  // show exactly the same covers. An affordance that promises more and delivers
+  // the same thing is worse than no affordance.
+  const user = await signUp(page);
+
+  await collect(page, IN_RAINBOWS);
+  await collect(page, WATCH_THE_THRONE);
+
+  await page.goto(`/${user.handle}`);
+
+  await expect(page.getByText('2 albums')).toBeVisible();
+  await expect(page.getByRole('link', { name: /2 albums/ })).toHaveCount(0);
+});
+
+test('the collection destination renders, and matches the profile count', async ({ page }) => {
+  const user = await signUp(page);
+
+  await rate(page, WATCH_THE_THRONE, '9.1');
+  await collect(page, IN_RAINBOWS);
+
+  // Reachable directly, whether or not the overview linked to it.
+  await page.goto(`/${user.handle}/collection`);
+
+  await expect(page.getByRole('heading', { name: 'Collection', level: 1 })).toBeVisible();
+  await expect(page.getByText('2 albums')).toBeVisible();
+  await expect(tileFor(page, 'Watch the Throne')).toContainText('9.1');
+  await expect(tileFor(page, 'In Rainbows')).toBeVisible();
+
+  // The identity strip names the owner and leads back to the overview.
+  await page
+    .getByRole('link', { name: new RegExp(user.handle) })
+    .first()
+    .click();
+  await expect(page).toHaveURL(`/${user.handle}`, NAV);
+});
+
+test('pagination is absent on a single page, and a page past the end 404s', async ({ page }) => {
+  const user = await signUp(page);
+  await collect(page, IN_RAINBOWS);
+
+  await page.goto(`/${user.handle}/collection`);
+  // One page of results needs no navigation; "Page 1 of 1" is furniture.
+  await expect(page.getByRole('navigation', { name: 'Collection pages' })).toHaveCount(0);
+
+  // Garbage resolves to the first page rather than erroring.
+  await page.goto(`/${user.handle}/collection?page=not-a-number`);
+  await expect(tileFor(page, 'In Rainbows')).toBeVisible();
+
+  await page.goto(`/${user.handle}/collection?page=0`);
+  await expect(tileFor(page, 'In Rainbows')).toBeVisible();
+
+  // A page that does not exist is a 404 rather than a silent clamp.
+  const past = await page.goto(`/${user.handle}/collection?page=2`);
+  expect(past?.status()).toBe(404);
+});
+
+test('an empty collection has its own destination state', async ({ page }) => {
+  const user = await signUp(page);
+
+  await page.goto(`/${user.handle}/collection`);
+
+  await expect(page.getByText('No albums yet.')).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Collection pages' })).toHaveCount(0);
 });
 
 test('a signed-out visitor sees the public collection', async ({ page, context }) => {
@@ -215,10 +322,17 @@ test('one user’s collection never appears on another user’s profile', async 
 
   // Viewing someone else's empty-handed profile is a different sentence than
   // viewing your own.
-  const third = await signUp(await (await browser.newContext()).newPage());
+  const thirdContext = await browser.newContext();
+  const thirdPage = await thirdContext.newPage();
+  const third = await signUp(thirdPage);
+
   await page.goto(`/${third.handle}`);
   await expect(page.getByText(`${third.handle} hasn’t added any albums yet.`)).toBeVisible();
   await expect(page.getByText('Your collection is empty.')).toBeHidden();
 
+  // Closed explicitly. An unclosed context left the browser to collect it
+  // mid-run, which surfaced as "session closed" in whichever test happened to
+  // be executing rather than in the one that leaked it.
+  await thirdContext.close();
   await secondContext.close();
 });
