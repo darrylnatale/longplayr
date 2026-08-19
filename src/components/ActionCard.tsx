@@ -38,6 +38,7 @@ export type ActionCardActions = {
   remove?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
   rate?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
   like?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
+  relisten?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
 };
 
 export type ActionCardState =
@@ -228,6 +229,63 @@ function AddRow({ action }: { action: NonNullable<ActionCardActions['add']> }) {
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * Relisten.
+ *
+ * The one mutation on this card that is deliberately **not** idempotent: each
+ * submission is another event, because three relistens are three feed items and
+ * a counter could not express that.
+ *
+ * The count rides on the control that produces it rather than getting a figure
+ * of its own. A card that reported `×3` in its own row would be the first step
+ * toward a statistics panel, and this is a place to act, not a dashboard. It is
+ * omitted entirely at zero — `×0` is noise, and `ScoreBadge`'s rule about
+ * absence applies here too.
+ */
+function RelistenButton({
+  action,
+  count,
+  dominant,
+}: {
+  action: NonNullable<ActionCardActions['relisten']>;
+  count: number;
+  dominant: boolean;
+}) {
+  const [state, formAction] = useActionState(action, {});
+
+  return (
+    <>
+      <form action={formAction} className={dominant ? 'w-full' : 'flex-1'}>
+        {dominant ? (
+          <SubmitButton pendingLabel="Marking…">
+            Mark a relisten{count > 0 ? <span className="tabular"> · ×{count}</span> : null}
+          </SubmitButton>
+        ) : (
+          <RelistenQuiet count={count} />
+        )}
+      </form>
+      {state.error && (
+        <div className="w-full">
+          <Failure message={state.error} />
+        </div>
+      )}
+    </>
+  );
+}
+
+function RelistenQuiet({ count }: { count: number }) {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="w-full rounded-sm border border-border bg-raised px-3 py-1.5 text-xs text-text-secondary transition-colors hover:border-border-strong hover:text-text disabled:cursor-wait disabled:opacity-70"
+    >
+      {pending ? '…' : <>Relisten{count > 0 ? <span className="tabular"> ×{count}</span> : null}</>}
+    </button>
   );
 }
 
@@ -499,10 +557,16 @@ export function ActionCard({
             ) : (
               <QuietAction>Like</QuietAction>
             )}
+            {actions.relisten ? (
+              <RelistenButton action={actions.relisten} count={0} dominant={false} />
+            ) : (
+              <QuietAction>Relisten</QuietAction>
+            )}
           </div>
-          {/* Rating or liking an uncollected album adds it silently, so the
-              controls are offered rather than hidden (product-spec.md §8.5). */}
-          <p className="mt-2 text-xs text-text-faint">Rating or liking adds it too.</p>
+          {/* Rating, liking or relistening an uncollected album adds it
+              silently, so the controls are offered rather than hidden
+              (product-spec.md §8.5). */}
+          <p className="mt-2 text-xs text-text-faint">Rating, liking or a relisten adds it too.</p>
         </Row>
         <Row>
           <StackedLink>Write a review…</StackedLink>
@@ -538,10 +602,18 @@ export function ActionCard({
             ) : (
               <QuietAction>Like</QuietAction>
             )}
-            <QuietAction>
-              Relisten
-              {state.relistens ? <span className="tabular"> ×{state.relistens}</span> : null}
-            </QuietAction>
+            {actions.relisten ? (
+              <RelistenButton
+                action={actions.relisten}
+                count={state.relistens ?? 0}
+                dominant={false}
+              />
+            ) : (
+              <QuietAction>
+                Relisten
+                {state.relistens ? <span className="tabular"> ×{state.relistens}</span> : null}
+              </QuietAction>
+            )}
           </div>
         </Row>
         <Row>
@@ -570,9 +642,13 @@ export function ActionCard({
       <Row>
         {/* Once rated, relisten is the action that recurs — the album is
             already scored, so the card's job changes (design-reference §6.4). */}
-        <PrimaryButton>
-          Mark a relisten{relistens ? <span className="tabular"> · ×{relistens}</span> : null}
-        </PrimaryButton>
+        {actions.relisten ? (
+          <RelistenButton action={actions.relisten} count={relistens ?? 0} dominant />
+        ) : (
+          <PrimaryButton>
+            Mark a relisten{relistens ? <span className="tabular"> · ×{relistens}</span> : null}
+          </PrimaryButton>
+        )}
       </Row>
       <Row>
         <div className="flex flex-wrap gap-2">

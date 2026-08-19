@@ -11,7 +11,13 @@ import { getMyCollectionState } from '@/services/collection';
 import { getAlbumRating } from '@/services/collection/ratings';
 import { getCurrentProfile, getCurrentUser } from '@/services/profiles';
 
-import { addAlbumAction, rateAlbumAction, removeAlbumAction, toggleLikeAction } from './actions';
+import {
+  addAlbumAction,
+  markRelistenAction,
+  rateAlbumAction,
+  removeAlbumAction,
+  toggleLikeAction,
+} from './actions';
 
 /**
  * Album page — the canonical detail composition.
@@ -181,6 +187,7 @@ export default async function AlbumPage({ params }: PageProps<'/albums/[mbid]'>)
               remove: removeAlbumAction.bind(null, album.id),
               rate: rateAlbumAction.bind(null, album.id),
               like: toggleLikeAction.bind(null, album.id),
+              relisten: markRelistenAction.bind(null, album.id),
             }}
           />
 

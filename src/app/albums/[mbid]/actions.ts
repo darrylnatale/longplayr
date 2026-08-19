@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 
 import { addToCollection, rateAlbum, removeFromCollection, setLiked } from '@/services/collection';
+import { markRelisten } from '@/services/collection/relistens';
 
 /**
  * Album page mutations.
@@ -117,6 +118,31 @@ export async function toggleLikeAction(
   const liked = formData.get('liked') === 'true';
 
   const result = await setLiked(albumId, liked);
+  if (!result.ok) return { error: result.message };
+
+  revalidatePath(`/albums/[mbid]`, 'page');
+  return {};
+}
+
+/**
+ * Records one relisten.
+ *
+ * Deliberately **not** idempotent, unlike every other mutation on this page.
+ * Marking a relisten on Monday, Tuesday and Wednesday is three separate events
+ * and, later, three feed items — a counter alone could not express that, which
+ * is why `relisten_events` holds rows and `relisten_count` is derived from them
+ * by a database trigger rather than incremented here.
+ *
+ * Relistening an album the user does not hold adds it, through the same
+ * canonical path as everything else, so Want to Listen is cleared and no
+ * activity event is written.
+ */
+export async function markRelistenAction(
+  albumId: string,
+  _prev: CollectionActionState,
+  _formData: FormData,
+): Promise<CollectionActionState> {
+  const result = await markRelisten(albumId);
   if (!result.ok) return { error: result.message };
 
   revalidatePath(`/albums/[mbid]`, 'page');

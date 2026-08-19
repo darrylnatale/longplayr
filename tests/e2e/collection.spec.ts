@@ -174,3 +174,39 @@ test('like an uncollected album, then unlike it', async ({ page }) => {
   );
   await expect(page.getByText('In your collection')).toBeVisible();
 });
+
+test('relisten an uncollected album, then relisten again', async ({ page }) => {
+  const user = uniqueUser();
+  createdEmails.push(user.email);
+
+  await page.goto('/signup');
+  await page.getByLabel('Email').fill(user.email);
+  await page.getByLabel('Password').fill(user.password);
+  await page.getByRole('button', { name: 'Create account' }).click();
+
+  await expect(page).toHaveURL('/onboarding');
+  await page.getByLabel('Handle').fill(user.handle);
+  await page.getByRole('button', { name: 'Claim handle' }).click();
+  await expect(page).toHaveURL(`/${user.handle}`);
+
+  await page.goto(`/albums/${ALBUM_MBID}`);
+  await expect(page.getByRole('button', { name: 'Add to collection' })).toBeVisible();
+
+  // No count is shown at zero.
+  await page.getByRole('button', { name: 'Relisten', exact: true }).click();
+
+  // Relistening collects the album and records the first event.
+  await expect(page.getByText('In your collection')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Relisten ×1' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add to collection' })).toBeHidden();
+
+  // A second relisten is another event, not a toggle.
+  await page.getByRole('button', { name: 'Relisten ×1' }).click();
+  await expect(page.getByRole('button', { name: 'Relisten ×2' })).toBeVisible({
+    timeout: 30_000,
+  });
+
+  // Still collected, still unrated — relistening claims nothing about a score.
+  await expect(page.getByText('In your collection')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Rate this album' })).toBeVisible();
+});
