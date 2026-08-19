@@ -24,6 +24,22 @@ import * as profiles from '@/services/profiles';
  * the 30/hour and 100/day limits entirely.
  */
 
+/**
+ * Auth-heavy: this file creates real users through GoTrue and signs in as them.
+ *
+ * Those calls are fast in the median — around 100ms — but have a long tail:
+ * measured over 2,369 requests, 0.4% exceed a second and the worst observed was
+ * 4.2s. A test making half a dozen of them can therefore blow Vitest's 5s
+ * default through no fault of its own, which is exactly what happened to three
+ * rating tests that passed in isolation seconds later.
+ *
+ * 15s covers the p99 across those calls plus one worst-case outlier, with room
+ * to spare. It is set here rather than on the whole project so the tests that
+ * never touch auth keep the tight budget — those are the ones that would notice
+ * a query getting slower.
+ */
+vi.setConfig({ testTimeout: 15_000 });
+
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const admin: SupabaseClient<Database> = createClient<Database>(
   url,
@@ -102,7 +118,12 @@ afterEach(() => vi.restoreAllMocks());
 
 afterAll(async () => {
   await clearCatalogue();
-  for (const id of createdUserIds) await admin.auth.admin.deleteUser(id);
+  // Deleted concurrently. Sequentially this was one round-trip per user — 40
+  // to 70 of them in the larger files, at roughly 100ms each, which put the
+  // hook within a second or two of Vitest's 5s default before anything went
+  // wrong. Each delete targets a distinct user, so there is no ordering between
+  // them and nothing to serialise.
+  await Promise.all(createdUserIds.map((id) => admin.auth.admin.deleteUser(id)));
 });
 
 async function additionCount() {

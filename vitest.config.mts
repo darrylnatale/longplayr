@@ -42,17 +42,14 @@ export default defineConfig({
           // Integration tests share one database; running them in parallel
           // would let them see each other's rows.
           fileParallelism: false,
-          // Vitest defaults to 5s, which is a unit-test budget. These tests
-          // create real auth users through GoTrue and sign in as them — a case
-          // that does three of those takes seconds on its own, and more once
-          // the whole suite is queueing against the same local stack. Three
-          // rating tests began timing out purely from suite growth, having
-          // passed in isolation in 10s.
+          // Timeouts stay at Vitest's 5s default here, deliberately. Measured
+          // over a clean run, 231 of 234 tests finish inside a second and the
+          // slowest takes 2.25s, so 5s is ample and keeps a tight budget on the
+          // 87 tests that never touch auth — the ones best placed to notice a
+          // query getting slower.
           //
-          // This weakens no assertion. It stops "slower than a unit test" being
-          // reported as a failure, which was hiding real results behind noise.
-          testTimeout: 30_000,
-          hookTimeout: 30_000,
+          // The files that create real auth users raise their own limit, in the
+          // file, for a reason recorded there.
         },
       },
       {
