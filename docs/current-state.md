@@ -16,13 +16,17 @@ Verified against the staging database and a clean-tree build on 2026-08-19.
 
 **Phase 1 implementation is complete.** **The design foundation is complete.** **Phase 2 is in progress:**
 
-| Slice                                    | State                                  |
-| ---------------------------------------- | -------------------------------------- |
-| Collection schema and service layer      | **complete and committed** (`7ce0851`) |
-| Add / remove collection, wired to the UI | **complete and committed** (`da83b82`) |
-| Rating                                   | **complete and committed**             |
+| Slice                                    | State                                             |
+| ---------------------------------------- | ------------------------------------------------- |
+| Collection schema and service layer      | **complete and committed** (`7ce0851`)            |
+| Add / remove collection, wired to the UI | **complete and committed** (`da83b82`)            |
+| Rating                                   | **complete and committed** (`8256aa0`)            |
+| Like                                     | **complete and committed** (`957cf5f`)            |
+| Relisten                                 | **complete and committed** (`e40874a`)            |
+| Review service corrections               | **complete and committed** (`0715c50`)            |
+| Review interface                         | **complete, verified, _not committed_** — see §16 |
 
-Lists, follows, activity, feed, notifications, messaging, taste overlap and profile photo/city do not exist, in schema or in code. Liking, relistening, reviews, favourites and the Want to Listen interface have schema and service support but **no interface** — their controls render visibly unavailable until each is wired.
+Lists, follows, activity, feed, notifications, messaging, taste overlap and profile photo/city do not exist, in schema or in code. **Favourites and the Want to Listen interface** have schema and service support but no interface — their controls render visibly unavailable until each is wired.
 
 **The design-foundation track is complete.** Every surface is migrated and verified by screenshot at 390, 768 and 1440px — see §7.
 
@@ -83,9 +87,11 @@ Lists, follows, activity, feed, notifications, messaging, taste overlap and prof
 
 ### Git state
 
-The last commit is this documentation checkpoint. **The entire design-foundation implementation is uncommitted** in the working tree — **17 modified files, 8 new components and the 2-file development gallery**, listed in §7. It has been verified clean-tree at every step but deliberately left uncommitted while each surface was reviewed.
+The last commit is this documentation checkpoint. **The design foundation and every Phase 2 slice through the review service corrections are committed** — `96325d4` through `0715c50`, plus the test-infrastructure fix in `4ee628d`.
 
-Every surface has now been migrated, and the last four — Browse, Home, login/signup/onboarding — were inspected against a running app at all three widths rather than by markup alone. Browse used real staging data; Home and the auth surfaces were driven through the real signup, sign-in and handle-claiming flows against a local database, with the temporary accounts deleted afterwards.
+**One slice is uncommitted: the review interface.** Eight files in the working tree — four of application code, three of tests, and this document. Verified green and held for review, which is the practice every slice has followed. See §16.
+
+The habit of leaving implementation uncommitted while documentation lands ahead of it is deliberate, but it has a cost worth naming: for several checkpoints this paragraph described a working tree that no longer existed. A checkpoint that describes the wrong tree is worse than one that says nothing.
 
 No branch protection — GitHub gates it behind a paid plan for private repositories, and that was declined. `rm -rf .next && npm run verify` before pushing is the compensating control.
 
@@ -349,6 +355,7 @@ None of these reopen Phase 1.
 | Local Node drifted to v20                         | CI pins Node 22. `@supabase/supabase-js` needs a global WebSocket, so integration and seed commands need `NODE_OPTIONS=--experimental-websocket` until the local runtime is restored                                                                                                                                                                                                                                        |
 | Artists have at most 3 releases                   | The seed capped at 2 per artist, so the deep-discography case is untested against real data                                                                                                                                                                                                                                                                                                                                 |
 | Design-foundation code uncommitted                | §1 — verified clean-tree at every step, held for review                                                                                                                                                                                                                                                                                                                                                                     |
+| **Integration tests leak a few local auth rows**  | **[DEFERRED]** — `afterAll` deletes the users each file tracked, but a mid-test `deleteUser` splices ids out of the tracking array and a couple of paths create users it never sees, so a full run leaves roughly six rows in the local `auth.users`. Local only, harmless, unrelated to any product behaviour. **Fix when those test files are next modified**, not before                                                 |
 | **Browse is very tall at phone width**            | **[OPEN]** — 8,122px at 390px. `relaxed` is 2-up on a phone, so Popular's 24 captioned albums run 12 rows before Recently added begins. Observation, not a defect: consistency with the migrated artist page was the stronger constraint, and the alternatives were changing the query limit or inventing a per-breakpoint density. Revisit when the real charts arrive and a "show more" boundary has to be decided anyway |
 | **`AlbumGrid` passes no `priority`**              | **[OPEN]** — Next flags the first Popular cover as LCP and asks for eager loading. Pre-existing and identical on the artist page. Deliberately not fixed during a presentation-only migration: choosing how many leading cells get `priority` is its own decision and it affects every grid surface at once                                                                                                                 |
 
@@ -574,7 +581,64 @@ One wrinkle worth remembering on the last: HTML `maxLength` counts UTF-16 code u
 
 ---
 
-## 16. Lessons carried forward
+## 16. Review slice — implemented and verified, **not committed**
+
+Built 2026-08-19. **The application code is in the working tree, not in history**, held for review like every slice before it. Everything below has been exercised, not assumed.
+
+### Verified state
+
+| Suite            | Count   |
+| ---------------- | ------- |
+| Unit + component | **121** |
+| Integration      | **241** |
+| Seed             | **1**   |
+| End-to-end       | **11**  |
+
+`rm -rf .next && npm run verify:full` — **green**, all four suites.
+
+Write, edit, delete and the public list are each verified end to end: writing about an uncollected album collects it and clears Want to Listen, the editor prefills with what is already there, deletion warns first and leaves the album collected, and the album page lists other people's live reviews.
+
+### Decisions implemented
+
+| Decision                                                                                                 |
+| -------------------------------------------------------------------------------------------------------- |
+| **Author deletion is a hard delete.** `status = 'removed'` stays a moderation state                      |
+| **Review identity is stable across edits** — `id` and `created_at` survive, `updated_at` moves           |
+| **Explicit Save and Cancel**, never save-as-you-type                                                     |
+| **The character counter is hidden** until the last 500 characters                                        |
+| **`maxLength={10000}`** on the field, on top of the service check and the check constraint               |
+| **Whitespace-only is rejected**; the stored body is trimmed                                              |
+| **Plain text only** — no Markdown, no automatic URL linking                                              |
+| **A removed review gets no special author-facing presentation** in this phase                            |
+| **Review creation will eventually produce an Activity event.** Activity does not exist and was not built |
+
+Three enforcement points for the length limit is deliberate: the field and the service produce a message a person can act on, and the constraint is the guarantee. Rejecting whitespace-only is a **service** rule — `char_length('   ')` is 3, so the constraint alone would store a blank review, and an integration test documents that gap so nobody removes the check believing the schema covers it.
+
+Rendering is `whitespace-pre-wrap` with React's default escaping. `dangerouslySetInnerHTML` appears nowhere in the codebase except two comments forbidding it.
+
+### One bug worth remembering
+
+**The editor stayed open after a saved edit**, showing a stale draft, because the card's kind does not change on an edit and React preserved the component's state. It is now keyed on the server-confirmed `updated_at`, which is why the collection-state read returns it.
+
+This is the **second** time this exact failure has appeared — the rating control had it too — and both times **only the end-to-end test caught it** while every integration test passed. Any future disclosure control on this card should be assumed to have it until proven otherwise.
+
+### Test-infrastructure change, not a product change
+
+`tests/e2e/auth.spec.ts` gained a scoped 15s budget on the navigations that follow a server action. **No assertion, expectation or test was changed** — a timeout argument was added to existing `toHaveURL` calls.
+
+Sign-up, handle claim and sign-in each round-trip to GoTrue and then redirect. That test measured 5.7s in isolation against Playwright's 5s per-assertion default, so growing the suite from 9 to 11 auth-creating tests pushed it over. The **test** timeout stays at Playwright's 30s default, so a flow that genuinely hangs still fails. Same shape as the integration timeout scoping in `4ee628d`: tight defaults, longer only where real auth work happens.
+
+### Deferred
+
+**The review editor is cramped at large desktop widths.** It opens inside the action card's `max-w-sm` aside — roughly a 340px column for a field capped at 10,000 characters. Fine for the short reviews `product-spec.md` §8.7 anticipates, cramped for an essay. Opening it full-width in the main column instead is a composition change and a deliberate decision, not a tweak. **Explicitly not to be changed** as part of this slice.
+
+### Not implemented
+
+Favourites, the Want to Listen interface, Activity, review likes, reports, notifications, messaging, taste overlap, and profile photo or city. None exists in code. Their controls where present render visibly unavailable.
+
+---
+
+## 17. Lessons carried forward
 
 **A returned failure is not a raised failure.** This cost the most, twice. `fetchAndStoreArtwork` returns `{ status: 'failed' }` rather than throwing, and ingestion returned `null` for a failed tracklist. Both are right for their immediate caller and wrong for the one that owns retrying — nothing threw, no job failed, and 36 albums plus 44 tracklists were quietly never retried.
 
