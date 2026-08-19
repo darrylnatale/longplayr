@@ -469,7 +469,7 @@ These duplicate `product-spec.md` §10 deliberately, because a schema author rea
 
 - ~~**11.1** — Can an album be simultaneously collected and on Want to Listen?~~ **RESOLVED — yes, independent relations.** See §10.
 - ~~**11.2** — Do collection adds, ratings, likes, reviews or relistens remove an album from Want to Listen?~~ **RESOLVED — yes, all of them.** One rule: any action that causes a collection entry to exist clears Want to Listen. See §10.
-- **11.3** — Is Want to Listen public on the profile? _(Interacts with the all-public model, which currently admits no exceptions.)_
+- ~~**11.3** — Is Want to Listen public on the profile?~~ **RESOLVED 2026-08-19 — yes, public, as its own profile tab.** The all-public model keeps its no-exceptions property, so no per-viewer filtering enters the schema. See `product-spec.md` §10.1. **This settles profile visibility only** — whether the same activity can be hidden from the _feed_ is a separate, still-open question, and no schema should be shaped for it yet.
 - **11.8** — Should Want to Listen be offered on an album already in the collection? _(The schema permits the state; whether the interface should produce it is unanswered.)_
 - **11.9** — **How is a manual bulk backfill kept out of the feed?** The amended eligibility rule keys on the write path rather than on `listened_on`, which covers a future import cleanly — but a user adding two hundred albums by hand in one sitting is two hundred interactions by that definition. Suppressing them, aggregating them into one feed item, or rate-limiting event creation are all plausible and none is decided. **Phase 3. Ask.**
 - **11.4** — Is taste similarity symmetric? _(Decides the key shape of any cache.)_

@@ -205,6 +205,8 @@ Sortable by release date (newest and oldest first) and by average rating. **[INF
 
 Primary: identity (avatar, display name, handle, bio) and a stat cluster (albums, listened this year, following, followers). Then an overview of sections — recent listens, lists, recent reviews — with the **full collection behind its own tab** rather than dumped onto the profile.
 
+**Tabs: Collection | Want to Listen | Favourites.** **[DECIDED 2026-08-19]** Want to Listen is public and sits on the profile as its own tab; see §10.1. This is the eventual structure — only Collection is built.
+
 **Favourites: up to ten pinned albums**, user-ordered, shown as an artwork row near the top of the profile. **[DECIDED]** Ten is more than Letterboxd's four, which changes the layout — it reads as a grid rather than a single row, and at square proportions likely sits as 5×2 or 10-across depending on breakpoint.
 
 ### Collection view
@@ -363,12 +365,29 @@ That covers the explicit add and every implicit one — rating, liking, reviewin
 
 **Newly surfaced by that resolution, and unresolved:** should the interface _offer_ Want to Listen on an album already in the collection? The data model permits it. Whether it is a sensible thing to show a user is a product question, and it is not answered here. **Ask.**
 
-**Ask before implementing.** None of these may be answered by inference:
+#### Resolved 2026-08-19 — Want to Listen is public, on its own profile tab
 
-- Is Want to Listen visible on the public profile?
+**Decided.** Want to Listen is **publicly visible on the profile, as its own tab.**
+
+This keeps the all-public model intact rather than carving the first exception into it, which is what the alternative would have cost: a single private relation would have forced per-viewer filtering into a model that currently admits no exceptions, and §7 names that as the expensive retrofit.
+
+The profile tab structure it implies:
+
+| Collection | Want to Listen | Favourites |
+| ---------- | -------------- | ---------- |
+
+**This is the eventual structure, not a build instruction.** Only Collection is being built now. The other two tabs have schema and service support and no interface, and this decision does not schedule either of them.
+
+**What this decision does not answer.** These remain open, and remain subject to the rule that they be asked rather than inferred — being public on the profile settles nothing about any of them:
+
+- Can Want to Listen activity be hidden from the **feed**? (A per-user setting is anticipated in §10.1 above and is still not to be designed, or accommodated in schema, now.)
 - Does _removing_ an album from Want to Listen generate a feed event? (Expected no — still ask.)
 - Does Want to Listen contribute to any popularity or discovery ranking, or is it purely a social and personal signal?
 - Should Want to Listen be offered on an album that is already collected? _(surfaced by the resolution above)_
+
+**Profile visibility and feed visibility are separate questions.** Answering the first did not answer the second, and the two must not be collapsed: a relation can be public on a profile — where someone chooses to look — and still be something a user does not want pushed to every follower.
+
+**Ask before implementing.** None of the four above may be answered by inference.
 
 ### 10.2 Taste overlap and social discovery
 

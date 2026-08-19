@@ -410,7 +410,8 @@ See `docs/product-spec.md` §8 and `docs/data-model.md` §9 for the authoritativ
 - **Album page caching strategy** — decision H; the mixed catalogue/personal page needs investigation before Phase 2 builds on it
 - **Whether `CLAUDE.md` line 5 should be updated** to reflect Phase 1 completion
 - **Which phase direct messaging lands in** — the stated intent and `development-plan.md`'s phase numbering disagree (§12)
-- **Every unresolved question in `docs/product-spec.md` §10** — Want to Listen behaviour, taste-overlap algorithm, profile photo and location handling, and the full messaging question set. Recorded as open _by design_; see §12
+- **Every unresolved question in `docs/product-spec.md` §10** — remaining Want to Listen behaviour, taste-overlap algorithm, profile photo and location handling, and the full messaging question set. Recorded as open _by design_; see §12
+  - **Want to Listen profile visibility is no longer among them.** Resolved 2026-08-19: public, on its own profile tab. The other three Want to Listen questions are untouched by that, and so is the feed-hiding question
 - Report reason categories (Phase 6)
 - MBID merge handling, handle reuse after deletion
 - Genre and tag data
@@ -421,12 +422,12 @@ See `docs/product-spec.md` §8 and `docs/data-model.md` §9 for the authoritativ
 
 New direction was recorded on 2026-08-18. **None of it is implemented.** Nothing below exists in schema or in code, nothing is scheduled into a phase, and no application code was written for any of it. The authoritative record is `docs/product-spec.md` §10; this is the pointer a resuming session will actually read first.
 
-| Direction                            | State                                                                                                                                                                                                           |
-| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Want to Listen**                   | Decided, and **schema resolved 2026-08-18** — independent relation, own table; the collection table needs no status column. **Generates a normal feed event.** Four questions remain, none blocking a migration |
-| **Taste overlap / social discovery** | Decided as direction, in the spirit of Last.fm's compatibility notion. **Algorithm explicitly not decided.** Six questions unresolved                                                                           |
-| **Profile photo, bio, city**         | Photo and bio were **already in scope**. Only city/location is new. Dating-specific fields **explicitly excluded**                                                                                              |
-| **Direct messaging**                 | Decided — intended from the beginning of the social product, **not merely a possibility.** Unscheduled. Not required in the single-user collection phase. Blocked on legal research                             |
+| Direction                            | State                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Want to Listen**                   | Decided, and **schema resolved 2026-08-18** — independent relation, own table; the collection table needs no status column. **Generates a normal feed event.** **Profile visibility resolved 2026-08-19 — public, own profile tab** (`Collection \| Want to Listen \| Favourites`). Three questions remain, none blocking a migration, and none answered by that resolution |
+| **Taste overlap / social discovery** | Decided as direction, in the spirit of Last.fm's compatibility notion. **Algorithm explicitly not decided.** Six questions unresolved                                                                                                                                                                                                                                       |
+| **Profile photo, bio, city**         | Photo and bio were **already in scope**. Only city/location is new. Dating-specific fields **explicitly excluded**                                                                                                                                                                                                                                                          |
+| **Direct messaging**                 | Decided — intended from the beginning of the social product, **not merely a possibility.** Unscheduled. Not required in the single-user collection phase. Blocked on legal research                                                                                                                                                                                         |
 
 Four things a resuming session most often gets wrong about this list:
 
