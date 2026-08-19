@@ -1,5 +1,8 @@
+'use client';
+
 import Link from 'next/link';
-import type { ReactNode } from 'react';
+import { useActionState, useState, type ReactNode } from 'react';
+import { useFormStatus } from 'react-dom';
 
 import { ScoreBadge } from '@/components/ScoreBadge';
 
@@ -19,15 +22,34 @@ import { ScoreBadge } from '@/components/ScoreBadge';
  * additions, where the audit insert failed silently and the rate limit was
  * bypassed. Here it is a visible state rather than a silent failure.
  *
- * Presentation only. Every control is inert — Phase 2 wires them.
+ * **Controls are inert unless an action is supplied.** Add and remove are wired
+ * as of Phase 2's first user-visible slice; rating, liking, relistening and
+ * reviews are still presentation, and stay disabled until their own slices.
+ * That is what keeps the development gallery working: it passes no actions, so
+ * every control there renders in its resting, disabled form.
  */
+
+/**
+ * Server actions the card can invoke. Optional — without them the card is the
+ * presentational component it was.
+ */
+export type ActionCardActions = {
+  add?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
+  remove?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
+};
 
 export type ActionCardState =
   | { kind: 'signed-out' }
   | { kind: 'onboarding-required' }
   | { kind: 'not-collected' }
-  | { kind: 'collected-unrated'; relistens?: number }
-  | { kind: 'collected-rated'; score: number; liked?: boolean; relistens?: number };
+  | { kind: 'collected-unrated'; relistens?: number; hasReview?: boolean }
+  | {
+      kind: 'collected-rated';
+      score: number;
+      liked?: boolean;
+      relistens?: number;
+      hasReview?: boolean;
+    };
 
 function Shell({ children }: { children: ReactNode }) {
   return (
@@ -41,16 +63,61 @@ function Row({ children, className = '' }: { children: ReactNode; className?: st
   return <div className={`px-4 py-3 ${className}`}>{children}</div>;
 }
 
-/** Dominant action. One per card, and never more than one. */
+const PRIMARY =
+  'w-full rounded-sm bg-accent px-4 py-2 text-sm font-medium text-accent-contrast transition-colors';
+
+/**
+ * Dominant action, inert — a control whose slice has not landed.
+ *
+ * Visibly unavailable rather than merely non-functional. Once Add became live,
+ * an identically-styled brass button that silently did nothing sat directly
+ * beneath it, and there was no way to tell them apart before clicking. Each of
+ * these reverts to the live treatment as its own slice wires it.
+ */
 function PrimaryButton({ children }: { children: ReactNode }) {
   return (
     <button
       type="button"
       disabled
-      className="w-full rounded-sm bg-accent px-4 py-2 text-sm font-medium text-accent-contrast disabled:cursor-default"
+      className={`${PRIMARY} disabled:cursor-not-allowed disabled:opacity-45`}
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * Dominant action, live.
+ *
+ * `useFormStatus` reads the pending state of the enclosing form, which is why
+ * this is a separate component — the hook reports on the form above it, not on
+ * one rendered alongside.
+ */
+function SubmitButton({ children, pendingLabel }: { children: ReactNode; pendingLabel: string }) {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      aria-busy={pending}
+      className={`${PRIMARY} hover:bg-accent-hover disabled:cursor-wait disabled:opacity-70`}
+    >
+      {pending ? pendingLabel : children}
+    </button>
+  );
+}
+
+/**
+ * A failed mutation.
+ *
+ * Muted brick from the palette rather than an alarm red: a failure to add an
+ * album is worth reading, not worth shouting about.
+ */
+function Failure({ message }: { message: string }) {
+  return (
+    <p role="alert" className="text-xs leading-relaxed text-danger-text">
+      {message}
+    </p>
   );
 }
 
@@ -59,7 +126,7 @@ function QuietAction({ children, active = false }: { children: ReactNode; active
     <button
       type="button"
       disabled
-      className={`flex-1 rounded-sm border px-3 py-1.5 text-xs disabled:cursor-default ${
+      className={`flex-1 rounded-sm border px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-45 ${
         active
           ? 'border-accent-dim bg-bg text-accent'
           : 'border-border bg-raised text-text-secondary'
@@ -70,13 +137,114 @@ function QuietAction({ children, active = false }: { children: ReactNode; active
   );
 }
 
-function StackedLink({ children }: { children: ReactNode }) {
+/**
+ * Removal, which is destructive and says so before it happens.
+ *
+ * Two steps rather than a native confirm dialog: the confirmation stays inside
+ * the card and inside the design system, and it can name exactly what this
+ * particular removal will destroy. Removal cascades to the review and the
+ * relisten history, so a control labelled only "Remove" could cost somebody up
+ * to ten thousand characters of their own writing.
+ *
+ * The wishlist is deliberately not mentioned, because removal does not touch
+ * it: the clearing rule runs one way only.
+ */
+function RemoveControl({
+  action,
+  hasReview,
+  relistens,
+}: {
+  action: NonNullable<ActionCardActions['remove']>;
+  hasReview: boolean;
+  relistens: number;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [state, formAction] = useActionState(action, {});
+
+  if (!confirming) {
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => setConfirming(true)}
+          className="block py-1.5 text-sm text-text-muted transition-colors hover:text-text"
+        >
+          Remove from collection
+        </button>
+        {state.error && <Failure message={state.error} />}
+      </>
+    );
+  }
+
+  const losses = [
+    hasReview && 'your review',
+    relistens > 0 && `${relistens} relisten${relistens === 1 ? '' : 's'}`,
+  ].filter(Boolean) as string[];
+
   return (
-    <span className="block cursor-default py-1.5 text-sm text-text-secondary">{children}</span>
+    <div className="flex flex-col gap-2.5">
+      <p className="text-xs leading-relaxed text-text-secondary">
+        {losses.length > 0 ? (
+          <>This also deletes {losses.join(' and ')}. It cannot be undone.</>
+        ) : (
+          <>Remove this album from your collection?</>
+        )}
+      </p>
+      <div className="flex gap-2">
+        <form action={formAction} className="flex-1">
+          <button
+            type="submit"
+            className="w-full rounded-sm border border-danger/50 bg-danger/10 px-3 py-1.5 text-xs font-medium text-danger-text transition-colors hover:bg-danger/20"
+          >
+            Remove
+          </button>
+        </form>
+        <button
+          type="button"
+          onClick={() => setConfirming(false)}
+          className="flex-1 rounded-sm border border-border bg-raised px-3 py-1.5 text-xs text-text-secondary transition-colors hover:border-border-strong"
+        >
+          Keep
+        </button>
+      </div>
+      {state.error && <Failure message={state.error} />}
+    </div>
   );
 }
 
-export function ActionCard({ state }: { state: ActionCardState }) {
+/** Add, live. Idempotent server-side, so a double submit yields one entry. */
+function AddRow({ action }: { action: NonNullable<ActionCardActions['add']> }) {
+  const [state, formAction] = useActionState(action, {});
+  return (
+    <>
+      <form action={formAction}>
+        <SubmitButton pendingLabel="Adding…">Add to collection</SubmitButton>
+      </form>
+      {state.error && (
+        <div className="mt-2">
+          <Failure message={state.error} />
+        </div>
+      )}
+    </>
+  );
+}
+
+/** An inert stacked action, for the same reason as `PrimaryButton`. */
+function StackedLink({ children }: { children: ReactNode }) {
+  return (
+    <span className="block cursor-not-allowed py-1.5 text-sm text-text-secondary opacity-45">
+      {children}
+    </span>
+  );
+}
+
+export function ActionCard({
+  state,
+  actions = {},
+}: {
+  state: ActionCardState;
+  actions?: ActionCardActions;
+}) {
   if (state.kind === 'signed-out') {
     return (
       <Shell>
@@ -122,7 +290,11 @@ export function ActionCard({ state }: { state: ActionCardState }) {
     return (
       <Shell>
         <Row>
-          <PrimaryButton>Add to collection</PrimaryButton>
+          {actions.add ? (
+            <AddRow action={actions.add} />
+          ) : (
+            <PrimaryButton>Add to collection</PrimaryButton>
+          )}
         </Row>
         <Row>
           <div className="flex gap-2">
@@ -163,6 +335,13 @@ export function ActionCard({ state }: { state: ActionCardState }) {
         <Row>
           <StackedLink>Write a review…</StackedLink>
           <StackedLink>Edition…</StackedLink>
+          {actions.remove && (
+            <RemoveControl
+              action={actions.remove}
+              hasReview={Boolean(state.hasReview)}
+              relistens={state.relistens ?? 0}
+            />
+          )}
         </Row>
       </Shell>
     );
@@ -192,6 +371,13 @@ export function ActionCard({ state }: { state: ActionCardState }) {
       <Row>
         <StackedLink>Edit review…</StackedLink>
         <StackedLink>Edition…</StackedLink>
+        {actions.remove && (
+          <RemoveControl
+            action={actions.remove}
+            hasReview={Boolean(state.hasReview)}
+            relistens={relistens ?? 0}
+          />
+        )}
       </Row>
     </Shell>
   );

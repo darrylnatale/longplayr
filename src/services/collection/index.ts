@@ -124,6 +124,30 @@ export async function getMyEntry(albumId: string): Promise<CollectionEntry | nul
   return data;
 }
 
+/**
+ * Everything the album page needs to render personal state, in one read.
+ *
+ * `hasReview` is here because removal warns before destroying writing, and the
+ * warning has to know whether there is any. Reviews cascade from the entry, so
+ * without this the user would lose up to 10,000 characters to a control that
+ * said only "Remove".
+ */
+export async function getMyCollectionState(
+  albumId: string,
+): Promise<{ entry: CollectionEntry | null; hasReview: boolean }> {
+  const entry = await getMyEntry(albumId);
+  if (!entry) return { entry: null, hasReview: false };
+
+  const supabase = await createClient();
+  const { count, error } = await supabase
+    .from('reviews')
+    .select('id', { count: 'exact', head: true })
+    .eq('collection_entry_id', entry.id);
+
+  if (error) throw error;
+  return { entry, hasReview: (count ?? 0) > 0 };
+}
+
 /** Explicit add. The date is optional and freely backdated. */
 export async function addToCollection(albumId: string, listenedOn?: string | null) {
   return ensureEntry(albumId, listenedOn);
@@ -132,9 +156,23 @@ export async function addToCollection(albumId: string, listenedOn?: string | nul
 /**
  * Removes an album from the collection.
  *
- * Relistens and the review cascade with the entry, by schema. Favourites and
- * Want to Listen do not — both are independent relations, and removing a
- * listening record says nothing about taste or intent.
+ * **Locked semantics (2026-08-19).** Removal destroys the entry and everything
+ * that hangs off it:
+ *
+ *   review          deleted, by cascade. The interface must warn first —
+ *                   losing a long review to a button labelled only "Remove"
+ *                   is the failure this rule exists to prevent.
+ *   relisten events deleted, by cascade. They are meaningless without a parent.
+ *   rating, like    columns on the row, so they go with it. The album's
+ *                   average recomputes on the next read, since averages are
+ *                   never stored.
+ *   favourites      untouched. Independent of the collection by decision C.
+ *   Want to Listen  untouched. The clearing rule is one-directional — it fires
+ *                   on entry creation and never in reverse — so removal does
+ *                   not infer that the user now intends to listen again.
+ *
+ * The service does not itself confirm. Confirmation is a UI responsibility;
+ * this is the mechanism.
  */
 export async function removeFromCollection(
   albumId: string,

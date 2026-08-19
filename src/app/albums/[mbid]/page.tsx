@@ -6,7 +6,10 @@ import { AlbumCover } from '@/components/AlbumCover';
 import { Container } from '@/components/Container';
 import { SectionHeader } from '@/components/SectionHeader';
 import { getAlbumByMbid } from '@/services/catalogue/queries';
+import { getMyCollectionState } from '@/services/collection';
 import { getCurrentProfile, getCurrentUser } from '@/services/profiles';
+
+import { addAlbumAction, removeAlbumAction } from './actions';
 
 /**
  * Album page — the canonical detail composition.
@@ -50,17 +53,42 @@ const TYPE_LABELS: Record<string, string> = { album: 'Album', ep: 'EP', other: '
 /**
  * Which card to show.
  *
- * Only the three pre-collection states are reachable today: collection entries
- * do not exist until Phase 2, so nobody can be in the collected states. Derived
- * from real session state rather than hardcoded, so the page tells the truth
- * about who is looking at it.
+ * Derived entirely from real session and collection state, so the page tells
+ * the truth about who is looking at it and what they hold. The two states that
+ * precede collection are not edge cases: signed out is the common case for a
+ * public catalogue, and authenticated-without-a-handle is a real position a
+ * user can sit in, because user-authored rows reference `profiles(id)`.
+ *
+ * The rated state is rendered but not yet reachable through the interface —
+ * rating arrives in its own slice. Rendering it correctly now costs nothing and
+ * means an entry rated through the service layer does not display as unrated.
  */
-async function resolveActionState(): Promise<ActionCardState> {
+async function resolveActionState(albumId: string): Promise<ActionCardState> {
   const user = await getCurrentUser();
   if (!user) return { kind: 'signed-out' };
+
   const profile = await getCurrentProfile();
   if (!profile) return { kind: 'onboarding-required' };
-  return { kind: 'not-collected' };
+
+  const { entry, hasReview } = await getMyCollectionState(albumId);
+  if (!entry) return { kind: 'not-collected' };
+
+  const relistens = entry.relisten_count;
+
+  // `rating` is nullable and 0.0 is a real score, so this must test for null
+  // rather than for falsiness — `entry.rating ? …` would render a zero-rated
+  // album as unrated.
+  if (entry.rating !== null) {
+    return {
+      kind: 'collected-rated',
+      score: Number(entry.rating),
+      liked: entry.liked,
+      relistens,
+      hasReview,
+    };
+  }
+
+  return { kind: 'collected-unrated', relistens, hasReview };
 }
 
 export default async function AlbumPage({ params }: PageProps<'/albums/[mbid]'>) {
@@ -69,7 +97,7 @@ export default async function AlbumPage({ params }: PageProps<'/albums/[mbid]'>)
 
   if (!album) notFound();
 
-  const actionState = await resolveActionState();
+  const actionState = await resolveActionState(album.id);
 
   // Secondary types qualify the primary one: a live album is an Album that is
   // also Live.
@@ -140,7 +168,13 @@ export default async function AlbumPage({ params }: PageProps<'/albums/[mbid]'>)
          * so it has no effect there.
          */}
         <aside className="flex max-w-sm flex-col gap-6 lg:col-start-3 lg:row-span-2 lg:row-start-1 lg:max-w-none">
-          <ActionCard state={actionState} />
+          <ActionCard
+            state={actionState}
+            actions={{
+              add: addAlbumAction.bind(null, album.id),
+              remove: removeAlbumAction.bind(null, album.id),
+            }}
+          />
 
           <div>
             <SectionHeader as="h3">Rating</SectionHeader>

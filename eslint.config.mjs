@@ -10,6 +10,16 @@ const eslintConfig = defineConfig([
   prettier,
   {
     rules: {
+      // A leading underscore marks a parameter that exists to satisfy a
+      // signature rather than to be used. Server actions used with
+      // `useActionState` must accept `(prevState, formData)` whether or not
+      // they read either, and the default `after-used` behaviour only
+      // tolerates that while some later parameter happens to be used.
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
+      ],
+
       // The service layer is the only place allowed to talk to the database.
       // See docs/architecture.md §4.
       'no-restricted-imports': [
