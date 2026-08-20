@@ -214,7 +214,7 @@ Primary: identity (avatar, display name, handle, bio) and a stat cluster (albums
 | `/<handle>`            | **Profile overview.** Identity, available statistics, favourites, and a **bounded preview** of the collection | **Built**     |
 | `/<handle>/collection` | **Full Collection.** The whole collection, `wide` container, paginated                                        | **Built**     |
 | `/<handle>/wishlist`   | **Want to Listen.** Reserved. Schema and service exist; no interface                                          | **Not built** |
-| `/<handle>/favourites` | **Favourites.** Reserved. Schema and service exist; no interface                                              | **Not built** |
+| `/<handle>/favourites` | **Favourites.** Reserved. The profile row and the album toggle exist; this destination does not               | **Not built** |
 
 **These are four distinct things and the distinction is load-bearing.** The overview is a summary that links onward; the other three are full sets. The overview is not "the collection page with less on it", and the Collection destination is not "the profile" — they answer different questions and take different containers.
 

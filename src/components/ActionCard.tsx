@@ -39,6 +39,7 @@ export type ActionCardActions = {
   rate?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
   like?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
   relisten?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
+  favourite?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
   saveReview?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
   deleteReview?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
 };
@@ -530,6 +531,66 @@ function LikeSubmit({ liked }: { liked: boolean }) {
 }
 
 /**
+ * The favourite toggle.
+ *
+ * **Deliberately the same treatment as Like, and deliberately not in the same
+ * row.** The two are different relations and must not be conflated, but the
+ * distinction is not a styling problem: both are binary toggles, so giving one
+ * a decorated treatment would say they differ in *kind* of interaction when
+ * they differ in *meaning*. What separates them here is where they sit and what
+ * they are called.
+ *
+ * Like, Rate and Relisten all implicitly collect the album (product-spec.md
+ * §8.5). Favourite does not — pinning is a statement about taste and never adds
+ * anything. That is a real boundary, so the favourite gets its own row below
+ * the ones that collect, rather than a fourth chip in a line of three.
+ *
+ * No heart. The heart glyph means **liked** on a collection tile, and reusing
+ * it for a favourite would collapse exactly the distinction this separation
+ * exists to hold.
+ *
+ * `aria-pressed` carries the state, matching Like, so the control announces
+ * itself as a toggle rather than as two buttons that swap labels.
+ */
+function FavouriteButton({
+  action,
+  favourited,
+}: {
+  action: NonNullable<ActionCardActions['favourite']>;
+  favourited: boolean;
+}) {
+  const [state, formAction] = useActionState(action, {});
+
+  return (
+    <>
+      <form action={formAction}>
+        <input type="hidden" name="favourited" value={favourited ? 'false' : 'true'} />
+        <FavouriteSubmit favourited={favourited} />
+      </form>
+      {state.error && <Failure message={state.error} />}
+    </>
+  );
+}
+
+function FavouriteSubmit({ favourited }: { favourited: boolean }) {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      aria-pressed={favourited}
+      className={`rounded-sm border px-3 py-1.5 text-xs transition-colors disabled:cursor-wait disabled:opacity-70 ${
+        favourited
+          ? 'border-accent-dim bg-bg text-accent hover:border-accent'
+          : 'border-border bg-raised text-text-secondary hover:border-border-strong hover:text-text'
+      }`}
+    >
+      {pending ? '…' : favourited ? 'Favourited' : 'Favourite'}
+    </button>
+  );
+}
+
+/**
  * The score input.
  *
  * Numeric, not stars. The score is 0.0-10.0 to one decimal by decision, and a
@@ -667,12 +728,63 @@ function StackedLink({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * The favourite's own row.
+ *
+ * Rendered in every signed-in state, including `not-collected`: a favourite
+ * does not require a collection entry and never creates one, so hiding the
+ * control until an album is collected would misrepresent the relation.
+ *
+ * Keyed on the server-confirmed value. The card's kind does not change when a
+ * favourite is toggled — pinning an uncollected album leaves it uncollected —
+ * so React preserves this subtree across the mutation, and with it any error
+ * `useActionState` is holding. Re-keying discards a stale `favourites_full`
+ * message once the state it described no longer applies. The same disclosure
+ * bug has already shipped twice, on the rating control and the review editor,
+ * and both times only the browser caught it.
+ */
+function FavouriteAction({
+  actions,
+  favourited,
+  note,
+}: {
+  actions: ActionCardActions;
+  favourited: boolean;
+  note?: string;
+}) {
+  return (
+    <Row>
+      {actions.favourite ? (
+        <FavouriteButton
+          key={`fav-${favourited}`}
+          action={actions.favourite}
+          favourited={favourited}
+        />
+      ) : (
+        <QuietAction active={favourited}>{favourited ? 'Favourited' : 'Favourite'}</QuietAction>
+      )}
+      {note && <p className="mt-2 text-xs text-text-faint">{note}</p>}
+    </Row>
+  );
+}
+
 export function ActionCard({
   state,
   actions = {},
+  favourited = false,
 }: {
   state: ActionCardState;
   actions?: ActionCardActions;
+  /**
+   * Whether the signed-in user has pinned this album.
+   *
+   * A top-level prop rather than a field on `state`, because favourites are
+   * **orthogonal to collection membership**. `state` discriminates on whether
+   * the album is collected and how it is scored; a favourite may exist in any
+   * of those cases, including `not-collected`, and toggling it must never move
+   * the card between kinds.
+   */
+  favourited?: boolean;
 }) {
   if (state.kind === 'signed-out') {
     return (
@@ -753,6 +865,11 @@ export function ActionCard({
               (product-spec.md §8.5). */}
           <p className="mt-2 text-xs text-text-faint">Rating, liking or a relisten adds it too.</p>
         </Row>
+        <FavouriteAction
+          actions={actions}
+          favourited={favourited}
+          note="Pinning does not add it to your collection."
+        />
         <Row>
           {actions.saveReview ? (
             <ReviewControl save={actions.saveReview} remove={actions.deleteReview} body={null} />
@@ -805,6 +922,7 @@ export function ActionCard({
             )}
           </div>
         </Row>
+        <FavouriteAction actions={actions} favourited={favourited} />
         <Row>
           {actions.saveReview ? (
             <ReviewControl
@@ -876,6 +994,7 @@ export function ActionCard({
           )}
         </div>
       </Row>
+      <FavouriteAction actions={actions} favourited={favourited} />
       <Row>
         {actions.saveReview ? (
           <ReviewControl

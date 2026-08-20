@@ -4,8 +4,10 @@ import { notFound } from 'next/navigation';
 import { Avatar } from '@/components/Avatar';
 import { CollectionGrid } from '@/components/CollectionGrid';
 import { Container } from '@/components/Container';
+import { FavouriteRow } from '@/components/FavouriteRow';
 import { SectionHeader } from '@/components/SectionHeader';
 import { COLLECTION_PREVIEW_LIMIT, listCollection } from '@/services/collection';
+import { listProfileFavourites } from '@/services/collection/favourites';
 import { getCurrentUser, getProfileByHandle } from '@/services/profiles';
 
 export async function generateMetadata({ params }: PageProps<'/[handle]'>) {
@@ -43,10 +45,12 @@ export async function generateMetadata({ params }: PageProps<'/[handle]'>) {
  * cluster of one, or padding it with "0 following · 0 followers", would imply
  * surfaces that are Phase 3. It arrives when it has companions.
  *
- * **Favourites**: its place in the running order is decided — above the
- * collection preview — and nothing renders for it until the feature exists. An
- * empty `FAVOURITES` heading on every profile is the same scaffold of zeroed
- * counters, wearing a different label.
+ * **Favourites** now render, above the collection preview, and **the section
+ * disappears entirely when there are none.** No heading, no panel, no "0
+ * favourites" — an empty scaffold on every profile is the same untrue claim as
+ * a cluster of zeroed counters, wearing a different label. Absence is the
+ * absence of anything, which is also why it reads the same to a visitor as to
+ * the owner: there is nothing to prompt, because there is nowhere yet to act.
  */
 
 /** "August 2026" — from created_at, the one profile fact not currently shown. */
@@ -96,9 +100,12 @@ export default async function ProfilePage({ params }: PageProps<'/[handle]'>) {
   const viewer = await getCurrentUser();
   const isOwnProfile = viewer?.id === profile.id;
 
-  const { items: preview, total } = await listCollection(profile.id, {
-    limit: COLLECTION_PREVIEW_LIMIT,
-  });
+  // Two independent reads: a favourite is not a collection entry and neither
+  // constrains the other, so nothing is derived from the pair.
+  const [{ items: preview, total }, favourites] = await Promise.all([
+    listCollection(profile.id, { limit: COLLECTION_PREVIEW_LIMIT }),
+    listProfileFavourites(profile.id),
+  ]);
 
   // The handle is the h1 when there is no display name, so repeating it
   // underneath would just print the same string twice.
@@ -140,11 +147,12 @@ export default async function ProfilePage({ params }: PageProps<'/[handle]'>) {
         )}
       </header>
 
-      {/*
-       * Favourites belongs here, above the collection preview
-       * (product-spec.md §6). Reserved, not stubbed: nothing renders until the
-       * feature exists.
-       */}
+      {favourites.length > 0 && (
+        <section className="mt-8">
+          <SectionHeader>Favourites</SectionHeader>
+          <FavouriteRow albums={favourites} />
+        </section>
+      )}
 
       <section className="mt-8">
         <SectionHeader trailing={<CollectionCount handle={profile.handle} total={total} />}>

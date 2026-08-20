@@ -26,8 +26,9 @@ Verified against the staging database and a clean-tree build on 2026-08-19.
 | Review service corrections               | **complete and committed** (`0715c50`) |
 | Review interface                         | **complete and committed** (`c486093`) |
 | Profile collection surface               | **complete and committed** — see §18   |
+| Favourites (profile row + album toggle)  | **complete and committed**             |
 
-Lists, follows, activity, feed, notifications, messaging, taste overlap and profile photo/city do not exist, in schema or in code. **Favourites and Want to Listen** have schema and service support and **no interface of any kind** — no route, no tab, no heading, no placeholder. Their destinations are named in `product-spec.md` §6 so the paths are decided; nothing is drawn for either.
+Lists, follows, activity, feed, notifications, messaging, taste overlap and profile photo/city do not exist, in schema or in code. **Favourites are built** — a row on the profile overview and a toggle on the album card — but **no favourites destination and no reordering interface exist**. **Want to Listen** still has schema and service support and **no interface of any kind**: no route, no tab, no heading, no placeholder. Both destinations are named in `product-spec.md` §6 so the paths are decided.
 
 **The design-foundation track is complete.** Every surface is migrated and verified by screenshot at 390, 768 and 1440px — see §7.
 
@@ -48,9 +49,9 @@ Lists, follows, activity, feed, notifications, messaging, taste overlap and prof
 
 |                  |                                                       |
 | ---------------- | ----------------------------------------------------- |
-| Unit + component | **136**                                               |
-| Integration      | **259** (need a local database)                       |
-| End-to-end       | **22** (Playwright)                                   |
+| Unit + component | **144**                                               |
+| Integration      | **289** (need a local database)                       |
+| End-to-end       | **34** (Playwright)                                   |
 | Repository       | <https://github.com/darrylnatale/longplayr> (private) |
 | **Staging app**  | <https://longplayr.vercel.app>                        |
 | **Staging DB**   | `oexuqjpvyeijmlirxtal.supabase.co`                    |
@@ -640,7 +641,7 @@ Sign-up, handle claim and sign-in each round-trip to GoTrue and then redirect. T
 
 ### Not implemented
 
-Favourites, the Want to Listen interface, Activity, review likes, reports, notifications, messaging, taste overlap, and profile photo or city. None exists in code. Their controls where present render visibly unavailable.
+The Want to Listen interface, Activity, review likes, reports, notifications, messaging, taste overlap, and profile photo or city. None existed in code at this point, and Favourites did not either — it landed later, after the profile collection surface.
 
 ---
 
@@ -728,7 +729,7 @@ Fixing that is test-infrastructure work, not part of a read path, so the test wa
 
 ### Not implemented
 
-Sorting, filtering, Favourites, the Want to Listen interface, inert tabs, a stat cluster, Activity, and the density control. **None exists in code, and none renders anything** — Favourites and Want to Listen have decided paths (`product-spec.md` §6) and no route, tab, heading or placeholder.
+Sorting, filtering, the Want to Listen interface, inert tabs, a stat cluster, Activity, and the density control — none of which this slice built, and none of which renders anything. **Favourites was not built by this slice either**; it landed immediately afterwards, and the favourites row on the overview dates from that commit rather than this one.
 
 ---
 

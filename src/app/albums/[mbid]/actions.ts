@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 
 import { addToCollection, rateAlbum, removeFromCollection, setLiked } from '@/services/collection';
 import { markRelisten } from '@/services/collection/relistens';
+import { addFavourite, removeFavourite } from '@/services/collection/favourites';
 import { REVIEW_MAX_LENGTH, deleteReview, saveReview } from '@/services/collection/reviews';
 
 /**
@@ -197,6 +198,39 @@ export async function deleteReviewAction(
   _formData: FormData,
 ): Promise<CollectionActionState> {
   const result = await deleteReview(albumId);
+  if (!result.ok) return { error: result.message };
+
+  revalidatePath(`/albums/[mbid]`, 'page');
+  return {};
+}
+
+/**
+ * Pins or unpins a favourite.
+ *
+ * **Neither direction touches the collection.** Pinning does not add the album
+ * and unpinning does not remove it — a favourite is a statement about taste,
+ * not a record of listening (product-spec.md §8.5, which names favourites as
+ * the one exception to implicit collection). This action therefore does not go
+ * through `ensureEntry`, and that omission is the decision rather than an
+ * oversight: every other mutation on this page collects, and this one must not.
+ *
+ * The desired next value travels in the form rather than being derived from
+ * what the server currently holds, exactly as the like does, so a stale page
+ * cannot toggle twice from one click. Submitting `favourited=true` twice leaves
+ * it pinned rather than pinning and immediately unpinning.
+ *
+ * The ten-favourite cap comes back as a rendered message rather than a throw:
+ * `addFavourite` returns `favourites_full`, and the schema is what actually
+ * guarantees the ceiling if two requests race past the service's count.
+ */
+export async function toggleFavouriteAction(
+  albumId: string,
+  _prev: CollectionActionState,
+  formData: FormData,
+): Promise<CollectionActionState> {
+  const favourited = formData.get('favourited') === 'true';
+
+  const result = favourited ? await addFavourite(albumId) : await removeFavourite(albumId);
   if (!result.ok) return { error: result.message };
 
   revalidatePath(`/albums/[mbid]`, 'page');

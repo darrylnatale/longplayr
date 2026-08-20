@@ -8,6 +8,7 @@ import { ScoreBadge } from '@/components/ScoreBadge';
 import { SectionHeader } from '@/components/SectionHeader';
 import { getAlbumByMbid } from '@/services/catalogue/queries';
 import { getMyCollectionState } from '@/services/collection';
+import { getMyFavourite } from '@/services/collection/favourites';
 import { getAlbumRating } from '@/services/collection/ratings';
 import { getAlbumReviews } from '@/services/collection/reviews';
 import { Avatar } from '@/components/Avatar';
@@ -20,6 +21,7 @@ import {
   rateAlbumAction,
   removeAlbumAction,
   saveReviewAction,
+  toggleFavouriteAction,
   toggleLikeAction,
 } from './actions';
 
@@ -120,6 +122,13 @@ export default async function AlbumPage({ params }: PageProps<'/albums/[mbid]'>)
 
   const actionState = await resolveActionState(album.id);
 
+  // Read independently of the collection state, because the relations are
+  // independent: an album may be pinned without ever having been collected, so
+  // this must not be derived from, or skipped because of, `actionState.kind`.
+  // Returns null when signed out or mid-onboarding, which is the same `false`
+  // the card renders for those states anyway.
+  const favourited = (await getMyFavourite(album.id)) !== null;
+
   // Computed on read from non-null ratings, never stored. Deletion therefore
   // needs no recomputation step, and no counter can drift.
   const rating = await getAlbumRating(album.id);
@@ -204,12 +213,14 @@ export default async function AlbumPage({ params }: PageProps<'/albums/[mbid]'>)
         <aside className="flex max-w-sm flex-col gap-6 lg:col-start-3 lg:row-span-2 lg:row-start-1 lg:max-w-none">
           <ActionCard
             state={actionState}
+            favourited={favourited}
             actions={{
               add: addAlbumAction.bind(null, album.id),
               remove: removeAlbumAction.bind(null, album.id),
               rate: rateAlbumAction.bind(null, album.id),
               like: toggleLikeAction.bind(null, album.id),
               relisten: markRelistenAction.bind(null, album.id),
+              favourite: toggleFavouriteAction.bind(null, album.id),
               saveReview: saveReviewAction.bind(null, album.id),
               deleteReview: deleteReviewAction.bind(null, album.id),
             }}
