@@ -1,9 +1,10 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { AlbumGrid } from '@/components/AlbumGrid';
 import { Container } from '@/components/Container';
 import { SectionHeader } from '@/components/SectionHeader';
-import { getArtistByMbid } from '@/services/catalogue/queries';
+import { getArtistByMbid, type DiscographySort } from '@/services/catalogue/queries';
 
 /**
  * Artist page — the canonical discography composition.
@@ -18,8 +19,13 @@ import { getArtistByMbid } from '@/services/catalogue/queries';
  * EPs and mixtapes together, never grouped by type (product-spec.md §6). That
  * ordering is done in the query and deliberately not re-sorted here.
  *
- * Sorting controls and aggregate rating arrive with Phase 2, when there are
- * ratings to sort by.
+ * **Sorting is by release date only.** Newest first by default, oldest first on
+ * request, and undated releases stay last either way. Sorting by rating, and an
+ * artist-level aggregate rating, are **deferred** — `product-spec.md` §6 carried
+ * both as `[INFERRED]` on the stated premise that they would reuse the
+ * collection view's sort machinery. That machinery does not exist, so the
+ * premise did not hold, and the question was resolved in favour of date alone
+ * rather than built around.
  */
 
 export async function generateMetadata({ params }: PageProps<'/artists/[mbid]'>) {
@@ -27,6 +33,55 @@ export async function generateMetadata({ params }: PageProps<'/artists/[mbid]'>)
   const artist = await getArtistByMbid(mbid);
   if (!artist) return { title: 'Not found · longplayr' };
   return { title: `${artist.name} · longplayr` };
+}
+
+/**
+ * `?sort=` is user input and arrives as anything at all.
+ *
+ * Anything that is not `oldest` resolves to the default rather than erroring —
+ * the same shape as `pageFrom` on the collection destination, and for the same
+ * reason: a malformed sort is not worth a 404.
+ */
+function sortFrom(value: string | string[] | undefined): DiscographySort {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw === 'oldest' ? 'oldest' : 'newest';
+}
+
+/**
+ * Newest / Oldest, as two links rather than a control with state.
+ *
+ * The page is server-rendered and the sort lives in the URL, so this needs no
+ * client component: each option is the address of the page sorted that way, and
+ * the browser's own back button moves between them.
+ *
+ * Newest is the default, so it is the bare address — the same convention page
+ * one uses on the collection destination, where `?page=1` is never written.
+ */
+function DiscographySortLinks({ mbid, sort }: { mbid: string; sort: DiscographySort }) {
+  const options: { value: DiscographySort; label: string; href: string }[] = [
+    { value: 'newest', label: 'Newest', href: `/artists/${mbid}` },
+    { value: 'oldest', label: 'Oldest', href: `/artists/${mbid}?sort=oldest` },
+  ];
+
+  return (
+    <span className="flex items-baseline gap-3">
+      {options.map((option) =>
+        option.value === sort ? (
+          <span key={option.value} aria-current="true" className="text-accent">
+            {option.label}
+          </span>
+        ) : (
+          <Link
+            key={option.value}
+            href={option.href}
+            className="text-text-muted underline decoration-border-strong underline-offset-4 transition-colors hover:text-text"
+          >
+            {option.label}
+          </Link>
+        ),
+      )}
+    </span>
+  );
 }
 
 /** Earliest and latest dated release, when there are enough to describe a span. */
@@ -40,9 +95,10 @@ function activeSpan(dates: (string | null)[]): string | null {
   return first === last ? first : `${first}–${last}`;
 }
 
-export default async function ArtistPage({ params }: PageProps<'/artists/[mbid]'>) {
+export default async function ArtistPage({ params, searchParams }: PageProps<'/artists/[mbid]'>) {
   const { mbid } = await params;
-  const artist = await getArtistByMbid(mbid);
+  const sort = sortFrom((await searchParams).sort);
+  const artist = await getArtistByMbid(mbid, sort);
 
   if (!artist) notFound();
 
@@ -65,7 +121,17 @@ export default async function ArtistPage({ params }: PageProps<'/artists/[mbid]'
       </header>
 
       <section className="mt-8">
-        <SectionHeader trailing={count > 0 ? `${count}` : undefined}>Discography</SectionHeader>
+        {/*
+         * The sort takes the trailing slot, which exists for exactly one
+         * right-aligned affordance. The bare count that sat here is not lost —
+         * the page header two lines above already reads "N releases", so it was
+         * saying the same thing twice.
+         */}
+        <SectionHeader
+          trailing={count > 1 ? <DiscographySortLinks mbid={mbid} sort={sort} /> : undefined}
+        >
+          Discography
+        </SectionHeader>
 
         {/*
          * Captions are on, and the density relaxed to make room for them. This

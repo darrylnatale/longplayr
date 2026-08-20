@@ -183,7 +183,7 @@ Not a blocking phase, but it must land **before Phase 2**, because Phase 2 is wh
 **Additional features from resolved decisions**
 
 - Profile favourites — up to ten pinned albums, user-ordered, independent of the collection
-- Artist page sorting by date and rating
+- **Artist page sorting by release date — complete.** Newest and oldest, `first_release_date`, undated releases last in both directions, selected via `?sort=oldest`. **Rating sorting and any artist-level aggregate rating are deferred** (`product-spec.md` §6, resolved 2026-08-20); neither was built, and collection sorting is not a prerequisite
 - Implicit collection creation when rating, liking or reviewing an uncollected album
 
 **Open decisions affecting this phase.** The line that stood here — "No open decisions block this phase" — was written before decision H was raised and before the product direction in `product-spec.md` §10 existed. It was wrong on both counts and is corrected rather than deleted, because a plan that once said a phase was unblocked should show that it changed its mind.

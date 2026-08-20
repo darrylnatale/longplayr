@@ -100,8 +100,51 @@ export async function getAlbumByMbid(mbid: string): Promise<AlbumDetail | null> 
   };
 }
 
-/** An artist with their full discography, newest first. */
-export async function getArtistByMbid(mbid: string): Promise<ArtistDetail | null> {
+/**
+ * Which end of the discography leads.
+ *
+ * Release date only. Sorting by rating, and any artist-level aggregate, are
+ * **deferred** — `product-spec.md` §6 carried them as `[INFERRED]` on the
+ * premise that they would reuse the collection view's sort machinery, which
+ * does not exist. Resolved 2026-08-20 in favour of date alone.
+ */
+export type DiscographySort = 'newest' | 'oldest';
+
+/**
+ * The discography comparator, exported and pure so it can be tested.
+ *
+ * Same reason as the collection and favourites mappers: `getArtistByMbid`
+ * builds a cookie-bound client and cannot be called without a request scope, so
+ * the integration suite proves the query and this proves the ordering.
+ *
+ * **Undated releases sort last in both directions.** Reversing the comparator
+ * wholesale would float them to the top of an oldest-first list, which is not
+ * "oldest" — it is "unknown", and it would jumble the run the interleaved
+ * chronology exists to keep readable (`product-spec.md` §6).
+ */
+export function byReleaseDate(sort: DiscographySort) {
+  return (a: { first_release_date: string | null }, b: { first_release_date: string | null }) => {
+    if (!a.first_release_date) return 1;
+    if (!b.first_release_date) return -1;
+
+    return sort === 'oldest'
+      ? a.first_release_date.localeCompare(b.first_release_date)
+      : b.first_release_date.localeCompare(a.first_release_date);
+  };
+}
+
+/**
+ * An artist with their full discography.
+ *
+ * **Newest first unless asked otherwise.** The run is ordered by release date
+ * in one of the two supported directions, albums, EPs and mixtapes interleaved
+ * and never grouped by type (`product-spec.md` §6), with undated releases last
+ * either way.
+ */
+export async function getArtistByMbid(
+  mbid: string,
+  sort: DiscographySort = 'newest',
+): Promise<ArtistDetail | null> {
   const supabase = await createClient();
 
   const { data: artist, error } = await supabase
@@ -126,12 +169,7 @@ export async function getArtistByMbid(mbid: string): Promise<ArtistDetail | null
     .map((row) => row.albums)
     .filter((album): album is NonNullable<typeof album> => album !== null)
     .map(toSummary)
-    .sort((a, b) => {
-      // Undated releases sort last rather than jumbling into the run.
-      if (!a.first_release_date) return 1;
-      if (!b.first_release_date) return -1;
-      return b.first_release_date.localeCompare(a.first_release_date);
-    });
+    .sort(byReleaseDate(sort));
 
   return { ...artist, albums };
 }

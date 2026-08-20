@@ -199,7 +199,11 @@ The page must read correctly in three states: **not in your collection**, **in y
 
 Primary: name and discography as an artwork grid. **One interleaved chronological run, newest first — albums, EPs and mixtapes together, never grouped by type. [DECIDED]** Release type is available as a small label on each item, but it never fragments the grid.
 
-Sortable by release date (newest and oldest first) and by average rating. **[INFERRED — sorting was not previously in MVP scope; adding it here because it reuses the collection view's sort machinery and you flagged wanting it. Say if you'd rather ship date-only and defer sorting.]** Sorting by popularity waits for the popularity layer in Phase 5.
+**Sortable by release date — newest first and oldest first. [DECIDED 2026-08-20]** Newest is the default, and the date is `albums.first_release_date`. **Undated releases stay last in both directions**, rather than being reversed to the top of an oldest-first run where they would read as the earliest releases instead of as releases with no date.
+
+**Sorting by average rating is deferred, and so is any artist-level aggregate rating.** This line previously carried both as `[INFERRED]`, on the stated grounds that sorting "reuses the collection view's sort machinery". **That rationale no longer holds**: the collection view has no sort machinery, and building it is blocked on product decisions of its own. The question the note asked — whether to ship date-only and defer the rest — was answered in favour of date-only, so artist sorting proceeds independently and collection sorting is **not** a prerequisite for it.
+
+Sorting by popularity waits for the popularity layer in Phase 5.
 
 ### Profile page
 

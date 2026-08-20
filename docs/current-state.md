@@ -28,7 +28,8 @@ Verified against the staging database and a clean-tree build on 2026-08-19.
 | Profile collection surface               | **complete and committed** — see §18              |
 | Favourites (profile row + album toggle)  | **complete and committed** (`895e018`)            |
 | Want to Listen (album card)              | **complete and committed** (`badc816`) — see §20  |
-| Optional `listened_on` date on add       | **complete, verified, _not committed_** — see §21 |
+| Optional `listened_on` date on add       | **complete and committed** (`cc8018a`) — see §21  |
+| Artist page date sorting                 | **complete, verified, _not committed_** — see §22 |
 
 Lists, follows, activity, feed, notifications, messaging, taste overlap and profile photo/city do not exist, in schema or in code. **Favourites are built** — a row on the profile overview and a toggle on the album card — but **no favourites destination and no reordering interface exist**. **Want to Listen now has an album-card toggle** and nothing else: **no profile surface, no route, no tab, no heading, no placeholder**. Both destinations are named in `product-spec.md` §6 so the paths are decided; naming a path is not scheduling the surface, and neither has been built.
 
@@ -51,10 +52,10 @@ Lists, follows, activity, feed, notifications, messaging, taste overlap and prof
 
 |                  |                                                       |
 | ---------------- | ----------------------------------------------------- |
-| Unit + component | **144**                                               |
+| Unit + component | **153**                                               |
 | Integration      | **332** (need a local database)                       |
 | Seed             | **1**                                                 |
-| End-to-end       | **48** (Playwright)                                   |
+| End-to-end       | **55** (Playwright)                                   |
 | Repository       | <https://github.com/darrylnatale/longplayr> (private) |
 | **Staging app**  | <https://longplayr.vercel.app>                        |
 | **Staging DB**   | `oexuqjpvyeijmlirxtal.supabase.co`                    |
@@ -92,7 +93,7 @@ Lists, follows, activity, feed, notifications, messaging, taste overlap and prof
 
 ### Git state
 
-**`HEAD` is `895e018`, and `origin/main` is the same commit.** The design foundation and every Phase 2 slice through Favourites are committed:
+**`HEAD` is `cc8018a` and `origin/main` is `895e018`** — the local branch is **ahead by two**, and nothing has been pushed. The design foundation and every Phase 2 slice through the optional `listened_on` date are committed:
 
 | Commit    | Slice                                                 |
 | --------- | ----------------------------------------------------- |
@@ -100,23 +101,28 @@ Lists, follows, activity, feed, notifications, messaging, taste overlap and prof
 | `7dd8260` | Collection read path on the profile                   |
 | `b2aff93` | Profile collection surface — overview and destination |
 | `895e018` | Favourites — profile row and album-card toggle        |
+| `badc816` | Want to Listen on album actions — **local only**      |
+| `cc8018a` | Optional `listened_on` date on add — **local only**   |
+
+**Artist page date sorting is the current uncommitted slice.**
 
 `e1f29c3`, earlier the same day, recorded the Want to Listen profile-visibility decision and changed no code.
 
-`badc816` is the last commit and **has not been pushed** — `origin/main` is still `895e018`, one behind.
+**`cc8018a` is `HEAD`, and nothing has been pushed.** `origin/main` is still `895e018`, **two behind** — `badc816` (Want to Listen) and `cc8018a` (the optional `listened_on` date) are both local only, so **CI has run on neither**. The last observed run was #40 on `895e018`, green.
 
-**One slice is uncommitted: the optional `listened_on` date on add.** Eight files — two changed, two new, plus four documents carrying the collection-ordering reconciliation that had to precede it:
+**One slice is uncommitted: artist page date sorting.** Two files changed, two new, plus three documents:
 
 ```
  M docs/current-state.md
- M docs/data-model.md
  M docs/development-plan.md
  M docs/product-spec.md
- M src/app/albums/[mbid]/actions.ts
- M src/components/ActionCard.tsx
-?? tests/e2e/listened-on.spec.ts
-?? tests/integration/listened-on.test.ts
+ M src/app/artists/[mbid]/page.tsx
+ M src/services/catalogue/queries.ts
+?? src/services/catalogue/discography-sort.test.ts
+?? tests/e2e/artist-sort.spec.ts
 ```
+
+The counts above are the **verified state of this working tree**, not of `cc8018a`. See §22.
 
 The counts above are the **verified state of this working tree**, not of `badc816`. See §21.
 
@@ -884,9 +890,9 @@ The Want to Listen profile destination, any profile section or tab, reordering, 
 
 ---
 
-## 21. Optional `listened_on` date on add — implemented and verified, **not committed**
+## 21. Optional `listened_on` date on add — implemented, verified and committed
 
-Built 2026-08-20. Adding an uncollected album may now carry the date the user says they listened. **Nothing else** — no sorting, no filtering.
+Built and committed 2026-08-20 as `cc8018a`. Adding an uncollected album may now carry the date the user says they listened. **Nothing else** — no sorting, no filtering.
 
 ### Verified state
 
@@ -930,6 +936,58 @@ The default remains **`added_at` descending**, with `listened_on` available as a
 ### Not implemented
 
 Collection sorting and filtering, artist sorting, edition selection, favourites reordering, the profile wishlist destination, Activity and feed. `listened_on` is stored and never rendered — profiles and collections display no dates, by decision — so the slice is verified against the row rather than the page.
+
+---
+
+## 22. Artist page date sorting — implemented and verified, **not committed**
+
+Built 2026-08-20. The discography can be read newest first or oldest first. **Nothing else** — no rating sort, no aggregate.
+
+### Verified state
+
+| Suite            | Count   |
+| ---------------- | ------- |
+| Unit + component | **153** |
+| Integration      | **332** |
+| Seed             | **1**   |
+| End-to-end       | **55**  |
+
+`rm -rf .next && npm run verify:full` — exit 0, run twice: once before the visual inspection and again on the reverted tree. Inspected at 390, 768 and 1440px in both directions; no horizontal overflow, and the control sits on the section-header baseline at every width.
+
+### What it does
+
+|                |                                                                                                              |
+| -------------- | ------------------------------------------------------------------------------------------------------------ |
+| Sort key       | `albums.first_release_date` — the release date, never `added_at` or `listened_on`                            |
+| Directions     | **Newest first** (default) and **oldest first**                                                              |
+| Undated albums | **Last in both directions**                                                                                  |
+| State          | The URL: `?sort=oldest`. Newest is the bare address, the same convention `?page=1` follows on the collection |
+| Rendering      | Server-rendered. No client component, no client state                                                        |
+| Visibility     | The control is withheld for a single-release discography — sorting one album is meaningless                  |
+
+**Undated-last in both directions is the subtle part, and is pinned by two tests.** Reversing the comparator wholesale is the obvious way to implement "oldest", and it is wrong: it floats undated releases to the top, where they read as the earliest releases rather than as releases with no date, and it jumbles the interleaved chronological run that `product-spec.md` §6 exists to keep readable.
+
+### The `[INFERRED]` requirement, resolved
+
+`product-spec.md` §6 carried "sortable by release date and by average rating" as **`[INFERRED]`** — provisional, and explicitly asking whether to ship date-only. The note justified including rating sorting on the grounds that it "reuses the collection view's sort machinery".
+
+**That rationale did not hold.** The collection view has no sort machinery, and building it is blocked on six product decisions of its own. Resolved 2026-08-20 in favour of **date-only**: rating sorting and any artist-level aggregate rating are deferred, and artist sorting proceeds independently rather than waiting on the collection.
+
+### Coverage, and one limitation worth stating plainly
+
+The comparator is **exported and pure** — the same pattern as the collection and favourites mappers — so ordering is proven directly rather than through the page: both directions, undated-last in each, the two directions genuinely inverse for dated releases, partial dates (year-only against full, where lexical order is chronological), and the empty, all-undated and single-release cases.
+
+**Multi-album ordering is not covered end to end, and cannot be on this catalogue.** `db:seed:fixtures` ingests eight fixtures producing seven albums, and **every artist holds exactly one release** — the only pair is _Watch the Throne_ appearing under both of its credits. Proving ordering in a browser would require manufacturing catalogue records, which is excluded; **no fixture was added.** The unit tests are the authoritative proof of the ordering invariant, and the end-to-end spec says so in its own header rather than leaving the gap implicit.
+
+What the browser does cover: the discography renders, the control is absent for a single release, `?sort=oldest` is a valid addressable 200, five malformed values and a repeated parameter all fall back without erroring, and **sorting mutates nothing** — rating, like, favourite, Want to Listen, relisten count, `listened_on` and review count are compared before and after visiting four sort URLs.
+
+### One small removal
+
+The bare count in the discography section header is gone. The slot holds one right-aligned affordance and now holds the sort; the page header two lines above already reads "N releases", so the count was saying the same thing twice.
+
+### Not implemented
+
+Artist rating sorting, artist-level aggregate rating, collection sorting and filtering, edition selection, favourites reordering, the wishlist profile surface, and Activity or feed. No migration, and no change to the fixture catalogue.
 
 ---
 
