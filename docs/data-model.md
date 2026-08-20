@@ -191,7 +191,9 @@ Asymmetric. `follower_id` → `followee_id`, with `created_at`. Composite unique
 | `added_at`            | **Always set by the system.** Never null                                                         |
 | `updated_at`          |                                                                                                  |
 
-**Why two timestamps.** `listened_on` is what the user asserts; `added_at` is what actually happened. Collections sort by `listened_on` when present, falling back to `added_at` — so a user who bulk-adds forty undated albums still gets them ordered sensibly by when they added them. `added_at` is also what drives feed eligibility.
+**Why two timestamps.** `listened_on` is what the user asserts; `added_at` is what actually happened. **Collections sort by `added_at` descending by default** — `product-spec.md` §6, decided 2026-08-19 — because the collection answers what was most recently added, which is a fact about the account, while `listened_on` is a user-editable claim about the past that may be backdated. `listened_on` remains available as an explicit sort. `added_at` is also what drives feed eligibility.
+
+An earlier version of this paragraph described the default as `listened_on` falling back to `added_at`. That fallback was **rejected** by the later decision, for a product reason — a backfill of old listens would displace everything added this week, around a date the page never displays — and for a technical one: the expression is not indexable, because casting `timestamptz` to `date` depends on the session time zone and is therefore not `IMMUTABLE`.
 
 **Feed eligibility rule.** **[DECIDED — B1, amended 2026-08-18]**
 

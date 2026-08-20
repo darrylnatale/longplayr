@@ -27,7 +27,8 @@ Verified against the staging database and a clean-tree build on 2026-08-19.
 | Review interface                         | **complete and committed** (`c486093`)            |
 | Profile collection surface               | **complete and committed** — see §18              |
 | Favourites (profile row + album toggle)  | **complete and committed** (`895e018`)            |
-| Want to Listen (album card)              | **complete, verified, _not committed_** — see §20 |
+| Want to Listen (album card)              | **complete and committed** (`badc816`) — see §20  |
+| Optional `listened_on` date on add       | **complete, verified, _not committed_** — see §21 |
 
 Lists, follows, activity, feed, notifications, messaging, taste overlap and profile photo/city do not exist, in schema or in code. **Favourites are built** — a row on the profile overview and a toggle on the album card — but **no favourites destination and no reordering interface exist**. **Want to Listen now has an album-card toggle** and nothing else: **no profile surface, no route, no tab, no heading, no placeholder**. Both destinations are named in `product-spec.md` §6 so the paths are decided; naming a path is not scheduling the surface, and neither has been built.
 
@@ -51,8 +52,9 @@ Lists, follows, activity, feed, notifications, messaging, taste overlap and prof
 |                  |                                                       |
 | ---------------- | ----------------------------------------------------- |
 | Unit + component | **144**                                               |
-| Integration      | **310** (need a local database)                       |
-| End-to-end       | **41** (Playwright)                                   |
+| Integration      | **332** (need a local database)                       |
+| Seed             | **1**                                                 |
+| End-to-end       | **48** (Playwright)                                   |
 | Repository       | <https://github.com/darrylnatale/longplayr> (private) |
 | **Staging app**  | <https://longplayr.vercel.app>                        |
 | **Staging DB**   | `oexuqjpvyeijmlirxtal.supabase.co`                    |
@@ -101,18 +103,22 @@ Lists, follows, activity, feed, notifications, messaging, taste overlap and prof
 
 `e1f29c3`, earlier the same day, recorded the Want to Listen profile-visibility decision and changed no code.
 
-**One slice is uncommitted: Want to Listen on the album card.** Six files — four changed, two new — plus this document:
+`badc816` is the last commit and **has not been pushed** — `origin/main` is still `895e018`, one behind.
+
+**One slice is uncommitted: the optional `listened_on` date on add.** Eight files — two changed, two new, plus four documents carrying the collection-ordering reconciliation that had to precede it:
 
 ```
+ M docs/current-state.md
+ M docs/data-model.md
+ M docs/development-plan.md
+ M docs/product-spec.md
  M src/app/albums/[mbid]/actions.ts
- M src/app/albums/[mbid]/page.tsx
  M src/components/ActionCard.tsx
- M src/services/collection/want-to-listen.ts
-?? tests/e2e/want-to-listen.spec.ts
-?? tests/integration/want-to-listen.test.ts
+?? tests/e2e/listened-on.spec.ts
+?? tests/integration/listened-on.test.ts
 ```
 
-Verified green and held for review, which is the practice every slice has followed. See §20.
+The counts above are the **verified state of this working tree**, not of `badc816`. See §21.
 
 The habit of leaving implementation uncommitted while documentation lands ahead of it is deliberate, but it has a cost worth naming: for several checkpoints this paragraph described a working tree that no longer existed. A checkpoint that describes the wrong tree is worse than one that says nothing.
 
@@ -816,9 +822,9 @@ Entries were created through `ensure_collection_entry` — the single sanctioned
 
 ---
 
-## 20. Want to Listen — implemented and verified, **not committed**
+## 20. Want to Listen — implemented, verified and committed
 
-Built 2026-08-20. The album card gains a Want to Listen toggle. **Nothing else** — no profile surface, no route, no tab.
+Built and committed 2026-08-20 as `badc816`. The album card gains a Want to Listen toggle. **Nothing else** — no profile surface, no route, no tab.
 
 ### Verified state
 
@@ -875,6 +881,55 @@ The product decisions taken on 2026-08-20 were two: **offer Want to Listen on an
 ### Not implemented
 
 The Want to Listen profile destination, any profile section or tab, reordering, Activity, feed events, feed hiding, and discovery or popularity ranking. **Public profile visibility is decided** (`product-spec.md` §10.1) — that fixes the eventual structure and does not schedule the surface, which is why none exists.
+
+---
+
+## 21. Optional `listened_on` date on add — implemented and verified, **not committed**
+
+Built 2026-08-20. Adding an uncollected album may now carry the date the user says they listened. **Nothing else** — no sorting, no filtering.
+
+### Verified state
+
+| Suite            | Count   |
+| ---------------- | ------- |
+| Unit + component | **144** |
+| Integration      | **332** |
+| Seed             | **1**   |
+| End-to-end       | **48**  |
+
+`rm -rf .next && npm run verify:full` — exit 0, all four suites. Inspected at 390, 768 and 1440px, open and closed; no horizontal overflow, and the field matches the primary button's width.
+
+### What it does
+
+|                  |                                                                                                                                                        |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Where it appears | The explicit **Add to collection** flow only, and only while the album is uncollected                                                                  |
+| Blank or omitted | `null`, and the request is byte-for-byte what it was before the field existed                                                                          |
+| Supplied         | A **user-supplied calendar date**, freely backdated. A `date`, never a timestamp                                                                       |
+| `added_at`       | Untouched and system-generated. It remains what orders the collection and what drives feed eligibility                                                 |
+| When applied     | **On creation only**, inside `ensure_collection_entry`                                                                                                 |
+| Later actions    | A subsequent rate, like, review or relisten **never overwrites** a date the user set, and never sets one where they chose none                         |
+| Path             | The single sanctioned creation path. No second path, and **no migration** — the column, the service argument and the RPC parameter all already existed |
+
+### The clearing rule is where it was
+
+Adding a wanted album **with** a date collects it and clears the Want to Listen row, through `ensure_collection_entry` exactly as an undated add does. **No clearing logic was added to the action** — the date changes which value travels, never which path runs. Covered at both levels.
+
+### Validation
+
+Rejected before the value can reach Postgres, following the convention `rateAlbumAction` set — inline in the action, returning a message the card renders rather than throwing.
+
+**The round-trip check earns its place.** `Date.parse('2026-02-30')` returns a number, because V8 rolls the day into March; Postgres does not, and `ensureEntry` maps only `23503`, so an unvalidated value would have produced a 500 rather than a message. The parsed components are compared back against the submitted ones, and an integration test confirms Postgres genuinely refuses the date that check catches.
+
+**No upper bound.** Whether a listen may be dated in the future is unanswered, and imposing a rule here would answer it by implementing it. The model has always permitted it; this slice is simply the first way to enter one.
+
+### Ordering is unchanged, and three documents now say so
+
+The default remains **`added_at` descending**, with `listened_on` available as an explicit sort. This slice made no ordering change; what it did was force the reconciliation that preceded it. `product-spec.md` §4, `data-model.md` and `development-plan.md` all still described the superseded `coalesce(listened_on, added_at)` fallback, which the 2026-08-19 decision had rejected and the code had never implemented. All three now match §6 and the code, and `data-model.md` records why the fallback was rejected rather than quietly dropping it.
+
+### Not implemented
+
+Collection sorting and filtering, artist sorting, edition selection, favourites reordering, the profile wishlist destination, Activity and feed. `listened_on` is stored and never rendered — profiles and collections display no dates, by decision — so the slice is verified against the row rather than the page.
 
 ---
 

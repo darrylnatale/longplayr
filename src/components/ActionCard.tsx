@@ -233,14 +233,71 @@ function RemoveControl({
   );
 }
 
-/** Add, live. Idempotent server-side, so a double submit yields one entry. */
+/**
+ * The explicit add, with an optional listen date. Idempotent server-side, so a
+ * double submit yields one entry.
+ *
+ * **The date is subordinate to the button, not beside it.** Adding is one click
+ * (`design-reference.md` §6.4 makes Add dominant in this state), and the date
+ * is the exception rather than the path — so it stays behind a quiet
+ * disclosure and the primary control never moves. Revealing it does not change
+ * what submits: the same form, the same action, the same single sanctioned
+ * collection-creation path, with one more field in it.
+ *
+ * A native date input rather than a bespoke one. The design system has no date
+ * control, inventing one is beyond this slice, and the native control brings
+ * the platform's own keyboard handling and locale-aware display for free —
+ * while still submitting the ISO calendar date the column stores.
+ *
+ * Closing the disclosure unmounts the field, so a date typed and then dismissed
+ * is not submitted. That is the intended reading of "without a date".
+ *
+ * No stale-state risk here, unusually for this card: a successful add moves the
+ * card from `not-collected` to a collected kind, so this component unmounts
+ * entirely. On a rejected date the kind does not change, the disclosure stays
+ * open, and the message sits under the field it belongs to.
+ */
 function AddRow({ action }: { action: NonNullable<ActionCardActions['add']> }) {
   const [state, formAction] = useActionState(action, {});
+  const [dating, setDating] = useState(false);
+
   return (
     <>
-      <form action={formAction}>
+      <form action={formAction} className="flex flex-col gap-2.5">
+        {dating && (
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="listened-on"
+              className="text-xs uppercase tracking-widest text-text-muted"
+            >
+              Listened on
+            </label>
+            <input
+              id="listened-on"
+              name="listenedOn"
+              type="date"
+              autoFocus
+              aria-describedby="listened-on-hint"
+              className="tabular w-full min-w-0 rounded-md border border-border bg-surface px-3 py-2.5 text-base text-text outline-none transition-colors focus:border-accent"
+            />
+            <p id="listened-on-hint" className="text-xs text-text-faint">
+              Optional, and freely backdated. Leave it blank if you would rather not say.
+            </p>
+          </div>
+        )}
         <SubmitButton pendingLabel="Adding…">Add to collection</SubmitButton>
       </form>
+
+      <button
+        type="button"
+        onClick={() => setDating((open) => !open)}
+        aria-expanded={dating}
+        aria-controls={dating ? 'listened-on' : undefined}
+        className="mt-2 text-xs text-text-muted transition-colors hover:text-text"
+      >
+        {dating ? 'Add without a date' : 'Add with a listen date…'}
+      </button>
+
       {state.error && (
         <div className="mt-2">
           <Failure message={state.error} />

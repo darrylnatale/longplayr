@@ -23,15 +23,68 @@ import { addWantToListen, removeWantToListen } from '@/services/collection/want-
 export type CollectionActionState = { error?: string };
 
 /**
- * Adds an album. Idempotent — the underlying function upserts, so a double
- * submit or a retried request produces one entry, not two.
+ * The optional listen date submitted with an explicit add.
+ *
+ * **A calendar date, never a timestamp.** `listened_on` is a `date` column and
+ * what the user asserts about the past; `added_at` is a `timestamptz` the
+ * system sets and never accepts from a form. The two are not interchangeable
+ * and this only ever produces the former.
+ *
+ * Blank means blank. An omitted or empty field yields `null`, which travels to
+ * `ensure_collection_entry` as an absent argument, so an add without a date is
+ * byte-for-byte the request it was before this field existed.
+ *
+ * **The round-trip check is not redundant.** `Date.parse('2026-02-30')` returns
+ * a number — V8 rolls the day over into March — so parsing alone accepts dates
+ * that do not exist, and Postgres then rejects them as out of range and the
+ * page 500s. Comparing the parsed components back against the submitted ones is
+ * what turns that into a message someone can act on. A browser date input
+ * cannot produce such a value; a hand-posted form can.
+ *
+ * No upper bound is imposed. Whether a listen may be dated in the future is a
+ * product question nobody has answered, and inventing a rule here would answer
+ * it by implementing it.
+ */
+function parseListenedOn(
+  raw: FormDataEntryValue | null,
+): { ok: true; value: string | null } | { ok: false; error: string } {
+  const value = String(raw ?? '').trim();
+  if (value === '') return { ok: true, value: null };
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) {
+    return { ok: false, error: 'Enter the date as YYYY-MM-DD, or leave it blank.' };
+  }
+
+  const [, year, month, day] = match.map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  const real =
+    parsed.getUTCFullYear() === year &&
+    parsed.getUTCMonth() === month - 1 &&
+    parsed.getUTCDate() === day;
+
+  if (!real) return { ok: false, error: 'That date does not exist. Check the day and month.' };
+  return { ok: true, value };
+}
+
+/**
+ * Adds an album, optionally carrying the date the user says they listened.
+ *
+ * Idempotent — the underlying function upserts, so a double submit or a retried
+ * request produces one entry, not two. The date is applied on creation only,
+ * inside `ensure_collection_entry`, which is also where the Want to Listen
+ * clearing rule lives: adding a date changes which value travels, never which
+ * path runs.
  */
 export async function addAlbumAction(
   albumId: string,
   _prev: CollectionActionState,
-  _formData: FormData,
+  formData: FormData,
 ): Promise<CollectionActionState> {
-  const result = await addToCollection(albumId);
+  const listenedOn = parseListenedOn(formData.get('listenedOn'));
+  if (!listenedOn.ok) return { error: listenedOn.error };
+
+  const result = await addToCollection(albumId, listenedOn.value);
 
   if (!result.ok) {
     // onboarding_required is reachable if a session changes underneath an open

@@ -62,19 +62,19 @@ Revised entries supersede earlier choices made during the same session.
 
 ### Core model
 
-| Decision        | Value                                                                                                                                                                        |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Atomic model    | **Collection.** One entry per user per album, permanently. **[DECIDED — supersedes an earlier "dated diary" choice]**                                                        |
-| Adding an album | One click. Date is optional; defaults to today, may be backdated, may be omitted entirely                                                                                    |
-| Relistens       | A **count** on the collection entry, incremented by the user. The album still appears once in the collection, marked `×N`                                                    |
-| Rating          | **Optional.** 0.0–10.0, one decimal. Updates in place; no history shown. Unrated entries don't count toward averages **[DECIDED — supersedes an earlier 0.5–5 star choice]** |
-| Like            | Optional, independent of rating. You can like without scoring and score without liking                                                                                       |
-| Review          | **One standing review** per user per album, editable in place                                                                                                                |
-| Granularity     | Album only. Tracklists display; tracks are never rateable                                                                                                                    |
-| Album identity  | MusicBrainz **release group** is the social object. A collection entry may optionally reference a specific release/edition                                                   |
-| Catalogue scope | Albums, EPs, mixtapes — including live albums, compilations, soundtracks. **Singles excluded**                                                                               |
-| Timestamps      | Two: `listened_on` (nullable, user-supplied) and `added_at` (always set by the system). Collection sorts by `listened_on` when present, else `added_at`                      |
-| Average display | One decimal                                                                                                                                                                  |
+| Decision        | Value                                                                                                                                                                                                     |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Atomic model    | **Collection.** One entry per user per album, permanently. **[DECIDED — supersedes an earlier "dated diary" choice]**                                                                                     |
+| Adding an album | One click. Date is optional; defaults to today, may be backdated, may be omitted entirely                                                                                                                 |
+| Relistens       | A **count** on the collection entry, incremented by the user. The album still appears once in the collection, marked `×N`                                                                                 |
+| Rating          | **Optional.** 0.0–10.0, one decimal. Updates in place; no history shown. Unrated entries don't count toward averages **[DECIDED — supersedes an earlier 0.5–5 star choice]**                              |
+| Like            | Optional, independent of rating. You can like without scoring and score without liking                                                                                                                    |
+| Review          | **One standing review** per user per album, editable in place                                                                                                                                             |
+| Granularity     | Album only. Tracklists display; tracks are never rateable                                                                                                                                                 |
+| Album identity  | MusicBrainz **release group** is the social object. A collection entry may optionally reference a specific release/edition                                                                                |
+| Catalogue scope | Albums, EPs, mixtapes — including live albums, compilations, soundtracks. **Singles excluded**                                                                                                            |
+| Timestamps      | Two: `listened_on` (nullable, user-supplied) and `added_at` (always set by the system). **Collection sorts by `added_at` descending by default** — see §6; `listened_on` is available as an explicit sort |
+| Average display | One decimal                                                                                                                                                                                               |
 
 ### Social
 
@@ -209,12 +209,12 @@ Primary: identity (avatar, display name, handle, bio) and a stat cluster (albums
 
 **The profile root is an overview, and each full set is its own destination.** **[DECIDED 2026-08-19]** This restates what this section always said — _"the full collection behind its own tab rather than dumped onto the profile"_ — after an implementation rendered the entire collection on the profile root with no limit and no destination to link to.
 
-| Destination            | Holds                                                                                                         | State         |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------- | ------------- |
-| `/<handle>`            | **Profile overview.** Identity, available statistics, favourites, and a **bounded preview** of the collection | **Built**     |
-| `/<handle>/collection` | **Full Collection.** The whole collection, `wide` container, paginated                                        | **Built**     |
-| `/<handle>/wishlist`   | **Want to Listen.** Reserved. Schema and service exist; no interface                                          | **Not built** |
-| `/<handle>/favourites` | **Favourites.** Reserved. The profile row and the album toggle exist; this destination does not               | **Not built** |
+| Destination            | Holds                                                                                                                          | State         |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------- |
+| `/<handle>`            | **Profile overview.** Identity, available statistics, favourites, and a **bounded preview** of the collection                  | **Built**     |
+| `/<handle>/collection` | **Full Collection.** The whole collection, `wide` container, paginated                                                         | **Built**     |
+| `/<handle>/wishlist`   | **Want to Listen.** Reserved. The album-card control exists; this destination does not, and there is no profile tab or surface | **Not built** |
+| `/<handle>/favourites` | **Favourites.** Reserved. The profile row and the album toggle exist; this destination does not                                | **Not built** |
 
 **These are four distinct things and the distinction is load-bearing.** The overview is a summary that links onward; the other three are full sets. The overview is not "the collection page with less on it", and the Collection destination is not "the profile" — they answer different questions and take different containers.
 

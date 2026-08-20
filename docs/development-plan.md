@@ -201,7 +201,7 @@ Not a blocking phase, but it must land **before Phase 2**, because Phase 2 is wh
 **Architectural decisions settled here**
 
 - Collection entry uniqueness and upsert semantics
-- Dual-timestamp handling: `listened_on` versus `added_at`, and the sort fallback
+- Dual-timestamp handling: `listened_on` versus `added_at`, and **which of them orders the collection** — resolved 2026-08-19 as `added_at` descending, rejecting the fallback (`product-spec.md` §6)
 - **Where the Want to Listen clearing rule lives.** Not whether — that is decided — but whether it is a trigger or service-layer logic. Service-layer is more consistent with decision G, which asks that collection mutations have single write points so Phase 3 can add `Activity` writes without duplicating them
 - Rating aggregation query and index strategy
 - Review as a separate table with a status field
@@ -210,7 +210,7 @@ Not a blocking phase, but it must land **before Phase 2**, because Phase 2 is wh
 
 - One entry per user per album, enforced under concurrent writes
 - Rating aggregation: nulls excluded, rounding correct, thin-data behaviour sane
-- Collection sort falls back from `listened_on` to `added_at` correctly
+- Collection sort is `added_at` descending, and a backdated `listened_on` does **not** reorder it
 - Relisten events accumulate while the entry count stays denormalised and accurate
 - Album page renders correctly in all three collection states
 - **Implicit add is silent** — rating an uncollected album creates the entry and fires a `rated` event, but no `listened` event
