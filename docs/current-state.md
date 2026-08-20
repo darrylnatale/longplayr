@@ -16,20 +16,20 @@ Verified against the staging database and a clean-tree build on 2026-08-19.
 
 **Phase 1 implementation is complete.** **The design foundation is complete.** **Phase 2 is in progress:**
 
-| Slice                                    | State                                             |
-| ---------------------------------------- | ------------------------------------------------- |
-| Collection schema and service layer      | **complete and committed** (`7ce0851`)            |
-| Add / remove collection, wired to the UI | **complete and committed** (`da83b82`)            |
-| Rating                                   | **complete and committed** (`8256aa0`)            |
-| Like                                     | **complete and committed** (`957cf5f`)            |
-| Relisten                                 | **complete and committed** (`e40874a`)            |
-| Review service corrections               | **complete and committed** (`0715c50`)            |
-| Review interface                         | **complete and committed** (`c486093`)            |
-| Profile collection surface               | **complete and committed** — see §18              |
-| Favourites (profile row + album toggle)  | **complete and committed** (`895e018`)            |
-| Want to Listen (album card)              | **complete and committed** (`badc816`) — see §20  |
-| Optional `listened_on` date on add       | **complete and committed** (`cc8018a`) — see §21  |
-| Artist page date sorting                 | **complete, verified, _not committed_** — see §22 |
+| Slice                                    | State                                            |
+| ---------------------------------------- | ------------------------------------------------ |
+| Collection schema and service layer      | **complete and committed** (`7ce0851`)           |
+| Add / remove collection, wired to the UI | **complete and committed** (`da83b82`)           |
+| Rating                                   | **complete and committed** (`8256aa0`)           |
+| Like                                     | **complete and committed** (`957cf5f`)           |
+| Relisten                                 | **complete and committed** (`e40874a`)           |
+| Review service corrections               | **complete and committed** (`0715c50`)           |
+| Review interface                         | **complete and committed** (`c486093`)           |
+| Profile collection surface               | **complete and committed** — see §18             |
+| Favourites (profile row + album toggle)  | **complete and committed** (`895e018`)           |
+| Want to Listen (album card)              | **complete and committed** (`badc816`) — see §20 |
+| Optional `listened_on` date on add       | **complete and committed** (`cc8018a`) — see §21 |
+| Artist page date sorting                 | **complete and committed** (`e1daffc`) — see §22 |
 
 Lists, follows, activity, feed, notifications, messaging, taste overlap and profile photo/city do not exist, in schema or in code. **Favourites are built** — a row on the profile overview and a toggle on the album card — but **no favourites destination and no reordering interface exist**. **Want to Listen now has an album-card toggle** and nothing else: **no profile surface, no route, no tab, no heading, no placeholder**. Both destinations are named in `product-spec.md` §6 so the paths are decided; naming a path is not scheduling the surface, and neither has been built.
 
@@ -93,7 +93,7 @@ Lists, follows, activity, feed, notifications, messaging, taste overlap and prof
 
 ### Git state
 
-**`HEAD` is `cc8018a` and `origin/main` is `895e018`** — the local branch is **ahead by two**, and nothing has been pushed. The design foundation and every Phase 2 slice through the optional `listened_on` date are committed:
+**`HEAD` and `origin/main` are both `e1daffc`.** The working tree is clean, nothing is uncommitted, and the branch is neither ahead nor behind. The design foundation and every Phase 2 slice through artist date sorting are committed and pushed:
 
 | Commit    | Slice                                                 |
 | --------- | ----------------------------------------------------- |
@@ -101,30 +101,15 @@ Lists, follows, activity, feed, notifications, messaging, taste overlap and prof
 | `7dd8260` | Collection read path on the profile                   |
 | `b2aff93` | Profile collection surface — overview and destination |
 | `895e018` | Favourites — profile row and album-card toggle        |
-| `badc816` | Want to Listen on album actions — **local only**      |
-| `cc8018a` | Optional `listened_on` date on add — **local only**   |
+| `badc816` | Want to Listen on album actions                       |
+| `cc8018a` | Optional `listened_on` date on add                    |
+| `e1daffc` | Artist discography date sorting                       |
 
-**Artist page date sorting is the current uncommitted slice.**
+`e1f29c3`, earlier, recorded the Want to Listen profile-visibility decision and changed no code.
 
-`e1f29c3`, earlier the same day, recorded the Want to Listen profile-visibility decision and changed no code.
+**CI run #41 on `e1daffc` is green** — both jobs succeeded in 594s, every step passed, and no retry was consumed. It executed **153 unit and component, 332 integration, 1 seed and 55 end-to-end** tests on Node 22, matching the local `verify:full` exactly. That run is the first to exercise Want to Listen, the `listened_on` date and artist sorting together, and the first on Node 22 rather than the local Node 20; the three commits were pushed as one fast-forward, so they share a single run rather than having one each.
 
-**`cc8018a` is `HEAD`, and nothing has been pushed.** `origin/main` is still `895e018`, **two behind** — `badc816` (Want to Listen) and `cc8018a` (the optional `listened_on` date) are both local only, so **CI has run on neither**. The last observed run was #40 on `895e018`, green.
-
-**One slice is uncommitted: artist page date sorting.** Two files changed, two new, plus three documents:
-
-```
- M docs/current-state.md
- M docs/development-plan.md
- M docs/product-spec.md
- M src/app/artists/[mbid]/page.tsx
- M src/services/catalogue/queries.ts
-?? src/services/catalogue/discography-sort.test.ts
-?? tests/e2e/artist-sort.spec.ts
-```
-
-The counts above are the **verified state of this working tree**, not of `cc8018a`. See §22.
-
-The counts above are the **verified state of this working tree**, not of `badc816`. See §21.
+The counts in §1 are therefore the **committed and CI-verified state of `e1daffc`**, not of a working tree.
 
 The habit of leaving implementation uncommitted while documentation lands ahead of it is deliberate, but it has a cost worth naming: for several checkpoints this paragraph described a working tree that no longer existed. A checkpoint that describes the wrong tree is worse than one that says nothing.
 
@@ -939,9 +924,9 @@ Collection sorting and filtering, artist sorting, edition selection, favourites 
 
 ---
 
-## 22. Artist page date sorting — implemented and verified, **not committed**
+## 22. Artist page date sorting — implemented, verified and committed
 
-Built 2026-08-20. The discography can be read newest first or oldest first. **Nothing else** — no rating sort, no aggregate.
+Built and committed 2026-08-20 as `e1daffc`. The discography can be read newest first or oldest first. **Nothing else** — no rating sort, no aggregate.
 
 ### Verified state
 
