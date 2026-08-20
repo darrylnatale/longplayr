@@ -171,6 +171,7 @@ Not a blocking phase, but it must land **before Phase 2**, because Phase 2 is wh
 - Relisten: increment, producing discrete events
 - Remove from collection
 - Album page in all three states — not collected, collected unrated, collected rated
+- **Want to Listen, album level** — the independent relation on the album card: per-album read state, the ActionCard control, server mutations, and integration and end-to-end coverage. **The profile destination is not part of this** — see below
 - **Profile overview** — identity, available statistics, favourites, and a bounded collection preview whose count links onward
 - **Collection destination** at `/<handle>/collection` — the full collection in the `wide` container, paginated
 - Collection view: cover grid showing score, like indicator and `×N` marker, **no captions** (`design-reference.md` §11.9); sort and filter follow later
@@ -417,14 +418,16 @@ Comments, private accounts, track-level features, streaming integration, per-ite
 
 ## Recorded direction, not yet scheduled
 
-`docs/product-spec.md` §10 records four areas of **decided but unbuilt** product direction. They are named here so nobody re-derives them, and so nobody schedules them by accident. **None of them has a phase.**
+`docs/product-spec.md` §10 records four areas of **decided but largely unbuilt** product direction. They are named here so nobody re-derives them, and so nobody schedules them by accident.
 
-| Direction                                    | State                                                                                                                                                       |
-| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Want to Listen** (§10.1)                   | Decided. **Schema resolved** — independent relation, own table. Generates feed events. Four questions remain, none blocking a migration                     |
-| **Taste overlap / social discovery** (§10.2) | Decided as direction. Algorithm explicitly undecided. Six product questions unresolved                                                                      |
-| **Profile photo, bio, city** (§10.3)         | Photo and bio are **already in scope** (Phase 0/2). Only city is new. Dating-specific fields explicitly excluded                                            |
-| **Direct messaging** (§10.4)                 | Decided. **Unscheduled, and blocked on legal research.** Desired from the beginning of the social product; not required in the single-user collection phase |
+**One exception, and only one.** The **album-level** Want to Listen relation was explicitly scheduled as a Phase 2 slice on 2026-08-20 and is built; it is listed in Phase 2 above. Everything else in this section, **including every remaining part of Want to Listen**, still has no phase.
+
+| Direction                                    | State                                                                                                                                                                                                                                                                                                                                                                                                   |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Want to Listen** (§10.1)                   | **Partly scheduled and built.** The album-level relation shipped as a Phase 2 slice — card control, mutations, per-album read. **Unscheduled and unbuilt: `/<handle>/wishlist`, any profile tab or surface, and feed/Activity integration.** Public profile visibility is decided (§10.1) — that fixes the eventual structure and does not schedule the surface. Two questions remain, plus feed hiding |
+| **Taste overlap / social discovery** (§10.2) | Decided as direction. Algorithm explicitly undecided. Six product questions unresolved                                                                                                                                                                                                                                                                                                                  |
+| **Profile photo, bio, city** (§10.3)         | Photo and bio are **already in scope** (Phase 0/2). Only city is new. Dating-specific fields explicitly excluded                                                                                                                                                                                                                                                                                        |
+| **Direct messaging** (§10.4)                 | Decided. **Unscheduled, and blocked on legal research.** Desired from the beginning of the social product; not required in the single-user collection phase                                                                                                                                                                                                                                             |
 
 **Every unresolved question in §10 must be asked, not inferred.** That is the whole reason the section exists. A phase must not be planned around a guessed answer.
 
@@ -438,8 +441,12 @@ Comments, private accounts, track-level features, streaming integration, per-ite
 
 **The legal research is blocking.** Current DSA and German/EU obligations for a small service hosting user-generated content and private messaging must be researched, with legal requirements distinguished from good practice, current authoritative sources cited, and anything needing professional legal advice flagged as such rather than presented as settled. See `docs/product-spec.md` §10.4. **No messaging code, and no phase assignment, before that research exists** — the research is what tells us how large the prerequisite is, and therefore where messaging can sit.
 
-### Where Want to Listen would land if scheduled
+### Where Want to Listen landed, and what is left
 
-Recorded as an observation, not a plan. Want to Listen shares the action card, the implicit-add logic and the profile tab structure with Phase 2, and it generates feed events, which is Phase 3 machinery. Building it during those phases is materially cheaper than retrofitting it afterwards — but it is **not** in either phase's scope today.
+This section previously read "where Want to Listen would land **if** scheduled", and recorded as an observation that it shared the action card with Phase 2 and the feed with Phase 3, but was in neither phase's scope. **The first half of that has happened.**
 
-**Its schema question is now answered**, which changes what deferring it costs. Because the two relations are independent and the collection table needs no status column, Phase 2 can be built in full without Want to Listen existing, and adding it later is an additive migration rather than a rewrite. Deferring it is now cheap; it was not before.
+The album-level relation was scheduled and built in Phase 2, which is where the observation said it would be cheapest. **The feed half has not**, and remains Phase 3 machinery that does not exist: no Activity, no events, and no decision on whether removal generates one.
+
+**The profile surface is the part most likely to be assumed built, and is not.** Public visibility is decided (`product-spec.md` §10.1), which fixes the eventual tab structure — `Collection | Want to Listen | Favourites` — and schedules nothing. `/<handle>/wishlist` does not exist, and neither does any tab, section or placeholder for it.
+
+The schema question was answered before any of this, which is why the relation could be added additively rather than as a rewrite.

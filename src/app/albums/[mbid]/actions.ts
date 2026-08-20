@@ -6,6 +6,7 @@ import { addToCollection, rateAlbum, removeFromCollection, setLiked } from '@/se
 import { markRelisten } from '@/services/collection/relistens';
 import { addFavourite, removeFavourite } from '@/services/collection/favourites';
 import { REVIEW_MAX_LENGTH, deleteReview, saveReview } from '@/services/collection/reviews';
+import { addWantToListen, removeWantToListen } from '@/services/collection/want-to-listen';
 
 /**
  * Album page mutations.
@@ -231,6 +232,44 @@ export async function toggleFavouriteAction(
   const favourited = formData.get('favourited') === 'true';
 
   const result = favourited ? await addFavourite(albumId) : await removeFavourite(albumId);
+  if (!result.ok) return { error: result.message };
+
+  revalidatePath(`/albums/[mbid]`, 'page');
+  return {};
+}
+
+/**
+ * Adds or removes the album from the caller's Want to Listen list.
+ *
+ * **Touches nothing else, in either direction.** No `ensureEntry`, no rating,
+ * like, relisten or review. Wanting an album is a statement of intent and
+ * creates no collection entry; unwanting it removes none. The relations are
+ * independent (product-spec.md §10.1), and this action is the only mutation on
+ * the page that neither collects nor reads collection state.
+ *
+ * **The one-way rule still applies, and still lives elsewhere.** Adding the
+ * album to the collection later clears the wishlist row, inside
+ * `ensure_collection_entry` on the path that creates the entry. That is not
+ * duplicated here, and must not be: the rule fires on creation, and this
+ * function never creates anything.
+ *
+ * The desired next value travels in the form rather than being derived from
+ * what the server holds, matching the like and the favourite, so a stale page
+ * cannot toggle twice from one click. Adding is idempotent in the service, so
+ * submitting `wanted=true` twice leaves one row rather than erroring.
+ *
+ * **No activity event.** Want to Listen additions are decided to generate one,
+ * but Activity does not exist until the social phase and inventing it here
+ * would be building ahead.
+ */
+export async function toggleWantToListenAction(
+  albumId: string,
+  _prev: CollectionActionState,
+  formData: FormData,
+): Promise<CollectionActionState> {
+  const wanted = formData.get('wanted') === 'true';
+
+  const result = wanted ? await addWantToListen(albumId) : await removeWantToListen(albumId);
   if (!result.ok) return { error: result.message };
 
   revalidatePath(`/albums/[mbid]`, 'page');

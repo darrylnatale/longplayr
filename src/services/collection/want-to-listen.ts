@@ -21,13 +21,53 @@ import type { WantToListenRow } from './index';
  * generate a feed event, but events do not exist until the social phase, and
  * inventing one here would be building ahead.
  *
- * Deliberately not decided, and therefore not implemented: whether this is
- * visible on public profiles, whether removal generates an event, whether it
- * feeds discovery ranking, and whether the interface should offer it for an
- * album already collected (docs/data-model.md §11.3, §11.8, §11.9).
+ * **Resolved, and now implemented by the album card:** the interface offers
+ * this on an album already collected. The relations are independent, so a user
+ * may hold both; the card therefore shows the control in every collection
+ * state and never derives one relation from the other.
+ *
+ * **Resolved, and deliberately not implemented here:** Want to Listen is public
+ * on the profile, as its own tab (`product-spec.md` §10.1). That fixes the
+ * eventual structure; it does not schedule the surface, and no wishlist route
+ * or profile section exists.
+ *
+ * Still undecided, and still to be asked rather than inferred: whether removal
+ * generates a feed event, whether this feeds discovery or popularity ranking,
+ * and whether the activity can be hidden from the feed. All three are Phase 3
+ * or later — none is reachable while Activity does not exist.
  */
 
 const UNIQUE_VIOLATION = '23505';
+
+/**
+ * The signed-in user's wishlist row for one album, or null.
+ *
+ * Mirrors `getMyFavourite`, and for the same reason: the album card needs this
+ * relation's state the way it needs collection state, and the two are read
+ * independently because they **are** independent. An album may be wanted while
+ * uncollected, collected while unwanted, or — legally, though the common path
+ * never produces it — both at once. This must therefore never be derived from,
+ * or gated on, a collection entry.
+ *
+ * Returns the row rather than a boolean, matching the sibling read. The card
+ * only needs existence, but `added_at` is on the row and a later surface that
+ * orders by it will not have to re-query.
+ */
+export async function getMyWantToListen(albumId: string): Promise<WantToListenRow | null> {
+  const profile = await getCurrentProfile();
+  if (!profile) return null;
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('want_to_listen')
+    .select('*')
+    .eq('user_id', profile.id)
+    .eq('album_id', albumId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
 
 /** Adds an album to the caller's wishlist. Idempotent. */
 export async function addWantToListen(

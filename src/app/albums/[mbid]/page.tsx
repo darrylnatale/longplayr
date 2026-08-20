@@ -9,6 +9,7 @@ import { SectionHeader } from '@/components/SectionHeader';
 import { getAlbumByMbid } from '@/services/catalogue/queries';
 import { getMyCollectionState } from '@/services/collection';
 import { getMyFavourite } from '@/services/collection/favourites';
+import { getMyWantToListen } from '@/services/collection/want-to-listen';
 import { getAlbumRating } from '@/services/collection/ratings';
 import { getAlbumReviews } from '@/services/collection/reviews';
 import { Avatar } from '@/components/Avatar';
@@ -23,6 +24,7 @@ import {
   saveReviewAction,
   toggleFavouriteAction,
   toggleLikeAction,
+  toggleWantToListenAction,
 } from './actions';
 
 /**
@@ -122,12 +124,18 @@ export default async function AlbumPage({ params }: PageProps<'/albums/[mbid]'>)
 
   const actionState = await resolveActionState(album.id);
 
-  // Read independently of the collection state, because the relations are
-  // independent: an album may be pinned without ever having been collected, so
-  // this must not be derived from, or skipped because of, `actionState.kind`.
-  // Returns null when signed out or mid-onboarding, which is the same `false`
-  // the card renders for those states anyway.
-  const favourited = (await getMyFavourite(album.id)) !== null;
+  // Both relations are read independently of the collection state, because
+  // they are independent of it: an album may be pinned or wanted without ever
+  // having been collected, and — legally, if uncommonly — may be collected and
+  // wanted at once. Neither may be derived from, or skipped because of,
+  // `actionState.kind`. Both return null when signed out or mid-onboarding,
+  // which is the same `false` the card renders for those states anyway.
+  const [favouriteRow, wantRow] = await Promise.all([
+    getMyFavourite(album.id),
+    getMyWantToListen(album.id),
+  ]);
+  const favourited = favouriteRow !== null;
+  const wanted = wantRow !== null;
 
   // Computed on read from non-null ratings, never stored. Deletion therefore
   // needs no recomputation step, and no counter can drift.
@@ -214,6 +222,7 @@ export default async function AlbumPage({ params }: PageProps<'/albums/[mbid]'>)
           <ActionCard
             state={actionState}
             favourited={favourited}
+            wanted={wanted}
             actions={{
               add: addAlbumAction.bind(null, album.id),
               remove: removeAlbumAction.bind(null, album.id),
@@ -221,6 +230,7 @@ export default async function AlbumPage({ params }: PageProps<'/albums/[mbid]'>)
               like: toggleLikeAction.bind(null, album.id),
               relisten: markRelistenAction.bind(null, album.id),
               favourite: toggleFavouriteAction.bind(null, album.id),
+              wantToListen: toggleWantToListenAction.bind(null, album.id),
               saveReview: saveReviewAction.bind(null, album.id),
               deleteReview: deleteReviewAction.bind(null, album.id),
             }}

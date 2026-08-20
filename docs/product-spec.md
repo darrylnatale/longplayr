@@ -388,7 +388,7 @@ That covers the explicit add and every implicit one — rating, liking, reviewin
 
 **These two facts are not in tension, and the distinction matters when implementing.** The relations are independent in the _schema_; the clearing rule is a **one-directional side effect triggered by collection-entry creation only**. It does not run in the other direction, and it does not run when a wishlist entry is created. An album that is already collected and is _then_ added to Want to Listen therefore stays in both — which is why the schema must permit coexistence even though the common path never produces it.
 
-**Newly surfaced by that resolution, and unresolved:** should the interface _offer_ Want to Listen on an album already in the collection? The data model permits it. Whether it is a sensible thing to show a user is a product question, and it is not answered here. **Ask.**
+**Newly surfaced by that resolution, and since answered:** should the interface _offer_ Want to Listen on an album already in the collection? The data model permits it, and whether it is a sensible thing to show a user was a product question rather than a modelling one. **Resolved 2026-08-20 — yes.** See below.
 
 #### Resolved 2026-08-19 — Want to Listen is public, on its own profile tab
 
@@ -408,11 +408,22 @@ The profile tab structure it implies:
 - Can Want to Listen activity be hidden from the **feed**? (A per-user setting is anticipated in §10.1 above and is still not to be designed, or accommodated in schema, now.)
 - Does _removing_ an album from Want to Listen generate a feed event? (Expected no — still ask.)
 - Does Want to Listen contribute to any popularity or discovery ranking, or is it purely a social and personal signal?
-- Should Want to Listen be offered on an album that is already collected? _(surfaced by the resolution above)_
 
 **Profile visibility and feed visibility are separate questions.** Answering the first did not answer the second, and the two must not be collapsed: a relation can be public on a profile — where someone chooses to look — and still be something a user does not want pushed to every follower.
 
-**Ask before implementing.** None of the four above may be answered by inference.
+**Ask before implementing.** None of the three above may be answered by inference.
+
+#### Resolved 2026-08-20 — offered on an already-collected album
+
+**Decided.** Want to Listen is offered **independently in all three collection states**: not collected, collected and unrated, and collected and rated. The control does not depend on collection membership and is not hidden once an album is held.
+
+This follows from the relations being independent rather than from convenience. An album may be collected _and_ wanted at once — §10.1 above already requires the schema to permit that state — and an interface that withheld the control from a collected album would assert an exclusivity the model does not have. Wanting to hear a record again is an ordinary thing to mean.
+
+**What it does not touch.** Want to Listen modifies no other relation: not collection membership, rating, like, relisten, favourite or review. The reverse also holds — wanting an album never removes it from the collection.
+
+**The one-way clearing rule is unchanged by this.** Creating a collection entry still clears that album's Want to Listen row, through the existing rule and the existing path. That rule fires on creation, runs in one direction only, and is not made mutually exclusive by anything here: an album collected first and wanted second stays in both.
+
+**This resolves the interface question only.** It says nothing about the feed, about removal generating an event, or about discovery ranking — those remain open above.
 
 ### 10.2 Taste overlap and social discovery
 

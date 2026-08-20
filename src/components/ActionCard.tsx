@@ -40,6 +40,7 @@ export type ActionCardActions = {
   like?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
   relisten?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
   favourite?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
+  wantToListen?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
   saveReview?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
   deleteReview?: (prev: { error?: string }, formData: FormData) => Promise<{ error?: string }>;
 };
@@ -567,7 +568,11 @@ function FavouriteButton({
         <input type="hidden" name="favourited" value={favourited ? 'false' : 'true'} />
         <FavouriteSubmit favourited={favourited} />
       </form>
-      {state.error && <Failure message={state.error} />}
+      {state.error && (
+        <div className="w-full">
+          <Failure message={state.error} />
+        </div>
+      )}
     </>
   );
 }
@@ -586,6 +591,67 @@ function FavouriteSubmit({ favourited }: { favourited: boolean }) {
       }`}
     >
       {pending ? '…' : favourited ? 'Favourited' : 'Favourite'}
+    </button>
+  );
+}
+
+/**
+ * The Want to Listen toggle.
+ *
+ * **Offered in every collection state, including the collected ones.** The
+ * relations are independent and an album may legally sit in both, so hiding
+ * this once an album is collected would misrepresent the model — and wanting to
+ * hear a record again is an ordinary thing to mean. Resolved 2026-08-20; the
+ * question was open until then and the card must not be read as having inferred
+ * it (product-spec.md §10.1).
+ *
+ * **It touches nothing else.** Wanting an album does not collect it, and
+ * unwanting it does not remove it. The one-way rule runs the other direction
+ * only: adding to the collection later clears the wish, inside
+ * `ensure_collection_entry` and nowhere near this control.
+ *
+ * The label changes rather than relying on colour alone. "Wanted" was rejected
+ * — it reads as past tense, where "Liked" and "Favourited" read as states — so
+ * the active form names where the album now is.
+ */
+function WantToListenButton({
+  action,
+  wanted,
+}: {
+  action: NonNullable<ActionCardActions['wantToListen']>;
+  wanted: boolean;
+}) {
+  const [state, formAction] = useActionState(action, {});
+
+  return (
+    <>
+      <form action={formAction}>
+        <input type="hidden" name="wanted" value={wanted ? 'false' : 'true'} />
+        <WantToListenSubmit wanted={wanted} />
+      </form>
+      {state.error && (
+        <div className="w-full">
+          <Failure message={state.error} />
+        </div>
+      )}
+    </>
+  );
+}
+
+function WantToListenSubmit({ wanted }: { wanted: boolean }) {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      aria-pressed={wanted}
+      className={`rounded-sm border px-3 py-1.5 text-xs transition-colors disabled:cursor-wait disabled:opacity-70 ${
+        wanted
+          ? 'border-accent-dim bg-bg text-accent hover:border-accent'
+          : 'border-border bg-raised text-text-secondary hover:border-border-strong hover:text-text'
+      }`}
+    >
+      {pending ? '…' : wanted ? 'On your list' : 'Want to listen'}
     </button>
   );
 }
@@ -729,40 +795,55 @@ function StackedLink({ children }: { children: ReactNode }) {
 }
 
 /**
- * The favourite's own row.
+ * The two relations that do **not** collect.
  *
- * Rendered in every signed-in state, including `not-collected`: a favourite
- * does not require a collection entry and never creates one, so hiding the
- * control until an album is collected would misrepresent the relation.
+ * This is the card's one real boundary, and the row exists to draw it. Rate,
+ * Like and Relisten all create a collection entry implicitly
+ * (product-spec.md §8.5); Favourite and Want to Listen never do. Grouping by
+ * that property is why Favourite was pulled out of the chip line in the first
+ * place, and Want to Listen belongs on the same side of it — so it joins the
+ * existing row rather than adding a fourth.
  *
- * Keyed on the server-confirmed value. The card's kind does not change when a
- * favourite is toggled — pinning an uncollected album leaves it uncollected —
- * so React preserves this subtree across the mutation, and with it any error
- * `useActionState` is holding. Re-keying discards a stale `favourites_full`
- * message once the state it described no longer applies. The same disclosure
- * bug has already shipped twice, on the rating control and the review editor,
- * and both times only the browser caught it.
+ * They stay distinct by label and by meaning: a favourite is a judgement about
+ * a record you know, a wish is an intention about one you may not. Neither
+ * takes an icon — the heart already means *liked* on collection tiles, and a
+ * second glyph here would blur three relations rather than two.
+ *
+ * Both controls are keyed on their server-confirmed value. Neither toggle
+ * changes the card's kind — wanting an uncollected album leaves it uncollected
+ * — so React preserves this subtree across the mutation, and with it any error
+ * `useActionState` is holding. That exact disclosure bug has shipped three
+ * times now, and only the browser has ever caught it.
  */
-function FavouriteAction({
+function IndependentRelations({
   actions,
   favourited,
+  wanted,
   note,
 }: {
   actions: ActionCardActions;
   favourited: boolean;
+  wanted: boolean;
   note?: string;
 }) {
   return (
     <Row>
-      {actions.favourite ? (
-        <FavouriteButton
-          key={`fav-${favourited}`}
-          action={actions.favourite}
-          favourited={favourited}
-        />
-      ) : (
-        <QuietAction active={favourited}>{favourited ? 'Favourited' : 'Favourite'}</QuietAction>
-      )}
+      <div className="flex flex-wrap gap-2">
+        {actions.favourite ? (
+          <FavouriteButton
+            key={`fav-${favourited}`}
+            action={actions.favourite}
+            favourited={favourited}
+          />
+        ) : (
+          <QuietAction active={favourited}>{favourited ? 'Favourited' : 'Favourite'}</QuietAction>
+        )}
+        {actions.wantToListen ? (
+          <WantToListenButton key={`wtl-${wanted}`} action={actions.wantToListen} wanted={wanted} />
+        ) : (
+          <QuietAction active={wanted}>{wanted ? 'On your list' : 'Want to listen'}</QuietAction>
+        )}
+      </div>
       {note && <p className="mt-2 text-xs text-text-faint">{note}</p>}
     </Row>
   );
@@ -772,6 +853,7 @@ export function ActionCard({
   state,
   actions = {},
   favourited = false,
+  wanted = false,
 }: {
   state: ActionCardState;
   actions?: ActionCardActions;
@@ -785,6 +867,15 @@ export function ActionCard({
    * the card between kinds.
    */
   favourited?: boolean;
+  /**
+   * Whether the signed-in user has this album on their Want to Listen list.
+   *
+   * Orthogonal for the same reason as `favourited`, and load-bearing in one
+   * more: an album may be wanted *and* collected. Folding this into `state`
+   * would split `not-collected` in two and turn the union into a cross-product,
+   * while encoding a relation the collection does not own.
+   */
+  wanted?: boolean;
 }) {
   if (state.kind === 'signed-out') {
     return (
@@ -865,10 +956,11 @@ export function ActionCard({
               (product-spec.md §8.5). */}
           <p className="mt-2 text-xs text-text-faint">Rating, liking or a relisten adds it too.</p>
         </Row>
-        <FavouriteAction
+        <IndependentRelations
           actions={actions}
           favourited={favourited}
-          note="Pinning does not add it to your collection."
+          wanted={wanted}
+          note="Neither of these adds it to your collection."
         />
         <Row>
           {actions.saveReview ? (
@@ -922,7 +1014,7 @@ export function ActionCard({
             )}
           </div>
         </Row>
-        <FavouriteAction actions={actions} favourited={favourited} />
+        <IndependentRelations actions={actions} favourited={favourited} wanted={wanted} />
         <Row>
           {actions.saveReview ? (
             <ReviewControl
@@ -994,7 +1086,7 @@ export function ActionCard({
           )}
         </div>
       </Row>
-      <FavouriteAction actions={actions} favourited={favourited} />
+      <IndependentRelations actions={actions} favourited={favourited} wanted={wanted} />
       <Row>
         {actions.saveReview ? (
           <ReviewControl
