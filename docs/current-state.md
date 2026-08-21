@@ -16,21 +16,21 @@ Verified against the staging database and a clean-tree build on 2026-08-19.
 
 **Phase 1 implementation is complete.** **The design foundation is complete.** **Phase 2 is in progress:**
 
-| Slice                                    | State                                              |
-| ---------------------------------------- | -------------------------------------------------- |
-| Collection schema and service layer      | **complete and committed** (`7ce0851`)             |
-| Add / remove collection, wired to the UI | **complete and committed** (`da83b82`)             |
-| Rating                                   | **complete and committed** (`8256aa0`)             |
-| Like                                     | **complete and committed** (`957cf5f`)             |
-| Relisten                                 | **complete and committed** (`e40874a`)             |
-| Review service corrections               | **complete and committed** (`0715c50`)             |
-| Review interface                         | **complete and committed** (`c486093`)             |
-| Profile collection surface               | **complete and committed** — see §18               |
-| Favourites (profile row + album toggle)  | **complete and committed** (`895e018`)             |
-| Want to Listen (album card)              | **complete and committed** (`badc816`) — see §20   |
-| Optional `listened_on` date on add       | **complete and committed** (`cc8018a`) — see §21   |
-| Artist page date sorting                 | **complete and committed** (`e1daffc`) — see §22   |
-| **Collection sorting**                   | **complete and verified, NOT committed** — see §23 |
+| Slice                                    | State                                            |
+| ---------------------------------------- | ------------------------------------------------ |
+| Collection schema and service layer      | **complete and committed** (`7ce0851`)           |
+| Add / remove collection, wired to the UI | **complete and committed** (`da83b82`)           |
+| Rating                                   | **complete and committed** (`8256aa0`)           |
+| Like                                     | **complete and committed** (`957cf5f`)           |
+| Relisten                                 | **complete and committed** (`e40874a`)           |
+| Review service corrections               | **complete and committed** (`0715c50`)           |
+| Review interface                         | **complete and committed** (`c486093`)           |
+| Profile collection surface               | **complete and committed** — see §18             |
+| Favourites (profile row + album toggle)  | **complete and committed** (`895e018`)           |
+| Want to Listen (album card)              | **complete and committed** (`badc816`) — see §20 |
+| Optional `listened_on` date on add       | **complete and committed** (`cc8018a`) — see §21 |
+| Artist page date sorting                 | **complete and committed** (`e1daffc`) — see §22 |
+| Collection sorting                       | **complete and committed** (`2fe8b00`) — see §23 |
 
 Lists, follows, activity, feed, notifications, messaging, taste overlap and profile photo/city do not exist, in schema or in code. **Favourites are built** — a row on the profile overview and a toggle on the album card — but **no favourites destination and no reordering interface exist**. **Want to Listen now has an album-card toggle** and nothing else: **no profile surface, no route, no tab, no heading, no placeholder**. Both destinations are named in `product-spec.md` §6 so the paths are decided; naming a path is not scheduling the surface, and neither has been built.
 
@@ -42,7 +42,7 @@ Lists, follows, activity, feed, notifications, messaging, taste overlap and prof
 | **Edition selection** + lazy release fetch | `Edition…` renders inert in both collected states, and **`release_id` does not exist** on `collection_entries` |
 | **Favourites reordering**                  | `favourites.ts` exports list/get/add/remove only; no reorder or move function                                  |
 
-**Collection sorting was the fourth and is now built** — six fixed modes on the Collection destination, verified green and **not yet committed** (§23). Filtering did not come with it and was never part of that slice; it remains undecided, including the decade filter `design-reference.md` §5.6 raises and `product-spec.md` §6 omits.
+**Collection sorting was the fourth and is now built** — six fixed modes on the Collection destination, committed and pushed as `2fe8b00` and verified by CI #43 (§23). Filtering did not come with it and was never part of that slice; it remains undecided, including the decade filter `design-reference.md` §5.6 raises and `product-spec.md` §6 omits.
 
 **The Phase 2 definition of done is already met** — a user can find an album, add it, score it, review it, mark relistens, and see it once in their collection with the correct markers, with an average drawn from real ratings. What remains is scope beyond that line, not a gap in it.
 
@@ -108,7 +108,7 @@ Lists, follows, activity, feed, notifications, messaging, taste overlap and prof
 
 ### Git state
 
-**`HEAD` and `origin/main` are both `6279bd0`, and the working tree is NOT clean.** `6279bd0` is the last committed state and the clean baseline this slice started from; the branch is neither ahead nor behind. **Collection sorting and this checkpoint are uncommitted** — the exact boundary is in §23. The design foundation and every Phase 2 slice through artist date sorting are committed and pushed:
+**`HEAD` and `origin/main` are both `2fe8b00`.** The working tree is clean, nothing is uncommitted, and the branch is neither ahead nor behind. The design foundation and every Phase 2 slice through collection sorting are committed and pushed:
 
 | Commit    | Slice                                                 |
 | --------- | ----------------------------------------------------- |
@@ -120,16 +120,19 @@ Lists, follows, activity, feed, notifications, messaging, taste overlap and prof
 | `cc8018a` | Optional `listened_on` date on add                    |
 | `e1daffc` | Artist discography date sorting                       |
 | `6279bd0` | Checkpoint: pushed Phase 2 state and CI #41           |
+| `2fe8b00` | Collection sorting — six fixed modes, plus its docs   |
 
 `e1f29c3`, earlier, recorded the Want to Listen profile-visibility decision and changed no code.
 
 **CI run #41 on `e1daffc` is green** — both jobs succeeded in 594s, every step passed, and no retry was consumed. It executed **153 unit and component, 332 integration, 1 seed and 55 end-to-end** tests on Node 22, matching the local `verify:full` exactly. That run is the first to exercise Want to Listen, the `listened_on` date and artist sorting together, and the first on Node 22 rather than the local Node 20; the three commits were pushed as one fast-forward, so they share a single run rather than having one each.
 
-**CI run #42 on `6279bd0` is also green.** That commit is documentation only, so it changed no counts; #41 remains the run that verified the code.
+**CI run #42 on `6279bd0` is also green.** That commit is documentation only, so it changed no counts; #41 remains the run that verified the design-foundation and earlier Phase 2 code.
 
-**The counts in §1 are the local `verify:full` result for the uncommitted working tree** — 184 unit and component, 355 integration, 1 seed, 66 end-to-end — **not a CI-verified state.** The last CI-verified counts are #41's 153 / 332 / 1 / 55 on `e1daffc`. No CI run has seen collection sorting.
+**CI run #43 on `2fe8b00` is green** — the first run to see collection sorting, and the first to execute **184 unit and component, 355 integration, 1 seed and 66 end-to-end** tests, matching the local `verify:full` on the same tree exactly. Those counts are a property of the files rather than of the run, so they follow from the commit; **the green result itself was confirmed by the maintainer rather than read from the API in this session**, which is worth saying because everything else in this section was checked directly.
 
-The habit of leaving implementation uncommitted while documentation lands ahead of it is deliberate, but it has a cost worth naming: for several checkpoints this paragraph described a working tree that no longer existed. A checkpoint that describes the wrong tree is worse than one that says nothing. This one describes a tree that is uncommitted and says so.
+The counts in §1 are therefore the **committed, pushed and CI-verified state of `2fe8b00`**, not of a working tree.
+
+The habit of leaving implementation uncommitted while documentation lands ahead of it is deliberate, but it has a cost worth naming: for several checkpoints this paragraph described a working tree that no longer existed. A checkpoint that describes the wrong tree is worse than one that says nothing. This slice committed code and documentation together in one commit, which is the arrangement that makes the problem structurally impossible rather than merely watched for.
 
 **Local database is clean** — zero auth users, profiles, collection entries, wishlist rows and favourites; seven fixture albums from `npm run db:seed:fixtures`. Every suite deletes the accounts it creates, and deletion cascades to every user-authored row.
 
@@ -1000,17 +1003,15 @@ Artist rating sorting, artist-level aggregate rating, collection sorting and fil
 
 ---
 
-## 23. Collection sorting — implemented, verified, **not committed**
-
-**The current uncommitted slice.** Everything below is green locally and has never been seen by CI.
+## 23. Collection sorting — implemented, verified and committed
 
 ### Verified state
 
-`rm -rf .next && npm run verify:full` → **exit 0**: **184** unit and component, **355** integration, **1** seed, **66** end-to-end. The clean baseline it started from is `6279bd0`, which remains both `HEAD` and `origin/main`.
+`rm -rf .next && npm run verify:full` → **exit 0**: **184** unit and component, **355** integration, **1** seed, **66** end-to-end. **CI #43 on `2fe8b00` is green**, running the same counts on Node 22.
 
-### Working-tree boundary
+### What landed in `2fe8b00`
 
-Nothing is committed. `HEAD` and `origin/main` are both `6279bd0`, and the tree holds exactly this:
+Committed and pushed from the clean baseline `6279bd0`, code and documentation in one commit:
 
 | File                                        | State                             |
 | ------------------------------------------- | --------------------------------- |
@@ -1024,9 +1025,9 @@ Nothing is committed. `HEAD` and `origin/main` are both `6279bd0`, and the tree 
 | `docs/development-plan.md`                  | **modified** — Phase 2 reconciled |
 | `docs/current-state.md`                     | **modified** — this checkpoint    |
 
-**No migration, no fixture, no CI configuration and no other source file was touched.** `supabase/`, `scripts/`, `.github/` and every component outside the collection destination are untouched.
+**No migration, no fixture, no CI configuration and no other source file was touched.** `supabase/`, `scripts/`, `.github/` and every component outside the collection destination are untouched. The working tree was clean before the commit and is clean after it.
 
-**`docs/current-state.md` carried a pre-existing uncommitted change into this slice** — the Phase 2 remaining-work table and the §11 sorting bullet, written before implementation began. It was **preserved rather than overwritten**: the implementation ran without touching the file at all (verified by matching its MD5 before and after, and by formatting only the slice's own files rather than running `npm run format` across the repository), and this checkpoint amends it in place rather than replacing it. Where that earlier text said sorting remained, it now says sorting is built and filtering remains — the same paragraph, corrected, not a rewrite.
+**`docs/current-state.md` carried a pre-existing uncommitted change into this slice** — the Phase 2 remaining-work table and the §11 sorting bullet, written before implementation began, and now part of `2fe8b00`. It was **preserved rather than overwritten**: the implementation ran without touching the file at all (verified by matching its MD5 before and after, and by formatting only the slice's own files rather than running `npm run format` across the repository), and this checkpoint amends it in place rather than replacing it. Where that earlier text said sorting remained, it now says sorting is built and filtering remains — the same paragraph, corrected, not a rewrite.
 
 ### What it is
 
