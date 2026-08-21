@@ -11,6 +11,7 @@ import {
   type MappedRelease,
 } from './map';
 import { getRelease, getReleaseGroup, NotFoundError } from './musicbrainz';
+import { storeUpstreamPayload } from './payloads';
 import { enqueueJob } from './queue';
 import { recordTracklistStatus, storeTracklist, type TracklistResult } from './tracklist';
 
@@ -167,6 +168,11 @@ export async function ingestReleaseGroupPayload(
     throw error;
   }
 
+  // Kept before anything is mapped into columns, and after the scope filter:
+  // a single we refused is not a record we hold, so there is nothing to keep a
+  // payload for. Everything past this point is an album we are committing to.
+  await storeUpstreamPayload(admin, 'release_group', payload.id, payload);
+
   const artistIds = await upsertArtists(admin, mapped);
   const albumId = await upsertAlbum(admin, mapped);
   await replaceCredits(admin, albumId, mapped, artistIds);
@@ -227,7 +233,15 @@ export async function ingestReleaseGroup(
 
   return ingestReleaseGroupPayload(payload, admin, async (releaseMbid) => {
     try {
-      return { status: 'fetched', detail: mapReleaseDetail(await getRelease(releaseMbid)) };
+      // Stored here rather than inside `ingestReleaseGroupPayload`, because
+      // this is where the fetch happens: the callback hands back a mapped
+      // detail, and the raw response exists only in this closure. Whoever
+      // fetches, stores. A fixture-driven caller passes no callback and
+      // therefore records no release payload, which is correct — nothing was
+      // fetched.
+      const raw = await getRelease(releaseMbid);
+      await storeUpstreamPayload(admin, 'release', releaseMbid, raw);
+      return { status: 'fetched', detail: mapReleaseDetail(raw) };
     } catch (error) {
       // A missing or broken tracklist still must not fail an otherwise good
       // album — but which kind of missing it is now gets reported, rather than

@@ -301,14 +301,22 @@ export type MbSearchResult = {
 /** A release group with its artist credits and the releases beneath it. */
 export function getReleaseGroup(mbid: string): Promise<MbReleaseGroup> {
   return request<MbReleaseGroup>(`/release-group/${mbid}`, {
-    inc: 'artist-credits+releases',
+    // `url-rels` costs no extra request and carries the external links —
+    // Discogs, Wikidata, official sites — that a re-fetch would otherwise be
+    // needed to recover. `genres` and `tags` are deliberately excluded: genre
+    // data is deferred, tags are upstream user noise, and both inflate every
+    // response on a path already slow enough to be a recorded complaint.
+    inc: 'artist-credits+releases+url-rels',
   });
 }
 
 /** A single release with its tracklist and label. */
 export function getRelease(mbid: string): Promise<MbReleaseDetail> {
   return request<MbReleaseDetail>(`/release/${mbid}`, {
-    inc: 'recordings+labels+media',
+    // `artist-rels` carries release-level credits, producer among them.
+    // `url-rels` carries the release's own external links. Both ride the
+    // request we already make for the tracklist.
+    inc: 'recordings+labels+media+artist-rels+url-rels',
   });
 }
 

@@ -158,6 +158,23 @@ Not a blocking phase, but it must land **before Phase 2**, because Phase 2 is wh
 
 ---
 
+## Phase 1 reopened — upstream payload capture
+
+**Recorded as a reopening rather than folded into Phase 2, because it is catalogue infrastructure and pretending otherwise makes the phase boundaries meaningless. [2026-08-21]**
+
+**Why it could not wait for Phase 2 to finish.** Every album ingested without capture loses data permanently, recoverable only at one request per second. The remaining Phase 2 items — filtering, edition selection, favourites reordering — have no such decay; they are exactly as easy to build later. The ordering that matters is **capture → curated seed (`product-spec.md` §8.9) → back to Phase 2**: seeding a larger catalogue first would push a thousand albums through the narrow pipe and then require re-fetching every one.
+
+**Delivered**
+
+- `upstream_payloads`, keyed `(source, source_id, kind)`, source-agnostic from the start
+- Widened `inc` — `url-rels` on the release group, `artist-rels+url-rels` on the release; `genres` and `tags` deliberately excluded
+- Capture on the single ingest path, for both the release group and the representative release
+- `enqueueMissingPayloads` plus `npm run db:backfill:payloads`, reusing `ingest_release_group` rather than inventing a job kind
+
+**Explicitly not delivered.** Labels, external links, track recording MBIDs and producer credits are **captured but not modelled** — they get columns when a feature needs them, from stored payloads, at no fetch cost. **Artist details remain an open decision** (`product-spec.md` §8.9 neighbourhood): they are the only item needing an extra request, one per artist, since `/artist/` has never been called at all.
+
+---
+
 ## Phase 2 — Core loop
 
 **Goal.** The product's reason to exist. After this phase longplayr is genuinely useful to a single user.

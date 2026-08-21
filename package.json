@@ -25,7 +25,8 @@
     "db:seed:catalogue": "node scripts/with-websocket.mjs vitest run --project seed tests/seed/seed-catalogue.test.ts",
     "db:seed:dryrun": "node scripts/with-websocket.mjs vitest run --project seed tests/seed/dry-run.test.ts",
     "db:backfill:artwork": "node scripts/with-websocket.mjs vitest run --project seed tests/seed/backfill-artwork.test.ts",
-    "db:backfill:tracklists": "node scripts/with-websocket.mjs vitest run --project seed tests/seed/backfill-tracklists.test.ts"
+    "db:backfill:tracklists": "node scripts/with-websocket.mjs vitest run --project seed tests/seed/backfill-tracklists.test.ts",
+    "db:backfill:payloads": "node scripts/with-websocket.mjs vitest run --project seed tests/seed/backfill-payloads.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

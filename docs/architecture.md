@@ -182,6 +182,26 @@ Users search MusicBrainz in-app and add any in-scope release directly, with **no
 
 ---
 
+## 7a. Upstream payload capture
+
+**Decision: keep every upstream response verbatim, beside the columns mapped out of it. [DECIDED 2026-08-21]**
+
+Ingestion maps a deliberate subset of each MusicBrainz response and discards the rest. That is the right shape for the columns and the wrong one for the response: **label MBIDs, recording MBIDs, external links and relationship credits all arrive in requests we already make**, and every one of them was being thrown away. Recovering any single field later costs one round trip per album against a one-request-per-second ceiling — minutes for the catalogue as it stands, hours for the catalogue as it is intended to be.
+
+`upstream_payloads` is keyed `(source, source_id, kind)` and holds the raw `jsonb`.
+
+**Three things this decision deliberately is not:**
+
+- **Not a mirror.** A payload records what a source said at `fetched_at`. Upstream corrections do not flow in, and **no refresh policy exists** — the column is recorded so one can be keyed on it when something needs it, rather than inventing a cadence for a staleness nobody has felt.
+- **Not a query surface.** Nothing reads these, and product code must not start selecting `payload->>'…'`. Storing is not modelling. When a feature needs a field it gets a column, mapped at ingest like every other — the payload is what makes adding that column free rather than a re-fetch.
+- **Not multi-source support.** The key is source-agnostic because Discogs is recorded direction and the shape costs nothing today. It does **not** make a second source workable: `albums.mbid` is `not null unique`, so a record existing only on Discogs still has no home. That is a larger decision this table does not settle.
+
+**Alternatives rejected.** A `jsonb` column on `albums` — payloads exist for releases and artists too, and a wide column on the hottest table costs reads for data nothing queries. Modelling labels, links and credits immediately — the shape of each depends on a feature that does not exist, and browse-by-label in particular needs decisions about multiple labels per release, catalogue numbers and sublabel hierarchies that only become clear when designing the page.
+
+**Widened `inc` parameters.** Capture only preserves what was requested, so the release group now asks for `url-rels` and the release for `artist-rels+url-rels` — both riding requests already made. `genres` and `tags` are **excluded**: genre data is deferred, tags are upstream user noise, and both inflate every response on a path whose latency is already a recorded complaint. **[VERIFY]** these combinations against the live API before relying on them; local cannot, because `MUSICBRAINZ_CONTACT` is a placeholder there by design.
+
+---
+
 ## 8. Popularity
 
 **Decision: a popularity abstraction with ListenBrainz as the first implementation.** **[DECIDED — E2]**

@@ -532,6 +532,30 @@ export type Database = {
           },
         ]
       }
+      upstream_payloads: {
+        Row: {
+          fetched_at: string
+          kind: string
+          payload: Json
+          source: string
+          source_id: string
+        }
+        Insert: {
+          fetched_at?: string
+          kind: string
+          payload: Json
+          source: string
+          source_id: string
+        }
+        Update: {
+          fetched_at?: string
+          kind?: string
+          payload?: Json
+          source?: string
+          source_id?: string
+        }
+        Relationships: []
+      }
       want_to_listen: {
         Row: {
           added_at: string

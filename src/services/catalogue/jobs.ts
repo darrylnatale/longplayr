@@ -6,6 +6,7 @@ import type { Database } from '@/lib/supabase/database.types';
 import { CoverArtUnavailableError, fetchAndStoreArtwork } from './artwork';
 import { ingestReleaseGroup } from './ingest';
 import { enqueueJob } from './queue';
+import { heldPayloadIds } from './payloads';
 import { fetchAndStoreTracklist, TracklistUnavailableError } from './tracklist';
 
 // Enqueueing lives in ./queue so that ingestion can queue a tracklist retry
@@ -124,6 +125,72 @@ const TRACKLIST_RETRYABLE: Database['public']['Enums']['tracklist_status'][] = [
  * index skips releases with outstanding work, and a re-run after a successful
  * drain finds nothing because those releases are no longer retryable.
  */
+/**
+ * Queues a re-ingest for every album we hold no upstream payload for.
+ *
+ * **The backfill for `upstream_payloads`.** Payload capture was added after the
+ * catalogue existed, so the albums ingested before it have columns but no
+ * stored response. Re-running `ingest_release_group` is the whole fix: it
+ * re-fetches the release group and the representative release, upserts on MBID
+ * — so nothing is duplicated and `albums.id` never moves, leaving every
+ * collection entry, rating and review untouched — and now stores both payloads
+ * on the way through.
+ *
+ * **No new job kind.** `ingest_release_group` already does exactly this work;
+ * inventing a `backfill_payload` kind would duplicate the runner for no
+ * behaviour that differs.
+ *
+ * **Cost is the rate limit, not the code.** Two MusicBrainz requests per album,
+ * serialised at one per second — roughly six minutes per three hundred albums.
+ * That is a seed-style utility run against staging rather than something the
+ * daily cron can chew through: the drain route is capped at `maxDuration = 60`,
+ * and Vercel's Hobby plan runs it once a day.
+ */
+export async function enqueueMissingPayloads(
+  options: { limit?: number; priority?: number; admin?: Admin } = {},
+): Promise<{ candidates: number; queued: number }> {
+  const admin = options.admin ?? createAdminClient();
+  const limit = options.limit ?? 500;
+
+  const { data: albums, error } = await admin
+    .from('albums')
+    .select('mbid')
+    .order('popularity_score', { ascending: false, nullsFirst: false })
+    .limit(limit);
+
+  if (error) throw error;
+
+  const mbids = (albums ?? []).map((album) => album.mbid);
+  if (mbids.length === 0) return { candidates: 0, queued: 0 };
+
+  // Two set lookups rather than two queries per album: which already have a
+  // payload, and which already have work outstanding. The second matters
+  // because a sweep run twice should report that it queued nothing the second
+  // time, not re-report the same backlog.
+  const held = await heldPayloadIds(admin, 'release_group', mbids);
+
+  const { data: existing, error: jobsError } = await admin
+    .from('ingestion_jobs')
+    .select('target_mbid')
+    .eq('kind', 'ingest_release_group')
+    .in('status', ['pending', 'running'])
+    .in('target_mbid', mbids);
+
+  if (jobsError) throw jobsError;
+  const outstanding = new Set((existing ?? []).map((job) => job.target_mbid));
+
+  const candidates = mbids.filter((mbid) => !held.has(mbid));
+
+  let queued = 0;
+  for (const mbid of candidates) {
+    if (outstanding.has(mbid)) continue;
+    await enqueueJob('ingest_release_group', mbid, { admin, priority: options.priority });
+    queued += 1;
+  }
+
+  return { candidates: candidates.length, queued };
+}
+
 export async function enqueueMissingTracklists(
   options: { limit?: number; priority?: number; admin?: Admin } = {},
 ): Promise<{ candidates: number; queued: number }> {
