@@ -12,6 +12,16 @@ import { AddFromUpstream } from './AddFromUpstream';
 export const metadata = { title: 'Search · longplayr' };
 
 /**
+ * Raised for the sake of `after()` in `addAlbum`, not for the render.
+ *
+ * `after` runs inside the route's max duration (Next's `after` documentation),
+ * and the work it schedules here is a Cover Art Archive fetch plus three
+ * derivative uploads. The platform default is too tight to rely on for that,
+ * and a truncated callback silently leaves the job queued for the daily cron.
+ */
+export const maxDuration = 60;
+
+/**
  * Search — a scanning surface.
  *
  * Rows rather than a grid, deliberately. Results are **ranked** and they cross

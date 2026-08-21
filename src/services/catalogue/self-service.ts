@@ -4,6 +4,7 @@ import { err, ok, type Result } from '../result';
 import { getCurrentProfile, getCurrentUser } from '../profiles';
 import { ingestReleaseGroup } from './ingest';
 import { enqueueJob } from './jobs';
+import { INTERACTIVE_JOB_PRIORITY } from './queue';
 import { searchReleaseGroups, type MbReleaseGroup } from './musicbrainz';
 import { classify } from './scope';
 
@@ -185,7 +186,11 @@ export async function addAlbumFromUpstream(
     .insert({ user_id: profile.id, album_mbid: mbid });
   if (auditError) throw auditError;
 
-  await enqueueJob('fetch_artwork', mbid, { admin });
+  // Elevated priority: someone is looking at this record now, and it is the
+  // one job in the queue with a person attached to it. The server action drains
+  // a small batch immediately afterwards through `after()`, so in practice the
+  // cover lands seconds after the add rather than on the next daily cron.
+  await enqueueJob('fetch_artwork', mbid, { admin, priority: INTERACTIVE_JOB_PRIORITY });
 
   return ok({ mbid });
 }

@@ -195,6 +195,25 @@ test('a score of 0.0 is drawn as a score, not as unrated', async ({ page }) => {
   await expect(tileFor(page, 'In Rainbows')).toContainText('0.0');
 });
 
+test('a tile links through to the album page, from both surfaces', async ({ page }) => {
+  // The grid was a dead end: `CollectionTile` carried no link at all, where
+  // `AlbumGrid` wraps every cell in one — so albums were reachable from the
+  // artist page and Browse but not from the two surfaces where someone looks
+  // at their own collection.
+  const user = await signUp(page);
+  await collect(page, IN_RAINBOWS);
+
+  await page.goto(`/${user.handle}`);
+  await tileFor(page, 'In Rainbows').getByRole('link').click();
+  await expect(page).toHaveURL(`/albums/${IN_RAINBOWS}`, NAV);
+
+  // The destination renders the same grid, so it needs its own assertion
+  // rather than inheriting one.
+  await page.goto(`/${user.handle}/collection`);
+  await tileFor(page, 'In Rainbows').getByRole('link').click();
+  await expect(page).toHaveURL(`/albums/${IN_RAINBOWS}`, NAV);
+});
+
 test('an album with no state draws no line at all', async ({ page }) => {
   const user = await signUp(page);
 

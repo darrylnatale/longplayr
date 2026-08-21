@@ -10,6 +10,8 @@ import {
   RATE_LIMIT_PER_HOUR,
   remainingAllowance,
 } from '@/services/catalogue/self-service';
+import { enqueueJob } from '@/services/catalogue/jobs';
+import { DEFAULT_JOB_PRIORITY, INTERACTIVE_JOB_PRIORITY } from '@/services/catalogue/queue';
 import * as profiles from '@/services/profiles';
 
 /**
@@ -48,6 +50,8 @@ const admin: SupabaseClient<Database> = createClient<Database>(
 );
 
 const MBID = singleArtistAlbum.id;
+/** Any other target, standing in for queued background work. */
+const BACKFILL_MBID = '0b0e4f1e-1111-4000-8000-0000000000bb';
 const createdUserIds: string[] = [];
 
 async function createUser() {
@@ -160,6 +164,35 @@ describe('an onboarded user', () => {
 
     const { data } = await admin.from('ingestion_jobs').select('kind, target_mbid').single();
     expect(data).toMatchObject({ kind: 'fetch_artwork', target_mbid: MBID });
+  });
+
+  it('queues it ahead of background work, because a person is waiting', async () => {
+    await onboardedUser();
+    stubIngest();
+
+    await addAlbumFromUpstream(MBID);
+
+    const { data } = await admin.from('ingestion_jobs').select('priority').single();
+    expect(data!.priority).toBe(INTERACTIVE_JOB_PRIORITY);
+    expect(INTERACTIVE_JOB_PRIORITY).toBeLessThan(DEFAULT_JOB_PRIORITY);
+  });
+
+  it('is claimed before a backfill job already sitting in the queue', async () => {
+    // The property the priority exists for, proven through the claim function
+    // rather than by reading the column back. Without it a self-service add
+    // sits behind however much backfill happens to be queued, and the cover
+    // arrives on the next daily cron after all.
+    await onboardedUser();
+    stubIngest();
+
+    await enqueueJob('fetch_artwork', BACKFILL_MBID, { admin });
+    await addAlbumFromUpstream(MBID);
+
+    const { data: claimed, error } = await admin.rpc('claim_ingestion_jobs', { batch_size: 1 });
+    if (error) throw error;
+
+    expect(claimed).toHaveLength(1);
+    expect(claimed![0].target_mbid).toBe(MBID);
   });
 });
 

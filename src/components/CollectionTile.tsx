@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 import { AlbumCover } from '@/components/AlbumCover';
 import { formatScore } from '@/components/ScoreBadge';
 
@@ -37,6 +39,17 @@ import { formatScore } from '@/components/ScoreBadge';
  * (imposes the cost on people who never asked for it), and hover-reveal as a
  * layout (invisible on touch, so collection state would be unknowable). Hover
  * may later *enhance* Detailed, but must never be required to understand state.
+ *
+ * **The whole tile is a link to the album.** It was not, for far longer than it
+ * should have been: `AlbumGrid` wrapped every cell in one from the start, so
+ * albums were reachable from the artist page and from Browse but not from the
+ * two surfaces where someone looks at their own collection. A grid of records
+ * you cannot open is a dead end.
+ *
+ * **Quick actions on hover are recorded direction, not built** — see
+ * `product-spec.md` §10.6. They do not reopen the rejection above, because
+ * reading state stays the state line's job; but they raise the same touch
+ * problem for *acting*, and that question is unanswered by design.
  */
 
 export type CollectionMode = 'compact' | 'detailed';
@@ -115,22 +128,25 @@ export function CollectionTile({ album, mode }: { album: TileAlbum; mode: Collec
   // reads as an uninterrupted wall rather than a broken table.
   if (mode === 'compact')
     return (
-      <div>
+      <Link href={`/albums/${album.mbid}`} className="group block">
         {cover}
         <CollectionState album={album} />
-      </div>
+      </Link>
     );
 
   return (
-    <div>
+    <Link href={`/albums/${album.mbid}`} className="group block">
       {cover}
-      <p className="mt-2 truncate text-xs leading-snug text-text" title={album.title}>
+      <p
+        className="mt-2 truncate text-xs leading-snug text-text group-hover:underline"
+        title={album.title}
+      >
         {album.title}
       </p>
       <p className="truncate text-[0.7rem] leading-snug text-text-muted" title={album.credit}>
         {album.credit}
       </p>
       <CollectionState album={album} />
-    </div>
+    </Link>
   );
 }

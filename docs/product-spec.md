@@ -366,6 +366,46 @@ Character set, length, reserved names, and whether a deleted account's handle be
 
 ---
 
+**8.9 — Catalogue composition: curated seed versus external popularity. [OPEN — raised 2026-08-21]**
+
+The catalogue's current 338 albums came from **ListenBrainz sitewide play counts**, which selects for globally popular records. That is a defensible default and it is not the only option; the observation that prompted this is that the resulting catalogue does not represent the taste the product intends to signal.
+
+**Two decisions, deliberately separate, because they carry different risk:**
+
+**(A) Catalogue composition** — what is findable and addable without falling back to MusicBrainz. Low risk: a larger, better-chosen catalogue is strictly better, and nothing is harmed by an album existing. Choosing which release groups to ingest is **selection, not authorship**, so it does not touch the rule that the catalogue is read-only downstream of MusicBrainz.
+
+**(B) Discovery charts** — what the product _recommends_ on the cold-start surface (§8.3, Phase 5). Here there is a real tension with §2's non-goal, **"Not a score authority … the product should not present itself as arbitrating what's good."** A hand-picked recommendation surface is an editorial voice. That may be the right strategy — a product with a point of view is a stronger cold start than a play-count chart — but it contradicts a written non-goal and must be decided rather than drifted into.
+
+**(A) can be answered without answering (B).**
+
+**The architecture already accommodates (A).** `PopularitySource` is an interface, and `architecture.md` §8 anticipates the source changing; a `CuratedSource` is a fourth branch beside `ListenBrainzSource`, `InternalActivitySource` and `BlendedSource`. The seeding pipeline, the per-artist cap, the scope filter and the artwork queue are unchanged.
+
+**The real work is MBID resolution, not ingestion.** A curated list is text; `PopularEntry` requires a release-group MBID and states the rule plainly — implementations must drop entries lacking one rather than guessing by name, _"guessing by name is how wrong records enter a catalogue."_ Resolving title + artist to an MBID is fuzzy: reissues, deluxe editions, inconsistent artist credits, compilations. The suggested shape is to resolve **once**, review the misses by hand, and commit the result as a versioned MBID list that reseeding reads deterministically.
+
+**Cost is bounded and known.** Three rate-limited MusicBrainz requests per album — resolve, release group, release detail for the tracklist — serialised at one per second. Roughly 25 minutes of MusicBrainz time per 500 albums, plus artwork. A 1,000-album curated seed is an afternoon, not a project.
+
+**Two adjacent facts worth deciding at the same time:** the existing seed capped at **2 albums per artist**, which is why every artist page currently holds at most three releases and discographies read thin — `maxPerArtist` should be revisited with any reseed. And seeding must never run against a database the integration suite will touch, which has already destroyed a catalogue once.
+
+**Unresolved:** whether to do (A) at all; the source list; whether (B) follows; the per-artist cap; and whether this is scheduled early or waits for Phase 5, since it is Phase 5 work and building ahead of the current phase needs saying so.
+
+**8.10 — Upstream search: breadth, and whether it matches artists. [OPEN — raised 2026-08-21]**
+
+Two limitations of the "not in longplayr yet" panel, both observed in use, neither previously recorded.
+
+**It shows at most five candidates**, hard-coded, with no way to ask for more — and it appears at all **only when the local catalogue returns fewer than five album matches**. So an album that exists upstream can be unreachable simply because five local records matched the same words. The local catalogue search itself returns up to 20 albums, 8 artists and 5 users, so the five is specific to the upstream panel.
+
+**It does not match artist names.** The typed string is handed to MusicBrainz's Lucene index for release groups, whose default field is the release-group **title** — so typing an artist returns titles containing that word, not that artist's albums. Field-qualified syntax (`artist:"…"`) is the documented route and would likely work today as an undocumented power-user trick, but **this must be verified against the live API before anything depends on it** — the `referencedTable` finding is the standing reminder that a documented behaviour is not a verified one.
+
+**Observed in use 2026-08-21, and worse than the two limitations above suggest.** Searching for **"the warning" (Hot Chip)**, an album not in the catalogue, returned a page of albums already held — mostly titles beginning with "The" — and **offered no route to add the one being looked for**. Reproduced at the database level; **three faults compound**, and only the third makes the album unreachable:
+
+1. **The fuzzy tier is too permissive for short common words.** `search_albums` falls back to `similarity(title, query) > 0.3`, and trigram similarity is inflated when a short title shares a leading article: measured, `similarity('The Wall', 'the warning')` is **0.4** and matches, while `similarity('The Bends', 'the warning')` is 0.22 and does not. So any short `The …` title in a 338-album catalogue is a candidate.
+2. **The `simple` text configuration keeps stopwords.** `websearch_to_tsquery('simple', 'the warning')` yields `'the' & 'warning'`, so "the" is a required lexeme rather than being discarded — which degrades precision for every title containing an article.
+3. **The upstream panel is suppressed by exactly the flood the first two produce.** It renders only when the local catalogue returns **fewer than five** albums, so noisy local matches remove the only route to the record. **This is the fault that turns a ranking annoyance into a dead end.**
+
+**Unresolved:** whether the panel gets a "show more"; whether the fewer-than-five threshold is the right gate at all, or whether the fallback should always be reachable regardless of local result count; whether the fuzzy threshold should rise, be length-aware, or be dropped when the query contains a leading article; whether the text configuration should switch to `english` for stopword removal, and what that costs for non-English titles — the catalogue is deliberately international, and `simple` was chosen for that reason; whether the query should search title _and_ artist, and if so whether that is separate inputs, a blended Lucene query, or a heuristic; and whether any of it is worth doing before the search latency in `current-state.md` §8 is addressed, since every additional upstream candidate is fetched in the render path.
+
+**Note the interaction with §8.9.** A larger curated catalogue makes fault 3 _more_ likely, not less: more local records means more chances that five of them match loosely enough to hide the fallback.
+
 ## 9. Consistency check
 
 - Every §5 core feature maps to a §3 loop step. Two features have no direct loop role: **admin**, which keeps the other surfaces safe, and **notifications**, which exists because likes and follows deliberately produce no feed events and would otherwise be invisible.
@@ -533,6 +573,34 @@ Specifically to investigate: applicable **Digital Services Act** obligations for
 **Do not assume that being small means having no obligations.** The DSA is proportionate, not exempting; the European Commission describes easy-to-use illegal-content reporting mechanisms and proportionate obligations that reach smaller services. Micro and small enterprises are relieved of some obligations but not all, and the boundaries must be verified against current sources at the time of implementation rather than taken from this paragraph.
 
 **The goal is the minimum viable safety and legal architecture that lets a solo developer offer messaging responsibly** — not a moderation platform.
+
+### 10.6 Quick actions on a tile, and on an upstream search result
+
+**Recorded 2026-08-21. Decided direction; nothing is built and nothing is scheduled.**
+
+**The problem.** Every collection action currently requires a round trip to the album page. Adding an album found through the MusicBrainz fallback means adding it to the _catalogue_, then finding it again, then opening it, then adding it to your _collection_ — and the "Added — view" link that would have shortened that does not render (`current-state.md` §8). Managing a collection of any size means navigating away and back for every single change.
+
+**The direction, in two parts.**
+
+**(a) Adding from MusicBrainz should offer collection in the same gesture.** A record you just went and found is a record you almost certainly want. The catalogue add and the collection add are currently two separate acts separated by two navigations.
+
+**(b) A grid tile should carry quick actions.** On hover, a small control set on the artwork — **add / remove from collection, like / unlike, and add / remove from Want to Listen** — so a wall of covers is something you can act on rather than only look at.
+
+**This does not reopen §11.9 or §11.5 of `design-reference.md`.** Those decide what a tile _displays_: artwork plus a minimal state line, no captions. Quick actions are an interaction layer, not a caption, and the state line stays the record of what is true.
+
+**It does collide with a recorded rejection, and that collision is the hard part.** `CollectionTile`'s own notes reject "hover-reveal as a layout (invisible on touch, so collection state would be unknowable)" and conclude: **"Hover may later _enhance_ Detailed, but must never be required to understand state."** Quick actions are consistent with that as far as _reading_ goes — state stays in the state line — but they raise it again for _acting_: **a hover-only affordance is unreachable on touch**, and touch is not a minority case for a music product. Whatever is built must have a touch answer that is not "hover harder".
+
+**Ask before implementing. None of the following is inferable, and taking the obvious default on any of them is a scope violation:**
+
+- **The touch equivalent.** Always-visible controls on small screens, long-press, a per-tile overflow control, an explicit edit mode, or something else. This is the question the whole feature stands on.
+- **Whether quick actions appear on every grid or only some.** Browse, artist discographies, the profile overview, the collection destination and search results are five different surfaces with different intents — acting on someone _else's_ collection tile is meaningless, so at minimum the set is not uniform.
+- **Whether they are offered to a signed-out visitor**, and what happens when one is clicked — silently nothing, a prompt, or the control being withheld.
+- **What "remove from collection" does here.** Removal destroys the entry, its review and its relisten events, and the album page warns before doing it. A one-click removal from a hover control **must not** be a quieter path to the same destruction, so either it confirms, or it is excluded from the quick set.
+- **Whether a like or a Want to Listen from a tile creates a collection entry**, given liking already implicitly adds (§8.5) and Want to Listen is cleared by that same implicit add. The interaction between the three on one control cluster is not obvious and must not be guessed.
+- **Whether any of it generates feed events**, which is a Phase 3 question and inherits the rule that an event records an interaction at the moment it happens.
+- **How many controls a tile can carry** before the record-shelf reading the grid exists for is damaged — the reference carries none, and `design-reference.md` §8 says the interface is a frame, not a picture.
+
+**Phase.** Unscheduled. Part (a) is reachable inside Phase 2 since every relation it touches exists; part (b) spans surfaces that Phases 3–5 will still be changing, and the touch question should be answered before either is built.
 
 ### 10.5 Social philosophy
 

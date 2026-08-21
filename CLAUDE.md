@@ -31,7 +31,7 @@ Comments, private accounts, track-level features, streaming integration or OAuth
 
 ## Recorded direction is not scope
 
-`docs/product-spec.md` §10 records product direction that is **decided but deliberately unbuilt**: Want to Listen **beyond the album-level relation**, taste overlap, profile photo/bio/city, and direct messaging. Dating-specific profile fields are explicitly excluded.
+`docs/product-spec.md` §10 records product direction that is **decided but deliberately unbuilt**: Want to Listen **beyond the album-level relation**, taste overlap, profile photo/bio/city, direct messaging, and **quick actions on a tile and on an upstream search result** (§10.6). Dating-specific profile fields are explicitly excluded.
 
 **One part of Want to Listen has since been scheduled and built**, and is the only exception in this section: the album-level relation and its action-card control, delivered as a Phase 2 slice. Its **profile destination, and any Activity or feed integration, remain unbuilt and unscheduled** — being decided is still not being scheduled, which is the whole point of this section.
 
