@@ -3,6 +3,18 @@ import type { Database } from '@/lib/supabase/database.types';
 
 import { getCurrentProfile } from '../profiles';
 import { err, ok, type Result } from '../result';
+import { collectionOrder, DEFAULT_COLLECTION_SORT, type CollectionSort } from './sort';
+
+export {
+  collectionOrder,
+  collectionPath,
+  COLLECTION_SORT_OPTIONS,
+  DEFAULT_COLLECTION_SORT,
+  parseCollectionSort,
+  type CollectionOrderClause,
+  type CollectionSort,
+  type CollectionSortOption,
+} from './sort';
 
 /**
  * The collection service.
@@ -193,40 +205,56 @@ export type CollectionPage = {
 };
 
 /**
- * A user's collection, newest addition first.
+ * A user's collection, newest addition first by default.
  *
- * **Ordered by `added_at` descending, deliberately — not by
+ * **The default remains `added_at` descending — not
  * `coalesce(listened_on, added_at)`.** The collection answers "what have I most
  * recently added", which is a fact about the account. `listened_on` is a
  * user-asserted claim about the past that may be backdated to 1997, so ordering
- * by it would let a backfill of old records displace everything someone added
- * this week, and the grid would reshuffle around a date nothing on the page
- * displays.
+ * by it *by default* would let a backfill of old records displace everything
+ * someone added this week, and the grid would reshuffle around a date nothing
+ * on the page displays. The rejected fallback is still rejected: what changed
+ * is that `listened_on` is now available as an **explicit** mode a user chooses
+ * and can see they have chosen, which is the thing the coalesce ordering could
+ * never be.
  *
  * Two consequences worth knowing:
  *
- *  - It is **index-backed**. `collection_entries_user_idx` is
- *    `(user_id, added_at desc)`, which is exactly this query. The coalesce
- *    ordering cannot be indexed at all — casting timestamptz to date depends on
- *    the session time zone, so the expression is not IMMUTABLE and Postgres
- *    rejects it in an index. The cheaper ordering is also the correct one here.
- *  - `listened_on` is untouched and still selected by nothing here. It remains
- *    available for explicit sorting later, which is a separate slice.
+ *  - The default is **index-backed**. `collection_entries_user_idx` is
+ *    `(user_id, added_at desc)`, which is exactly that query, and
+ *    `collection_entries_user_listened_idx` is
+ *    `(user_id, listened_on desc nulls last)`, which is exactly the Listened
+ *    mode. The coalesce ordering cannot be indexed at all — casting timestamptz
+ *    to date depends on the session time zone, so the expression is not
+ *    IMMUTABLE and Postgres rejects it in an index.
+ *  - The four remaining modes sort without a dedicated index, over a working
+ *    set a user's own collection bounds. A 400-album account is the size this
+ *    product is designed for (`product-spec.md` §6), so no index was added for
+ *    them; adding one before that is a guess about a cost nobody has measured.
  *
  * Public by decision: everything user-generated is public, so this takes a
  * `userId` and applies no viewer filtering. The RLS policy is
  * `for select using (true)` and `anon` holds `select`, so a signed-out visitor
- * reads exactly what a signed-in one does.
+ * reads exactly what a signed-in one does — **under every sort**, since sorting
+ * is a read and changes nothing about who may perform it.
  *
  * **`limit` is required, deliberately.** A profile must never render an
  * unbounded collection (`product-spec.md` §6), and the first implementation of
  * this function had no limit at all — a 400-album account would have rendered
  * 400 rows and 400 images on one page. Making the bound part of the type means
  * a caller cannot forget it rather than being asked to remember.
+ *
+ * **`sort` is optional and defaults to the mode that was previously the only
+ * ordering**, so the profile overview — which does not sort, by decision —
+ * keeps its behaviour without passing anything.
  */
 export async function listCollection(
   userId: string,
-  { limit, offset = 0 }: { limit: number; offset?: number },
+  {
+    limit,
+    offset = 0,
+    sort = DEFAULT_COLLECTION_SORT,
+  }: { limit: number; offset?: number; sort?: CollectionSort },
 ): Promise<CollectionPage> {
   const supabase = await createClient();
 
@@ -237,15 +265,27 @@ export async function listCollection(
   // `count: 'exact'` returns the size of the whole collection rather than of
   // this window, so the preview's count and the destination's page count both
   // come back with the rows instead of costing a second round trip.
-  const { data, count, error } = await supabase
+  let query = supabase
     .from('collection_entries')
     .select(
       'id, album_id, rating, liked, relisten_count, albums(mbid, title, display_credit, artwork_status, first_release_date)',
       { count: 'exact' },
     )
-    .eq('user_id', userId)
-    .order('added_at', { ascending: false })
-    .range(offset, offset + limit - 1);
+    .eq('user_id', userId);
+
+  // Applied in precedence order, each one appending to the same `order`
+  // parameter. The clauses themselves — including the `albums(column)` spelling
+  // that is the only one PostgREST honours for a to-one embed, and the
+  // `added_at` tiebreaker that keeps paging deterministic — live in `sort.ts`
+  // so they can be unit-tested and so this stays the query and nothing else.
+  for (const clause of collectionOrder(sort)) {
+    query = query.order(clause.column, {
+      ascending: clause.ascending,
+      nullsFirst: clause.nullsFirst,
+    });
+  }
+
+  const { data, count, error } = await query.range(offset, offset + limit - 1);
 
   // PostgREST answers an offset past the end with an error rather than an empty
   // window — `PGRST103`, "Requested range not satisfiable". That is a fact

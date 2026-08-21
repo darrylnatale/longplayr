@@ -5,7 +5,14 @@ import { Avatar } from '@/components/Avatar';
 import { CollectionGrid } from '@/components/CollectionGrid';
 import { Container } from '@/components/Container';
 import { SectionHeader } from '@/components/SectionHeader';
-import { COLLECTION_PAGE_SIZE, listCollection } from '@/services/collection';
+import {
+  COLLECTION_PAGE_SIZE,
+  COLLECTION_SORT_OPTIONS,
+  collectionPath,
+  listCollection,
+  parseCollectionSort,
+  type CollectionSort,
+} from '@/services/collection';
 import { getProfileByHandle } from '@/services/profiles';
 
 /**
@@ -26,9 +33,17 @@ import { getProfileByHandle } from '@/services/profiles';
  * and the simplest mechanism that works is the one that survives being
  * bookmarked.
  *
- * Sorting and filtering are specified (product-spec.md §6) and not built. When
- * they arrive they join the query string beside `page`, which is part of why
- * the page number lives there rather than in a route segment.
+ * **Sorting joins it at `?sort=`**, on the same terms and for the same reason —
+ * which is what the page number living in the query string rather than in a
+ * route segment was always for. Six modes, each with one fixed direction, and
+ * the default is the bare address. The modes and their orderings live in
+ * `services/collection/sort.ts`; this page owns where the control sits and what
+ * it looks like.
+ *
+ * **Filtering is still not built.** It is specified (product-spec.md §6) and
+ * will land beside the sort row rather than inside it — which is the other
+ * reason that row is its own element under the section header, and not six
+ * links crammed into the header's single trailing slot.
  */
 
 export async function generateMetadata({ params }: PageProps<'/[handle]/collection'>) {
@@ -81,6 +96,54 @@ function IdentityStrip({
 }
 
 /**
+ * The sort control: a quiet label and six fixed modes.
+ *
+ * **Its own row between the section header and the grid**, which is where the
+ * reference puts a filter bar (design-reference.md §3, §5.6) and where the
+ * filter controls will land next to it. The header's trailing slot is one
+ * right-aligned affordance and already holds the album count, so six options
+ * could not go there even if they fitted — and at 390px they do not.
+ *
+ * **Links, not a control with state**, exactly as the artist page does it. The
+ * page is server-rendered and the sort lives in the URL, so each option is
+ * simply the address of the collection sorted that way and the browser's back
+ * button moves between them. No client component, no JavaScript required.
+ *
+ * The hrefs come from `collectionPath` with no page argument, which is what
+ * makes "changing sort returns you to page 1" true by construction rather than
+ * by a redirect: the parameter is absent, and absent already means page 1.
+ *
+ * **Drawn for everyone** — owner, visitor and signed-out alike (decided
+ * 2026-08-21). Everything user-generated is public, sorting is a read, and a
+ * viewer-conditional control would be the first anywhere in the product.
+ */
+function SortLinks({ handle, sort }: { handle: string; sort: CollectionSort }) {
+  return (
+    <nav
+      aria-label="Sort collection"
+      className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs"
+    >
+      <span className="text-text-faint">Sort</span>
+      {COLLECTION_SORT_OPTIONS.map((option) =>
+        option.value === sort ? (
+          <span key={option.value} aria-current="true" className="text-accent">
+            {option.label}
+          </span>
+        ) : (
+          <Link
+            key={option.value}
+            href={collectionPath(handle, { sort: option.value })}
+            className="text-text-muted underline decoration-border-strong underline-offset-4 transition-colors hover:text-text"
+          >
+            {option.label}
+          </Link>
+        ),
+      )}
+    </nav>
+  );
+}
+
+/**
  * Newer and Older rather than Previous and Next.
  *
  * The collection is ordered by when albums were added, so the axis is time and
@@ -89,21 +152,33 @@ function IdentityStrip({
  *
  * Renders nothing at all when everything fits on one page — a lone disabled
  * "Page 1 of 1" is furniture.
+ *
+ * **The active sort rides along.** Paging under Title must stay under Title;
+ * dropping the parameter would silently return the reader to Added one page in,
+ * with nothing on the page admitting it had happened.
  */
 function Pagination({
   handle,
   page,
   totalPages,
+  sort,
 }: {
   handle: string;
   page: number;
   totalPages: number;
+  sort: CollectionSort;
 }) {
   if (totalPages <= 1) return null;
 
-  const href = (n: number) =>
-    n === 1 ? `/${handle}/collection` : `/${handle}/collection?page=${n}`;
+  const href = (n: number) => collectionPath(handle, { sort, page: n });
   const link = 'rounded-sm px-3 py-1.5 text-xs text-text-muted transition-colors hover:text-text';
+
+  // Newer / Older only where the leading key is a date running newest first —
+  // added, listened and release year. Under Rating, Title or Artist the axis is
+  // not time and those words are simply untrue, so they give way to the neutral
+  // pair rather than describing an ordering the page is no longer using.
+  const chronological = sort === 'added' || sort === 'listened' || sort === 'year';
+  const [backward, forward] = chronological ? ['Newer', 'Older'] : ['Previous', 'Next'];
 
   return (
     <nav
@@ -113,7 +188,7 @@ function Pagination({
       <div className="flex-1">
         {page > 1 && (
           <Link href={href(page - 1)} rel="prev" className={link}>
-            <span aria-hidden>←</span> Newer
+            <span aria-hidden>←</span> {backward}
           </Link>
         )}
       </div>
@@ -125,7 +200,7 @@ function Pagination({
       <div className="flex flex-1 justify-end">
         {page < totalPages && (
           <Link href={href(page + 1)} rel="next" className={link}>
-            Older <span aria-hidden>→</span>
+            {forward} <span aria-hidden>→</span>
           </Link>
         )}
       </div>
@@ -143,10 +218,14 @@ export default async function CollectionPage({
   if (!profile) notFound();
   if (profile.status !== 'active') notFound();
 
-  const page = pageFrom((await searchParams).page);
+  const query = await searchParams;
+  const page = pageFrom(query.page);
+  const sort = parseCollectionSort(query.sort);
+
   const { items, total } = await listCollection(profile.id, {
     limit: COLLECTION_PAGE_SIZE,
     offset: (page - 1) * COLLECTION_PAGE_SIZE,
+    sort,
   });
 
   // An empty collection is one page showing the empty state, not zero pages.
@@ -190,8 +269,15 @@ export default async function CollectionPage({
           </div>
         ) : (
           <>
+            {/*
+             * Withheld below two albums, on the artist page's rule that sorting
+             * one thing is meaningless — withheld rather than rendered inert,
+             * because an interface for a choice that does not exist is worse
+             * than no interface.
+             */}
+            {total > 1 && <SortLinks handle={profile.handle} sort={sort} />}
             <CollectionGrid albums={items} />
-            <Pagination handle={profile.handle} page={page} totalPages={totalPages} />
+            <Pagination handle={profile.handle} page={page} totalPages={totalPages} sort={sort} />
           </>
         )}
       </section>

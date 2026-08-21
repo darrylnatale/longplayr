@@ -234,7 +234,9 @@ Primary: identity (avatar, display name, handle, bio) and a stat cluster (albums
 
 ### Collection view
 
-An artwork grid, each item showing its cover, your score if any, a like indicator if liked, and a `×N` marker if relistened. **No title and no credit** — the grid is artwork plus a minimal state line, which is the reading `design-reference.md` §11.9 settles. Sortable by date, rating, title, artist, release year. Filterable by rated/unrated, liked, and reviewed.
+An artwork grid, each item showing its cover, your score if any, a like indicator if liked, and a `×N` marker if relistened. **No title and no credit** — the grid is artwork plus a minimal state line, which is the reading `design-reference.md` §11.9 settles. **Sortable — six modes, decided and built; see below.** Filterable by rated/unrated, liked, and reviewed **remains direction rather than a decision**: that option list has never carried a marker, and the questions it raises are unanswered.
+
+The sort list here previously read _"sortable by date, rating, title, artist, release year"_ — five options, unmarked, with "date" ambiguous between the two the entry holds. It is superseded by the six-mode block below, which splits that word into **Added** and **Listened** rather than choosing between them.
 
 No dates are displayed, by decision — the date only orders the grid.
 
@@ -242,7 +244,36 @@ No dates are displayed, by decision — the date only orders the grid.
 
 **The full collection is paginated.** **[DECIDED 2026-08-19]** The overview previews **12**; the Collection destination shows **60 per page** with `?page=n`, server-rendered, navigated by `← Newer` / `Page n of m` / `Older →`. The preview count links to the destination **only when there is more to see** — at 12 or fewer it stays plain text rather than pointing at a page showing the same covers.
 
-Sort and filter are not yet built.
+**Six sort modes, each with one fixed direction. [DECIDED 2026-08-21]**
+
+| Mode                  | Orders by                   | Direction                                    |
+| --------------------- | --------------------------- | -------------------------------------------- |
+| **Added** _(default)_ | `added_at`                  | Newest first                                 |
+| **Listened**          | `listened_on`               | Newest first, **no listen date last**        |
+| **Rating**            | `rating`                    | Highest first, **unrated last, still shown** |
+| **Title**             | `albums.title`              | A–Z                                          |
+| **Artist**            | `albums.display_credit`     | A–Z                                          |
+| **Year**              | `albums.first_release_date` | Newest first, **undated last**               |
+
+**There is no ascending / descending toggle.** Each field has one reading worth offering — newest, highest, A–Z — and choosing the mode is the whole choice. This diverges from the artist page's Newest / Oldest pair deliberately: that surface sorts one field, so there direction _is_ the choice, whereas six fields times two directions is twelve addresses for a control that sits above a grid.
+
+**Unrated albums sort last under Rating, and stay visible. [DECIDED 2026-08-21]** Excluding them would have been a reading of _"unrated entries are excluded from averages"_, but that rule is about aggregation. Dropping them here would hide albums from a collection, which is a far larger claim than leaving them out of a mean. `0.0` is a real score and sorts as the lowest one, never as unrated.
+
+**Undated albums sort last under Year**, consistent with the artist-page release-date rule above: an undated release is not the earliest one, it is one with no date. **Entries with no `listened_on` sort last under Listened** for the same reason.
+
+**Title sorts the raw album title — no article stripping**, so _The Bends_ files under T. **Artist sorts `display_credit`**, the credit the album itself carries, so _The Clash_ files under T and _Jay-Z & Kanye West_ under J. An artist's own `sort_name` is deliberately not used here: it is two relations away from a collection entry, and a joint credit has two of them with no rule to choose between.
+
+**Sort state lives in the query string, beside `page`. [DECIDED 2026-08-21]** The bare collection address means Added; the rest are `?sort=listened`, `rating`, `title`, `artist`, `year`. `?sort=added` is a valid address and is never emitted by the control. Anything unrecognised, empty or repeated follows the artist page's convention — the first value wins and anything unrecognised falls back silently to Added, because a malformed sort is not worth a 404. There is no direction parameter, and no client state: every mode is an address the page is server-rendered at.
+
+**Changing sort returns to page 1; paging preserves the sort. [DECIDED 2026-08-21]** Sort links carry no `page` at all, which is what makes the reset true by construction rather than something a redirect has to remember. Pagination links carry the active mode, so paging under Title stays under Title instead of silently reverting.
+
+**The pagination labels follow the axis.** The `← Newer` / `Older →` pair named above is literal only while the leading sort key is a date, so it holds under Added, Listened and Year and gives way to `← Previous` / `Next →` under Rating, Title and Artist. The 2026-08-19 decision chose those words for a collection that could only be ordered by when albums were added; keeping them under a title-sorted page would state something untrue about the ordering on screen.
+
+**The control is public, and withheld below two albums.** It is drawn for owners, visitors and signed-out readers alike — everything user-generated is public, sorting is a read, and a viewer-conditional control would be the first anywhere in the product. At zero or one album it is withheld rather than rendered inert, on the artist page's rule that sorting one thing is meaningless.
+
+**The overview preview is unaffected.** `?sort=` addresses the Collection destination only; the profile's 12-album preview keeps `added_at` descending, because it is a summary rather than the collection with less on it.
+
+**Filtering is not built.** Sorting is. When the filter controls are decided they join the same row above the grid, which is why that row exists as its own element rather than as links crammed into the section header.
 
 ### Feed
 

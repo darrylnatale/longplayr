@@ -174,7 +174,7 @@ Not a blocking phase, but it must land **before Phase 2**, because Phase 2 is wh
 - **Want to Listen, album level** — the independent relation on the album card: per-album read state, the ActionCard control, server mutations, and integration and end-to-end coverage. **The profile destination is not part of this** — see below
 - **Profile overview** — identity, available statistics, favourites, and a bounded collection preview whose count links onward
 - **Collection destination** at `/<handle>/collection` — the full collection in the `wide` container, paginated
-- Collection view: cover grid showing score, like indicator and `×N` marker, **no captions** (`design-reference.md` §11.9); sort and filter follow later
+- Collection view: cover grid showing score, like indicator and `×N` marker, **no captions** (`design-reference.md` §11.9). **Sorting is complete; filtering is not** — see below
 - Optional edition selection, with lazy release fetching
 - Album averages computed on read, one decimal
 
@@ -184,6 +184,7 @@ Not a blocking phase, but it must land **before Phase 2**, because Phase 2 is wh
 
 - Profile favourites — up to ten pinned albums, user-ordered, independent of the collection
 - **Artist page sorting by release date — complete.** Newest and oldest, `first_release_date`, undated releases last in both directions, selected via `?sort=oldest`. **Rating sorting and any artist-level aggregate rating are deferred** (`product-spec.md` §6, resolved 2026-08-20); neither was built, and collection sorting is not a prerequisite
+- **Collection sorting — complete.** Six fixed modes selected via `?sort=` on the Collection destination — Added (default), Listened, Rating, Title, Artist, Year — each with one fixed direction and no ascending/descending toggle. Nulls last on Listened, Rating and Year; unrated albums stay visible. Changing sort resets to page 1, paging preserves the sort, and the control is public. Delivered with **no migration, no new index and no schema change** (`product-spec.md` §6, decided 2026-08-21). **Collection filtering is not built and remains undecided**, including the decade filter `design-reference.md` §5.6 raises and `product-spec.md` §6 omits
 - Implicit collection creation when rating, liking or reviewing an uncollected album
 
 **Open decisions affecting this phase.** The line that stood here — "No open decisions block this phase" — was written before decision H was raised and before the product direction in `product-spec.md` §10 existed. It was wrong on both counts and is corrected rather than deleted, because a plan that once said a phase was unblocked should show that it changed its mind.
@@ -210,7 +211,7 @@ Not a blocking phase, but it must land **before Phase 2**, because Phase 2 is wh
 
 - One entry per user per album, enforced under concurrent writes
 - Rating aggregation: nulls excluded, rounding correct, thin-data behaviour sane
-- Collection sort is `added_at` descending, and a backdated `listened_on` does **not** reorder it
+- Collection **default** sort is `added_at` descending, and a backdated `listened_on` does **not** reorder it — under every mode except Listened, where reordering by it is the point
 - Relisten events accumulate while the entry count stays denormalised and accurate
 - Album page renders correctly in all three collection states
 - **Implicit add is silent** — rating an uncollected album creates the entry and fires a `rated` event, but no `listened` event
