@@ -1,13 +1,15 @@
+import { Suspense } from 'react';
+
 import Link from 'next/link';
 
 import { AlbumCover } from '@/components/AlbumCover';
 import { Container } from '@/components/Container';
 import { SectionHeader } from '@/components/SectionHeader';
-import { searchUpstream } from '@/services/catalogue/self-service';
 import { getCurrentUser } from '@/services/profiles';
 import { searchCatalogue } from '@/services/search';
 
-import { AddFromUpstream } from './AddFromUpstream';
+import { shouldOfferFallback } from './fallback';
+import { UpstreamPanel, UpstreamPending } from './UpstreamPanel';
 
 export const metadata = { title: 'Search · longplayr' };
 
@@ -54,57 +56,37 @@ function SearchIcon() {
   );
 }
 
-/**
- * Stands in for the cover an upstream candidate does not have.
- *
- * Keeps the row aligned with catalogue results without impersonating one: a
- * dashed outline and a plus read as "could be added", where a grey square would
- * read as "cover missing" and imply we already hold the record.
- */
-function AddSlot() {
-  return (
-    <div
-      aria-hidden
-      className="flex aspect-square w-12 shrink-0 items-center justify-center rounded-[var(--radius-cover)] border border-dashed border-border-strong text-text-faint"
-    >
-      <svg
-        viewBox="0 0 24 24"
-        className="h-4 w-4"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      >
-        <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-      </svg>
-    </div>
-  );
-}
-
 const ROW = 'border-b border-border/50 last:border-0';
 
 export default async function SearchPage({ searchParams }: PageProps<'/search'>) {
   const params = await searchParams;
   const query = typeof params.q === 'string' ? params.q : '';
 
+  // Both fast, and both awaited here rather than inside the streaming boundary
+  // below: the catalogue read is what the page is for, and the session read is
+  // what decides whether the boundary is emitted at all.
   const results = query ? await searchCatalogue(query) : null;
   const user = query ? await getCurrentUser() : null;
 
-  // Only consulted when local results are thin — otherwise it is noise, and it
-  // spends a request against a one-per-second budget.
-  const upstream =
-    query && user && (results?.albums.length ?? 0) < 5 ? await searchUpstream(query, 5) : [];
-
+  // Derived from the catalogue alone. It used to also require that MusicBrainz
+  // had returned nothing, which is unknowable now that the upstream request is
+  // streamed — and holding the local answer back until both were known was the
+  // behaviour this slice exists to remove.
   const nothingLocal =
     results !== null &&
     results.albums.length === 0 &&
     results.artists.length === 0 &&
     results.users.length === 0;
-  const nothingAtAll = nothingLocal && upstream.length === 0;
+
+  // No result count reaches this. See `fallback.ts` — the absence is the fix.
+  const offerFallback = shouldOfferFallback({ query, isSignedIn: Boolean(user) });
 
   // Signed-out visitors never get the fallback, because searching MusicBrainz
   // is gated on a session. Saying so beats letting a thin page look like an
-  // empty catalogue.
-  const fallbackUnavailable = Boolean(query) && !user && (results?.albums.length ?? 0) < 5;
+  // empty catalogue. This carried the same `< 5` gate and loses it for the same
+  // reason: otherwise the two branches disagree about when a fallback would
+  // have existed at all.
+  const fallbackUnavailable = Boolean(query) && !user;
 
   return (
     <Container variant="content">
@@ -137,20 +119,30 @@ export default async function SearchPage({ searchParams }: PageProps<'/search'>)
         </div>
       )}
 
-      {nothingAtAll && (
-        <div className="py-16 text-center">
+      {/*
+       * Said as soon as the catalogue answers, without waiting for MusicBrainz.
+       * The advice that used to sit beneath it for a signed-in reader has moved
+       * into `UpstreamPanel`, because "try a different spelling" is the wrong
+       * thing to say while a result may still be arriving. The signed-out line
+       * stays here: no fallback is coming, so nothing is pending.
+       *
+       * Bottom padding shrinks when a fallback will follow, so the pending line
+       * and the panel do not land marooned below a full-height empty state.
+       */}
+      {nothingLocal && (
+        <div className={`text-center ${offerFallback ? 'pb-6 pt-16' : 'py-16'}`}>
           <p className="font-serif text-xl text-text-secondary">
-            Nothing matches “{results.query}”.
+            Nothing in the catalogue matches “{results.query}”.
           </p>
-          <p className="mx-auto mt-2 max-w-[46ch] text-sm text-text-muted">
-            {fallbackUnavailable
-              ? 'Sign in to search MusicBrainz and add records that are not in the catalogue yet.'
-              : 'Try a different spelling, or search for the artist instead.'}
-          </p>
+          {fallbackUnavailable && (
+            <p className="mx-auto mt-2 max-w-[46ch] text-sm text-text-muted">
+              Sign in to search MusicBrainz and add records that are not in the catalogue yet.
+            </p>
+          )}
         </div>
       )}
 
-      {results && !nothingAtAll && (
+      {results && !nothingLocal && (
         <div className="flex flex-col gap-10">
           <section>
             <SectionHeader
@@ -237,40 +229,8 @@ export default async function SearchPage({ searchParams }: PageProps<'/search'>)
             </section>
           )}
 
-          {/*
-           * Set inside a panel so the boundary is structural rather than a
-           * heading you might skim past. These are not catalogue records — they
-           * are records we could hold — and the page should not let the two
-           * blur. Subordinate by placement and by weight: last, quieter ground,
-           * no artwork.
-           */}
-          {upstream.length > 0 && (
-            <section className="rounded-md border border-border bg-surface/50 p-4 sm:p-5">
-              <SectionHeader as="h3">Not in longplayr yet</SectionHeader>
-              <p className="-mt-1 mb-2 text-xs text-text-muted">
-                Found in MusicBrainz. Adding one brings it into the catalogue for everyone.
-              </p>
-              <ul className="flex flex-col">
-                {upstream.map((candidate) => (
-                  <li key={candidate.mbid} className={`flex items-center gap-4 py-2.5 ${ROW}`}>
-                    <AddSlot />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm text-text-secondary">{candidate.title}</p>
-                      <p className="truncate text-xs text-text-muted">
-                        {candidate.credit}
-                        {candidate.year && <span className="tabular"> · {candidate.year}</span>}
-                        {candidate.primaryType && ` · ${candidate.primaryType}`}
-                      </p>
-                    </div>
-                    <AddFromUpstream mbid={candidate.mbid} />
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-
           {/* Thin local results and no session: explain the missing fallback. */}
-          {fallbackUnavailable && !nothingAtAll && (
+          {fallbackUnavailable && (
             <p className="text-xs text-text-faint">
               <Link href="/login" className="text-accent underline underline-offset-4">
                 Sign in
@@ -278,6 +238,45 @@ export default async function SearchPage({ searchParams }: PageProps<'/search'>)
               to search MusicBrainz for records not in the catalogue yet.
             </p>
           )}
+        </div>
+      )}
+
+      {/*
+       * The fallback, streamed. The first Suspense boundary in this repository.
+       *
+       * Emitted only when the rule says so — so for a signed-out visitor the
+       * component never mounts and `searchUpstream` is never called. That is
+       * the session decision enforced by the tree's shape rather than by a
+       * guard inside the request.
+       *
+       * Everything above this line has already been sent by the time the
+       * upstream request is outstanding, which is the whole of the change.
+       */}
+      {offerFallback && (
+        <div
+          /*
+           * A live region, because streaming created the need for one. While
+           * this section was rendered inline, a screen reader met it in
+           * document order like anything else. Now it arrives after the reader
+           * may already have passed this point, so its replacement has to be
+           * announced or it is simply never discovered.
+           *
+           * `polite` rather than `assertive`: this is a subordinate section and
+           * must not interrupt. The wrapper is the stable element and therefore
+           * the one that can carry this — the pending line inside it is
+           * replaced, and a live region declared on a node that is removed
+           * announces nothing.
+           *
+           * The pending text itself is deliberately not announced: it is
+           * present in the initial HTML, and live regions announce changes
+           * rather than initial content. Reading order already covers it.
+           */
+          aria-live="polite"
+          className={nothingLocal ? '' : 'mt-10'}
+        >
+          <Suspense fallback={<UpstreamPending centred={nothingLocal} />}>
+            <UpstreamPanel query={query} nothingLocal={nothingLocal} />
+          </Suspense>
         </div>
       )}
     </Container>

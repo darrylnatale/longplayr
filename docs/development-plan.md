@@ -171,6 +171,16 @@ Not a blocking phase, but it must land **before Phase 2**, because Phase 2 is wh
 - Capture on the single ingest path, for both the release group and the representative release
 - `enqueueMissingPayloads` plus `npm run db:backfill:payloads`, reusing `ingest_release_group` rather than inventing a job kind
 
+**A second reopening, for search reachability. [DECIDED 2026-08-22]**
+
+Recorded here because this section otherwise reads as a single, closed reopening while further Phase 1 work is in progress.
+
+**Phase 1's definition of done was found unmet.** It requires: _"Search for something not yet in the catalogue, add it from the MusicBrainz fallback, and reach its page within seconds."_ Real use showed an in-scope album could be **unreachable** — the fallback panel was gated on the local catalogue returning fewer than five albums, a condition `product-spec.md` §6 never contained. The decision is recorded in §6 and reconciles §8.10 fault 3.
+
+**The real-data smoke test did not catch this, and the gap is in the matrix rather than the run.** Every case passed, including _"MusicBrainz fallback add"_ — but that case used a findable album. There was no case for _an album whose title collides with common words already held_. Recorded so the matrix can be extended rather than trusted.
+
+**The latency half of that criterion — "within seconds" — is not addressed by this slice** and remains open (`current-state.md` §8). Making local results stop waiting for MusicBrainz is not the same as making MusicBrainz faster.
+
 **Explicitly not delivered.** Labels, external links, track recording MBIDs and producer credits are **captured but not modelled** — they get columns when a feature needs them, from stored payloads, at no fetch cost. **Artist details remain an open decision** (`product-spec.md` §8.9 neighbourhood): they are the only item needing an extra request, one per artist, since `/artist/` has never been called at all.
 
 ---

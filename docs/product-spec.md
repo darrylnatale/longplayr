@@ -293,6 +293,18 @@ Title, description, author, like count. Then the albums — numbered if ranked, 
 
 One input, results grouped by albums, artists, users. When an in-scope album isn't in the catalogue, results offer the MusicBrainz fallback with a one-click add.
 
+**The fallback is available for every signed-in search that carries a query, whatever the local catalogue returned. [DECIDED 2026-08-22]** It is not conditional on how many albums matched locally. This is stated explicitly because the implementation had quietly made it conditional — the panel rendered only when the local catalogue returned fewer than five albums, which meant a record the catalogue did not hold could become **unreachable** whenever five loose local matches crowded it out (§8.10). The sentence above always promised the fallback unconditionally; the condition was never a decision, and it is now removed rather than ratified.
+
+**Signed-out searches do not reach MusicBrainz. [DECIDED]** Restating an existing rule because the change above sits next to it: searching an external service on behalf of anonymous traffic is rate-limit exposure longplayr does not take. A signed-out visitor is told the fallback exists and invited to sign in, rather than being shown a thin page that looks like an empty catalogue.
+
+**Local results never wait for the upstream request. [DECIDED 2026-08-22]** Catalogue results, and the local empty state, are shown as soon as the catalogue answers. The MusicBrainz panel arrives separately, beneath them, whenever it arrives.
+
+**When the catalogue holds nothing for a query, that is said immediately** — before MusicBrainz has answered — and the fallback then fills in below it. The two facts are reported when each becomes true rather than being held back until both are known.
+
+**The fallback renders nothing when MusicBrainz returns no eligible result.** An empty panel is not drawn, and neither is a "nothing found upstream" notice; the absence of the section is the answer.
+
+**This makes the fallback reachable. It does not make it faster.** The upstream request costs what it costs — MusicBrainz is rate-limited to one request per second and answers when it answers. What changes is that the rest of the page no longer waits for it. Search latency is recorded separately as an open item and is untouched here.
+
 ### Admin
 
 Reports queue with content preview and actions (dismiss, remove, suspend, ban). Not a public surface; access-gated.
@@ -388,7 +400,7 @@ The catalogue's current 338 albums came from **ListenBrainz sitewide play counts
 
 **Unresolved:** whether to do (A) at all; the source list; whether (B) follows; the per-artist cap; and whether this is scheduled early or waits for Phase 5, since it is Phase 5 work and building ahead of the current phase needs saying so.
 
-**8.10 — Upstream search: breadth, and whether it matches artists. [OPEN — raised 2026-08-21]**
+**8.10 — Upstream search: breadth, and whether it matches artists. [PARTLY RESOLVED — raised 2026-08-21; the reachability half decided 2026-08-22]**
 
 Two limitations of the "not in longplayr yet" panel, both observed in use, neither previously recorded.
 
@@ -400,11 +412,11 @@ Two limitations of the "not in longplayr yet" panel, both observed in use, neith
 
 1. **The fuzzy tier is too permissive for short common words.** `search_albums` falls back to `similarity(title, query) > 0.3`, and trigram similarity is inflated when a short title shares a leading article: measured, `similarity('The Wall', 'the warning')` is **0.4** and matches, while `similarity('The Bends', 'the warning')` is 0.22 and does not. So any short `The …` title in a 338-album catalogue is a candidate.
 2. **The `simple` text configuration keeps stopwords.** `websearch_to_tsquery('simple', 'the warning')` yields `'the' & 'warning'`, so "the" is a required lexeme rather than being discarded — which degrades precision for every title containing an article.
-3. **The upstream panel is suppressed by exactly the flood the first two produce.** It renders only when the local catalogue returns **fewer than five** albums, so noisy local matches remove the only route to the record. **This is the fault that turns a ranking annoyance into a dead end.**
+3. ~~**The upstream panel is suppressed by exactly the flood the first two produce.**~~ **RESOLVED 2026-08-22.** It rendered only when the local catalogue returned **fewer than five** albums, so noisy local matches removed the only route to the record. **This was the fault that turned a ranking annoyance into a dead end**, and it is the one now decided: the fallback is available for every signed-in query regardless of local result count (§6). **Faults 1 and 2 are untouched** — they still produce the noisy results; they can simply no longer hide the way out.
 
-**Unresolved:** whether the panel gets a "show more"; whether the fewer-than-five threshold is the right gate at all, or whether the fallback should always be reachable regardless of local result count; whether the fuzzy threshold should rise, be length-aware, or be dropped when the query contains a leading article; whether the text configuration should switch to `english` for stopword removal, and what that costs for non-English titles — the catalogue is deliberately international, and `simple` was chosen for that reason; whether the query should search title _and_ artist, and if so whether that is separate inputs, a blended Lucene query, or a heuristic; and whether any of it is worth doing before the search latency in `current-state.md` §8 is addressed, since every additional upstream candidate is fetched in the render path.
+**Still unresolved, and deliberately not decided alongside the reachability fix:** whether the panel gets a "show more"; whether the fuzzy threshold should rise, be length-aware, or be dropped when the query contains a leading article; whether the text configuration should switch to `english` for stopword removal, and what that costs for non-English titles — the catalogue is deliberately international, and `simple` was chosen for that reason; whether the query should search title _and_ artist, and if so whether that is separate inputs, a blended Lucene query, or a heuristic; and whether any of it is worth doing before the search latency in `current-state.md` §8 is addressed, since every additional upstream candidate is fetched in the render path.
 
-**Note the interaction with §8.9.** A larger curated catalogue makes fault 3 _more_ likely, not less: more local records means more chances that five of them match loosely enough to hide the fallback.
+**The interaction with §8.9 is what made this urgent, and it is now defused.** A larger curated catalogue would have made fault 3 _more_ likely, not less — more local records means more chances that five match loosely enough to hide the fallback. With the gate gone, catalogue growth no longer degrades reachability. Faults 1 and 2 still mean a bigger catalogue produces noisier results, which remains a reason to settle them before a large reseed, but it is no longer a reason a record becomes unreachable.
 
 ## 9. Consistency check
 

@@ -128,6 +128,30 @@ Bundled docs live in `node_modules/next/dist/docs/` — read them before assumin
 
 ---
 
+## Development cycle
+
+Every coherent feature change or product slice follows these steps, in this order, with these exact names. Do not rename, merge, skip or invent steps.
+
+| Step  | Name                | Responsibility                                                                                                                                  |
+| ----- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A** | Discover / Reassess | Investigate current behaviour; identify defects, dependencies, scope risks and unanswered questions. No code changes                            |
+| **B** | Decide              | Resolve product and scope decisions explicitly. No implementation                                                                               |
+| **C** | Document            | Record those decisions in the authoritative documentation. No implementation                                                                    |
+| **D** | Plan / Review       | Produce the implementation plan and independently review the boundary before coding. No implementation                                          |
+| **E** | Implement           | Implement exactly the approved plan                                                                                                             |
+| **F** | Verify              | Run the required verification and establish the actual test state                                                                               |
+| **G** | Review              | Independently review the implementation against the approved decision, boundary, tests and repository state. **No modifications during review** |
+| **H** | Commit              | Commit only after STEP G returns READY TO COMMIT                                                                                                |
+| **I** | Push                | Push only the reviewed commit                                                                                                                   |
+| **J** | CI                  | Verify CI to a terminal state where possible. **Never claim CI success without evidence of a completed successful run**                         |
+| **K** | Checkpoint          | Reconcile `docs/current-state.md` with the actual repository, remote and CI state                                                               |
+
+**The full cycle is not required for every tiny bug fix** — use judgment based on scope. But any **feature, schema change, migration, auth-adjacent change or product decision** goes through all of it unless explicitly directed otherwise.
+
+**Do not collapse Decide, Document, Plan / Review, Implement, Verify and Review into one turn merely because the implementation looks straightforward.** The separation exists for two reasons: it stops implementation assumptions becoming product decisions by default, and it provides an independent review before anything is committed. A slice that seems obvious is exactly the one where an unexamined assumption travels furthest.
+
+---
+
 ## Working agreement
 
 **Surface material decisions before acting on them.** Anything affecting product, UX, data model, architecture, security, privacy, or external services gets presented — decision, why it matters, options, recommendation, tradeoffs, consequences, reversibility — and waits for an answer. A permission prompt is not approval of the underlying decision.
