@@ -104,11 +104,11 @@ Lists, follows, activity, feed, notifications, messaging, taste overlap and prof
 | `catalogue_additions` | 3                                                     |
 | `profiles`            | 3 (test accounts — see §8)                            |
 
-**Eleven migrations applied. Local has `20260821120000_create_upstream_payloads`; staging does not yet** — the earlier ten were in sync, confirmed with `npx supabase migration list --linked` on 2026-08-19. Two were pushed to staging that day: `20260818120000_create_collection`, and `20260819100000_clear_wishlist_on_create_only` correcting the clearing rule (§15). Staging can be queried read-only with `npx supabase db query --linked "<sql>"`, which is how these numbers were checked.
+**Eleven migrations applied; local and staging are in sync**, confirmed with `npx supabase migration list --linked` on 2026-08-22 after `20260821120000_create_upstream_payloads` was pushed to staging ahead of the code that needs it, confirmed with `npx supabase migration list --linked` on 2026-08-19. Two were pushed to staging that day: `20260818120000_create_collection`, and `20260819100000_clear_wishlist_on_create_only` correcting the clearing rule (§15). Staging can be queried read-only with `npx supabase db query --linked "<sql>"`, which is how these numbers were checked.
 
 ### Git state
 
-**`HEAD` and `origin/main` are both `e2cd611`**, plus the uncommitted payload-capture slice this checkpoint describes. The working tree is clean, nothing is uncommitted, and the branch is neither ahead nor behind. The design foundation and every Phase 2 slice through collection sorting are committed and pushed:
+**`HEAD` and `origin/main` are both `7cc5ab2`.** The working tree is clean, nothing is uncommitted, and the branch is neither ahead nor behind. The working tree is clean, nothing is uncommitted, and the branch is neither ahead nor behind. The design foundation and every Phase 2 slice through collection sorting are committed and pushed:
 
 | Commit    | Slice                                                 |
 | --------- | ----------------------------------------------------- |
@@ -123,6 +123,7 @@ Lists, follows, activity, feed, notifications, messaging, taste overlap and prof
 | `2fe8b00` | Collection sorting — six fixed modes, plus its docs   |
 | `a274dcc` | Checkpoint: collection sorting pushed, CI #43         |
 | `e2cd611` | Two grid defects fixed; artwork fetched via `after()` |
+| `7cc5ab2` | Upstream payload capture, and the widened `inc`       |
 
 `e1f29c3`, earlier, recorded the Want to Listen profile-visibility decision and changed no code.
 
@@ -132,7 +133,7 @@ Lists, follows, activity, feed, notifications, messaging, taste overlap and prof
 
 **CI run #43 on `2fe8b00` is green** — the first run to see collection sorting, and the first to execute **184 unit and component, 355 integration, 1 seed and 66 end-to-end** tests, matching the local `verify:full` on the same tree exactly. Those counts are a property of the files rather than of the run, so they follow from the commit; **the green result itself was confirmed by the maintainer rather than read from the API in this session**, which is worth saying because everything else in this section was checked directly.
 
-**The counts in §1 — 201 / 372 / 1 / 67 — are the local `verify:full` result for the uncommitted tree**, not a CI-verified state. `2fe8b00` was CI-verified at 184 / 355 / 1 / 66; `e2cd611` added 17 unit tests for the placeholder fix, 2 integration tests for job priority and 1 end-to-end test for the tile link, and the uncommitted payload slice adds 15 more integration tests.
+**CI is green on `e2cd611` and on `7cc5ab2`**, both confirmed by the maintainer rather than read from the API in this session. The counts in §1 — **201 / 372 / 1 / 67** — are therefore the committed, pushed and CI-verified state of `7cc5ab2`, not of a working tree.
 
 The habit of leaving implementation uncommitted while documentation lands ahead of it is deliberate, but it has a cost worth naming: for several checkpoints this paragraph described a working tree that no longer existed. A checkpoint that describes the wrong tree is worse than one that says nothing. This slice committed code and documentation together in one commit, which is the arrangement that makes the problem structurally impossible rather than merely watched for.
 
@@ -1083,9 +1084,9 @@ Collection **filtering** — and therefore the decade-filter disagreement betwee
 
 ---
 
-## 24. Upstream payload capture — implemented, **not committed**
+## 24. Upstream payload capture — implemented, verified and committed
 
-**The current uncommitted slice**, and a deliberate Phase 1 reopening (`development-plan.md`).
+A deliberate Phase 1 reopening (`development-plan.md`), committed as `7cc5ab2` and green in CI.
 
 ### Why it jumped the queue
 
@@ -1106,11 +1107,15 @@ Every album ingested without capture loses data permanently, recoverable only at
 
 **Labels, external links, track recording MBIDs and producer credits are captured but not modelled.** They get columns when a feature needs them, from stored payloads, at no fetch cost — browse-by-label in particular needs decisions about multiple labels per release, catalogue numbers and sublabel hierarchies that only become clear when designing the page. **Artist details remain open**: the only item needing an extra request, one per artist, since `/artist/` has never been called.
 
-### Two things to carry
+### Verified on staging, 2026-08-22
 
-**The widened `inc` is `[VERIFY]`, not verified.** MusicBrainz rejects some combinations and larger responses are slower on a path whose latency is already a recorded complaint. **Local cannot test it** — `MUSICBRAINZ_CONTACT` is a placeholder there by design — so this must be checked against staging before anything relies on it.
+**The widened `inc` works and costs nothing measurable.** A self-service add on staging succeeded under `url-rels` and `artist-rels+url-rels` and took **about as long as before**, which is the check local could never perform. The `[VERIFY]` in `architecture.md` §7a is cleared.
 
-**Staging has not had the migration.** Local is eleven migrations, staging is ten. The backfill cannot run until `20260821120000` is pushed, and it costs roughly two seconds per album — about ten minutes for 338 — because each album is two serialised MusicBrainz requests.
+**The `after()` artwork fix is confirmed in production**, on the same add: the cover appeared **immediately** rather than on the next daily cron. That closes the half of the latency item §8 records as fixed.
+
+**The migration reached staging before the code did**, deliberately. `storeUpstreamPayload` throws on a failed write and sits on the single ingest path, so deploying the code first would have broken every self-service add on staging — the exact feature the check above exercises. Migration-then-code is strictly safe in that direction, since creating a table breaks no deployed code.
+
+**The backfill is now unblocked and has not been run.** `npm run db:backfill:payloads` queues; `BACKFILL_DRAIN=true` fetches. Roughly two seconds per album — about ten minutes for 338 — because each is two serialised MusicBrainz requests. Until it runs, only albums added since `7cc5ab2` have stored payloads.
 
 ---
 
