@@ -400,6 +400,8 @@ The catalogue's current 338 albums came from **ListenBrainz sitewide play counts
 
 **Unresolved:** whether to do (A) at all; the source list; whether (B) follows; the per-artist cap; and whether this is scheduled early or waits for Phase 5, since it is Phase 5 work and building ahead of the current phase needs saying so.
 
+**Two things changed since this was raised, both making it more tractable rather than more urgent.** The reachability defect in §8.10 that would have been _worsened_ by a larger catalogue is **fixed and shipped**; and every album on staging now has its MusicBrainz response stored locally (`current-state.md` §26), so examining what the catalogue holds — including track-level structure — is a local query rather than hundreds of rate-limited requests. **Neither decides anything here.** The strategy, the source list and the per-artist cap all remain unresolved, and **the seed must not run before they are settled.**
+
 **8.10 — Upstream search: breadth, and whether it matches artists. [PARTLY RESOLVED — raised 2026-08-21; the reachability half decided 2026-08-22]**
 
 Two limitations of the "not in longplayr yet" panel, both observed in use, neither previously recorded.
