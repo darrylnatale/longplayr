@@ -313,17 +313,17 @@ Reports queue with content preview and actions (dismiss, remove, suspend, ban). 
 
 ## 7. Explicitly deferred
 
-| Deferred                    | Reasoning                                                                                                                                                                             |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Comments                    | Largest moderation liability in the product. Likes give reciprocity at a fraction of the risk. Revisit once there's a community worth moderating                                      |
-| Private accounts            | All-public keeps every read path simple — no viewer-permission filtering in feeds, album pages, or search. Retrofitting is genuinely expensive, so this is a real bet, made knowingly |
-| Track-level anything        | Would double the data model to dilute the album-centric identity                                                                                                                      |
-| Streaming OAuth / import    | Adds third-party dependency, ToS exposure, and token management before the core loop is proven                                                                                        |
-| Algorithmic recommendations | Requires a userbase that doesn't exist yet. Collection-overlap recs need collections to overlap                                                                                       |
-| Per-item list notes         | Additive later without migration, unlike ranked ordering which is settled now                                                                                                         |
-| Genres and tags             | Useful for discovery, but MusicBrainz genre data needs evaluation before committing                                                                                                   |
-| Year in review              | High organic-growth value, but needs a year of data to exist first                                                                                                                    |
-| Native apps                 | Responsive web first                                                                                                                                                                  |
+| Deferred                    | Reasoning                                                                                                                                                                                                                                                        |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Comments                    | Largest moderation liability in the product. Likes give reciprocity at a fraction of the risk. Revisit once there's a community worth moderating                                                                                                                 |
+| Private accounts            | All-public keeps every read path simple — no viewer-permission filtering in feeds, album pages, or search. Retrofitting is genuinely expensive, so this is a real bet, made knowingly                                                                            |
+| Track-level anything        | Would double the data model to dilute the album-centric identity. **Still deferred.** §10.7 records a direction in which a track becomes a **catalogue and discovery** object without becoming a social one — that is not a reversal, and does not move this row |
+| Streaming OAuth / import    | Adds third-party dependency, ToS exposure, and token management before the core loop is proven. **Still deferred, and passive scrobbling remains a §2 non-goal.** §8.11 records it as a capability under investigation; an investigation is not a scope decision |
+| Algorithmic recommendations | Requires a userbase that doesn't exist yet. Collection-overlap recs need collections to overlap                                                                                                                                                                  |
+| Per-item list notes         | Additive later without migration, unlike ranked ordering which is settled now                                                                                                                                                                                    |
+| Genres and tags             | Useful for discovery, but MusicBrainz genre data needs evaluation before committing                                                                                                                                                                              |
+| Year in review              | High organic-growth value, but needs a year of data to exist first                                                                                                                                                                                               |
+| Native apps                 | Responsive web first. **Still deferred.** `architecture.md` §19 records the constraints that keep a second client from becoming expensive — which is not a commitment to build one                                                                               |
 
 ---
 
@@ -416,7 +416,45 @@ Two limitations of the "not in longplayr yet" panel, both observed in use, neith
 
 **Still unresolved, and deliberately not decided alongside the reachability fix:** whether the panel gets a "show more"; whether the fuzzy threshold should rise, be length-aware, or be dropped when the query contains a leading article; whether the text configuration should switch to `english` for stopword removal, and what that costs for non-English titles — the catalogue is deliberately international, and `simple` was chosen for that reason; whether the query should search title _and_ artist, and if so whether that is separate inputs, a blended Lucene query, or a heuristic; and whether any of it is worth doing before the search latency in `current-state.md` §8 is addressed, since every additional upstream candidate is fetched in the render path.
 
+**Follow-ups from manual testing of the shipped fix, 2026-08-23.** Observations from using the deployed product, recorded as **unresolved**. None is decided, none is scheduled, and none should be inferred into scope.
+
+**One is settled, by testing rather than by decision:** the MusicBrainz panel **arriving after the rest of the page reads naturally**. That was the open risk in streaming it — content appearing late is new behaviour for this product — and manual use confirms it works. **No change needed.**
+
+**The rest remain open:**
+
+- **The page is substantially faster** because local results no longer wait. Confirmed, and recorded so a future reader knows the change achieved what it claimed.
+- **The remaining ~20-second MusicBrainz wait is still too long.** Making it non-blocking was not a latency fix and was never claimed to be. This is **a separate future performance problem**, tracked alongside the add-path latency in `current-state.md` §8. The candidate levers — streaming was one, queueing the tracklist fetch is another — are unexamined here.
+- **Search should not require pressing Enter.** The interaction is **undecided**: search-as-you-type, an explicit button, clearer instruction, or something else. Search-as-you-type in particular interacts badly with a rate-limited upstream call, which is a reason to think rather than a reason to reject.
+- **Five upstream suggestions are not enough.** Revisit the limit, and whether the answer is "show more", a different limit, or another discovery mechanism entirely.
+- **Upstream candidates should ideally show artwork.** Currently they render the `AddSlot` placeholder, which is deliberate — it distinguishes "could be added" from "held, no cover" — so this is a change to a considered decision rather than a gap. Cover Art Archive is keyed by release-group MBID, which the candidates carry, so the data is reachable; the cost is per-candidate requests on a path already slow.
+
+**These are follow-ups to a shipped feature, not architectural direction.** They belong to Search, not to `product-spec.md` §10.
+
 **The interaction with §8.9 is what made this urgent, and it is now defused.** A larger curated catalogue would have made fault 3 _more_ likely, not less — more local records means more chances that five match loosely enough to hide the fallback. With the gate gone, catalogue growth no longer degrades reachability. Faults 1 and 2 still mean a bigger catalogue produces noisier results, which remains a reason to settle them before a large reseed, but it is no longer a reason a record becomes unreachable.
+
+**8.11 — Listening ingestion: should longplayr accept automatically detected listening? [OPEN — raised 2026-08-22, under investigation]**
+
+**Filed here, and deliberately not in §10, because it is not decided.** §10 records direction that has been chosen; this has not been. It is recorded as a capability to investigate.
+
+**The scope status is unchanged.** §2 still reads _"**Not a scrobbler.** Listening is recorded deliberately by the user, not captured passively"_, and `CLAUDE.md` still lists **passive scrobbling** under _Deliberately not in scope_. Recording an investigation does not move an item off that list — only an explicit scope decision does, by the mechanism `CLAUDE.md` names and that messaging and taste overlap went through.
+
+**The question.** A user who listens through a supported service might have that activity reflected in longplayr without adding every record by hand. Last.fm-style scrobbling is the reference point.
+
+**What must not be assumed:**
+
+- **That Spotify integration is available**, technically or legally. Their terms, their API surface and their attitude to derived listening data are all unexamined here.
+- **That Last.fm is the right path**, or any path.
+- **That every source behaves alike.** YouTube in particular may offer nothing comparable, so any design that assumes a single provider is wrong before it is written.
+
+**What the investigation would have to answer, none of it inferable:**
+
+- Whether an automatically detected listen creates a **collection entry** at all, or something weaker that never becomes one without a deliberate act.
+- **How automatic listening is distinguished from deliberate collection** — §5 of the direction brief requires the distinction, and the current model has **no home for it**: `collection_entries` carries no origin or provenance column.
+- Whether automatic listening generates **feed events**. The existing eligibility rule turns on write path — _"an interactive add produces an event; a bulk or imported write does not"_ — which **suggests** silence, but that rule was written about backfills, and reading a scrobble decision out of it would be inference rather than decision.
+- How it interacts with **one entry per user per album, permanently**, which is non-negotiable and says nothing about repeated plays beyond the relisten counter.
+- Whether ingestion changes what a **rating or review** means when the entry arrived without the user asking for it.
+
+**Nothing here authorises building any of it.**
 
 ## 9. Consistency check
 
@@ -613,6 +651,28 @@ Specifically to investigate: applicable **Digital Services Act** obligations for
 - **How many controls a tile can carry** before the record-shelf reading the grid exists for is damaged — the reference carries none, and `design-reference.md` §8 says the interface is a frame, not a picture.
 
 **Phase.** Unscheduled. Part (a) is reachable inside Phase 2 since every relation it touches exists; part (b) spans surfaces that Phases 3–5 will still be changing, and the touch question should be answered before either is built.
+
+### 10.7 Catalogue depth, and eventual completion
+
+**Recorded 2026-08-22. Direction, not built scope. The completion algorithm is explicitly undecided and must not be inferred.**
+
+The album is longplayr's social object and remains so. This section is about the **catalogue** underneath it becoming capable of representing more of recorded music than a canonical album list does.
+
+**The illustrative case is an artist like Madonna**, whose documented output includes canonical albums, alternate and regional editions, bonus tracks — Japanese bonus tracks being the standing example — deluxe editions, soundtrack appearances, guest appearances, compilation-only material, and recordings that no conventional discography surfaces at all. A catalogue that can only say "here are the twelve albums" cannot describe that artist honestly.
+
+**This absorbs the earlier _Unheard_ concept** — helping a listener find lesser-known material associated with an artist, including recordings a normal discography hides.
+
+**The eventual experience might be something like _"you've heard 80% of this artist's documented output"_**, with the remainder browsable. That phrasing is illustrative, not a specification.
+
+**What is decided here is only the constraint, and it is architectural rather than product:** the domain model must not make these relationships impossible to represent later. That constraint is recorded in `architecture.md` §19.
+
+**Everything else is speculative and must stay that way:**
+
+- **How completion is calculated.** Whether remixes, live recordings, bonus tracks, regional editions, guest appearances, bootlegs and promotional recordings count — and whether they count equally — is **undecided**. There is no default here to fall back on; several defensible answers exist and they produce very different products.
+- **Whether a percentage is the right framing at all**, or whether it gamifies listening in a way §7's rejection of gamification would refuse.
+- **Whether this ships as an artist-page feature, a discovery surface, or neither.**
+
+**This does not reverse the track decision.** §2 keeps _"Not track-level"_, and `CLAUDE.md` keeps _"Tracks are never rated, reviewed, logged or listed."_ The direction preserved is narrower: an album may remain the only **social** object while a track becomes usable as a **catalogue and discovery** object. That split is coherent, but it is a direction rather than a decision, and it **strains two existing rules** — see §11 of `data-model.md`, where the tension is recorded rather than resolved.
 
 ### 10.5 Social philosophy
 

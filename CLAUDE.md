@@ -15,6 +15,7 @@ These are decided. Do not change them without raising the decision explicitly fi
 - **Feed events record interactions, not history.** An event is generated when a user acts, at the moment they act — that is the whole invariant. **A user-supplied `listened_on` never decides it**: an album added by hand is an interaction whether the listen was last night or in 1997. **Historical and backfilled collection data must never generate events** — a collection arriving in bulk is history being recorded, not hundreds of interactions, and treating it as the latter floods every follower's feed and cannot be undone. Adding to Want to Listen is an interaction and does generate an event. This sentence is the rule, **not the list of event types**; `docs/product-spec.md` and the owning phase define those, and the list grows.
 - **Singles are never ingested.** Catalogue scope is albums, EPs and mixtapes — including live albums, compilations and soundtracks. Enforced at ingest, not at query time.
 - **The catalogue is read-only downstream of MusicBrainz.** No user-authored metadata, ever.
+- **Canonical catalogue identity is MusicBrainz-shaped. Provider identifiers are enrichment attached to an entity, never the identity of one.** **[DECIDED 2026-08-23]** longplayr owns music identity and user relationships; it does not own the streaming catalogue. A Spotify, Apple Music, YouTube or Discogs identifier may hang off an album or track we already identify by MBID — it may never be what identifies one. Currently true by absence, and recorded now because the first integration is exactly where it would be broken casually, and because retrofitting identity is a migration across every relation. **This authorises no provider integration.** See `architecture.md` §19.1.
 - **Ratings are optional, 0.0–10.0 to one decimal.** Unrated entries are excluded from averages.
 - **Tracks are never rated, reviewed, logged or listed.** Tracklists are display-only.
 - **Everything user-generated is public.** No private accounts, no per-entry visibility.
@@ -27,11 +28,13 @@ These are decided. Do not change them without raising the decision explicitly fi
 
 Comments, private accounts, track-level features, streaming integration or OAuth, passive scrobbling, in-app playback, gamification. Each is deferred with reasoning in `docs/product-spec.md` §7. Do not add any of them without an explicit scope decision.
 
+**Passive scrobbling is under investigation and has NOT left this list** (`product-spec.md` §8.11, 2026-08-22). An investigation is not a scope decision; §2 still reads "Not a scrobbler". **Track-level features have not left it either** — §10.7 records a direction in which a track becomes a catalogue and discovery object without becoming a social one, which does not reverse "Tracks are never rated, reviewed, logged or listed".
+
 **Direct messaging and taste overlap left this list on 2026-08-18 by explicit scope decision** — the mechanism this section requires. Both are now recorded direction in `docs/product-spec.md` §10. **Neither is implemented, neither is scheduled, and both carry unresolved product questions that must be asked rather than inferred.** Messaging additionally has a blocking legal-research precondition (§10.4). Nothing here authorises building either one.
 
 ## Recorded direction is not scope
 
-`docs/product-spec.md` §10 records product direction that is **decided but deliberately unbuilt**: Want to Listen **beyond the album-level relation**, taste overlap, profile photo/bio/city, direct messaging, and **quick actions on a tile and on an upstream search result** (§10.6). Dating-specific profile fields are explicitly excluded.
+`docs/product-spec.md` §10 records product direction that is **decided but deliberately unbuilt**: Want to Listen **beyond the album-level relation**, taste overlap, profile photo/bio/city, direct messaging, **quick actions on a tile and on an upstream search result** (§10.6), and **catalogue depth and eventual completion** (§10.7). Dating-specific profile fields are explicitly excluded.
 
 **One part of Want to Listen has since been scheduled and built**, and is the only exception in this section: the album-level relation and its action-card control, delivered as a Phase 2 slice. Its **profile destination, and any Activity or feed integration, remain unbuilt and unscheduled** — being decided is still not being scheduled, which is the whole point of this section.
 
@@ -148,6 +151,8 @@ Every coherent feature change or product slice follows these steps, in this orde
 
 **The full cycle is not required for every tiny bug fix** — use judgment based on scope. But any **feature, schema change, migration, auth-adjacent change or product decision** goes through all of it unless explicitly directed otherwise.
 
+**When reporting progress, lead with the current step and the cycle name**, on two lines — `STEP D: Plan / Review` then `Cycle: Search reachability` — before anything else.
+
 **Do not collapse Decide, Document, Plan / Review, Implement, Verify and Review into one turn merely because the implementation looks straightforward.** The separation exists for two reasons: it stops implementation assumptions becoming product decisions by default, and it provides an independent review before anything is committed. A slice that seems obvious is exactly the one where an unexamined assumption travels furthest.
 
 ---
@@ -159,6 +164,12 @@ Every coherent feature change or product slice follows these steps, in this orde
 Low-risk editorial choices (file names, structure, wording, formatting) don't need approval. If unsure whether something is material, treat it as material.
 
 **Use plan mode** before any non-trivial change, and always for schema changes and auth-adjacent work.
+
+**Where domain logic lives.** **[DECIDED 2026-08-23]** The test is: **if a native client would need this rule to behave correctly, it belongs in `src/services/`. If it only shapes what the web renders, it does not.**
+
+This extends the non-negotiable above it — that rule polices _data access_, this one polices _domain logic_, and they are not the same thing. It exists because a second client is plausible (`architecture.md` §19.3) and because the boundary has already drifted in both directions: `shouldOfferFallback` encodes a product rule in `src/app/search/`, while `collectionPath` builds a web URL inside `src/services/`.
+
+**Neither is a defect and neither is to be refactored.** This is a test for new work, not a cleanup task.
 
 Items marked **[OPEN]** in the docs are unresolved by design — raise them, don't resolve them silently. Items marked **[VERIFY]** in `docs/architecture.md` §18 must be checked against current documentation before the code that depends on them is written.
 

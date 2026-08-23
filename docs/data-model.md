@@ -428,7 +428,7 @@ Every catalogue entity has a unique MBID. Re-ingesting an album is an upsert on 
 
 ## 10. Entities implied by recorded product direction
 
-`product-spec.md` §10 records four areas of decided-but-unbuilt direction. None of the entities below exist, none are designed, and none should be created without first asking the product questions §10 lists. They are named here so that a future migration does not discover them late.
+`product-spec.md` §10 records several areas of decided-but-unbuilt direction. None of the entities below exist, none are designed, and none should be created without first asking the product questions §10 lists. They are named here so that a future migration does not discover them late.
 
 **Want to Listen** (§10.1). **Schema resolved 2026-08-18.** A user–album relation held in **its own table**, separate from the collection. It is the **third** independent user–album relation after collection entries and favourites, and that is the point at which a generic `user_album_relation` table starts to look attractive — it should be resisted, because it makes every read polymorphic and forces a discriminator into queries that are currently direct. Keep the relations as separate tables.
 
@@ -465,10 +465,21 @@ Message retention is an open question with a legal dimension, so the schema must
 
 ---
 
+**Catalogue depth** (§10.7, recorded 2026-08-22). Nothing is designed and nothing should be. The direction is that the catalogue may eventually represent more than a canonical album list — alternate and regional editions, bonus tracks, soundtrack and guest appearances, compilation-only material. **The current model is already shaped for most of this**: `albums` (release group) → `releases` (edition) → `tracks` is the MusicBrainz shape, and `album_artists` already carries credit position, so a guest appearance has somewhere to live in principle.
+
+**Two things are absent rather than wrong.** There is **no appearance entity** distinguishing "this artist performed on this recording" from "this album is credited to this artist"; and **`tracks` carries no MusicBrainz identifier at all** — see §11.10. Neither should be added speculatively. They are named so a future migration does not meet them cold.
+
+**External provider identity** (`architecture.md` §19.1). If streaming links are ever stored rather than constructed, they belong in a relation **keyed to a catalogue entity and carrying a provider discriminator** — never as columns on `albums` or `tracks`, and never as the identity of either. `upstream_payloads` already demonstrates the shape with `(source, source_id, kind)`.
+
+**Listening ingestion** (`product-spec.md` §8.11). **Undecided, and passive scrobbling remains a §2 non-goal.** If it is ever built, `architecture.md` §19.2 and §19.4 record the two constraints that would apply: a source discriminator from the first row, and a provenance distinction between deliberate and automatic entries. **`collection_entries` has no such column today**, which is worth knowing before anyone assumes ingestion is a small change.
+
 ## 11. Open questions carried from product direction
 
 These duplicate `product-spec.md` §10 deliberately, because a schema author reads this document and not that one. **The authoritative list is in `product-spec.md` §10. Do not answer any of them here.**
 
+- **11.10** — **Should `tracks` carry a MusicBrainz recording MBID?** Raised 2026-08-22. MusicBrainz distinguishes a **recording** (the audio, shared across every release it appears on) from a **track** (that recording's position on one release). `tracks` stores neither, so a track has **no upstream identity**: it cannot be reconciled when MusicBrainz corrects or merges a recording, cannot be recognised as the same recording across releases, and cannot be counted toward anything. Harmless while tracklists are display-only; a prerequisite for the completion direction in `product-spec.md` §10.7. Adding the column later is cheap, **backfilling it is not** — roughly one rate-limited request per release, and the cost grows with the catalogue
+- **11.11** — **Does the collection need a provenance concept?** Raised 2026-08-22, and reachable only if `product-spec.md` §8.11 is ever decided. `collection_entries` distinguishes nothing about how a row came to exist. See `architecture.md` §19.4
+- **11.12** — **A tension, recorded rather than resolved.** `CLAUDE.md` states _"Tracks are never rated, reviewed, **logged** or listed. **Tracklists are display-only**."_ The catalogue-depth direction would have tracks read for discovery and completion, which is neither rating nor reviewing nor listing — but is also not display-only. **The rule is unchanged and this is not a request to change it.** It is recorded because a completion feature would have to face it
 - ~~**11.1** — Can an album be simultaneously collected and on Want to Listen?~~ **RESOLVED — yes, independent relations.** See §10.
 - ~~**11.2** — Do collection adds, ratings, likes, reviews or relistens remove an album from Want to Listen?~~ **RESOLVED — yes, all of them.** One rule: any action that causes a collection entry to exist clears Want to Listen. See §10.
 - ~~**11.3** — Is Want to Listen public on the profile?~~ **RESOLVED 2026-08-19 — yes, public, as its own profile tab.** The all-public model keeps its no-exceptions property, so no per-viewer filtering enters the schema. See `product-spec.md` §10.1. **This settles profile visibility only** — whether the same activity can be hidden from the _feed_ is a separate, still-open question, and no schema should be shaped for it yet.
