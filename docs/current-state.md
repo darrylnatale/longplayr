@@ -108,7 +108,7 @@ Lists, follows, activity, feed, notifications, messaging, taste overlap and prof
 
 ### Git state
 
-**`HEAD` and `origin/main` are both `59f1b6f`.** The working tree is clean, nothing is uncommitted, and the branch is neither ahead nor behind. The design foundation, every Phase 2 slice through collection sorting, and both Phase 1 reopenings are committed and pushed:
+**`HEAD` and `origin/main` are both `0e3a33f`.** The working tree is clean, nothing is uncommitted, and the branch is neither ahead nor behind. The design foundation, every Phase 2 slice through collection sorting, and both Phase 1 reopenings are committed and pushed:
 
 | Commit    | Slice                                                  |
 | --------- | ------------------------------------------------------ |
@@ -127,6 +127,7 @@ Lists, follows, activity, feed, notifications, messaging, taste overlap and prof
 | `52eb386` | Checkpoint: `inc` verified on the live API             |
 | `f2e0aab` | Search reachability — unconditional, streamed fallback |
 | `59f1b6f` | Future direction, architectural constraints, backfill  |
+| `0e3a33f` | Checkpoint: future direction reconciled                |
 
 `e1f29c3`, earlier, recorded the Want to Listen profile-visibility decision and changed no code.
 
@@ -138,6 +139,10 @@ Lists, follows, activity, feed, notifications, messaging, taste overlap and prof
 
 **CI is green on `e2cd611`, `7cc5ab2`, `52eb386` and `f2e0aab`**, each reported by the maintainer at the time and **since verified through the GitHub API**: runs **#45, #46, #47 and #48**, all `completed/success`. For most of this project CI could not be queried from the working environment — `gh` was not installed, no token was set, and the repository is private, so an unauthenticated fetch of the Actions page returned 404. **`gh` was installed and authenticated on 2026-08-23**, so STEP J is now verifiable directly instead of being handed back each cycle. The counts in §1 — **208 / 372 / 1 / 73** — are therefore the committed, pushed and CI-verified state of `f2e0aab`, not of a working tree. Test counts are a property of the files rather than of any run, so they follow from the commit; the green results themselves were reported by the maintainer.
 **CI run #49 on `59f1b6f` is green** — run ID `32652839588`, `completed/success`, **both jobs successful on attempt 1 with neither retry consumed**. The first run read directly from the GitHub API rather than reported second-hand. It is documentation-only, so it changed no counts; **#48 on `f2e0aab` remains the run that verified the code** at 208 / 372 / 1 / 73. That the end-to-end suite passed first time is worth noting against the navigation flake in §8, which has cost a retry or a local run repeatedly — it is evidence about that flake's intermittency, not evidence it is resolved.
+
+**CI run #50 on `0e3a33f` is green** — run ID `32654700487`, `completed/success`, **both jobs successful on attempt 1**, **73 of 73 end-to-end tests passing with no Playwright retry consumed**. The `Upload Playwright report` step shows as _skipped_, which is the workflow behaving correctly: it is guarded by `if: failure()`, so its absence is evidence the suite passed. The log also contains `Retrying after 4s: public.ecr.aws/supabase/…` lines — those are **Docker image pulls during `Start Supabase`**, registry backoff rather than test retries, and were checked rather than assumed.
+
+**Two consecutive green runs with no retries is not evidence the navigation flake is resolved.** Both #49 and #50 were documentation-only commits, and the flake is load-sensitive rather than deterministic. It remains `[OPEN]` in §8.
 
 The habit of leaving implementation uncommitted while documentation lands ahead of it is deliberate, but it has a cost worth naming: for several checkpoints this paragraph described a working tree that no longer existed. A checkpoint that describes the wrong tree is worse than one that says nothing. This slice committed code and documentation together in one commit, which is the arrangement that makes the problem structurally impossible rather than merely watched for.
 

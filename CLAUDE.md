@@ -151,6 +151,16 @@ Every coherent feature change or product slice follows these steps, in this orde
 
 **The full cycle is not required for every tiny bug fix** — use judgment based on scope. But any **feature, schema change, migration, auth-adjacent change or product decision** goes through all of it unless explicitly directed otherwise.
 
+**Every cycle ends with a CYCLE HANDOFF**, written for the maintainer rather than for a developer, and understandable without reading the STEP A–K reports. Exactly five headings, each concise:
+
+| Heading                    | Contents                                                                                                                                   |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| **What changed**           | Plain-language summary of what the cycle accomplished                                                                                      |
+| **How to test it**         | Manual steps **only if there is something meaningful to test**. For a documentation or direction cycle, say plainly that there is nothing  |
+| **What I should tell you** | Only where the maintainer's judgement, observation or decision would **materially affect the next work**. **Do not manufacture questions** |
+| **Still open**             | The important unresolved items carried forward                                                                                             |
+| **Next cycle**             | The recommendation and why, in one or two sentences                                                                                        |
+
 **When reporting progress, lead with the current step and the cycle name**, on two lines — `STEP D: Plan / Review` then `Cycle: Search reachability` — before anything else.
 
 **Do not collapse Decide, Document, Plan / Review, Implement, Verify and Review into one turn merely because the implementation looks straightforward.** The separation exists for two reasons: it stops implementation assumptions becoming product decisions by default, and it provides an independent review before anything is committed. A slice that seems obvious is exactly the one where an unexamined assumption travels furthest.
