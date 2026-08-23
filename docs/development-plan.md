@@ -73,7 +73,7 @@ Phases 0–2 constitute the product's spine. If work stopped after Phase 2, long
 - MusicBrainz client with rate limiting and a descriptive User-Agent
 - Job queue table plus cron endpoint to drain it
 - Ingestion: release groups, artists, artist credits, representative release, tracklist
-- Scope filter at ingest — albums, EPs, mixtapes; **no singles**
+- Scope filter at ingest — albums, EPs, mixtapes; **no singles** (a current boundary, not a permanent principle — see the third reopening below)
 - Artwork pipeline: Cover Art Archive alone, keyed by release-group MBID, stored in Supabase Storage at three derivative sizes (250, 500, 1200). **No fallback source** — see `architecture.md` §7
 - Designed artwork placeholder for coverage gaps
 - Album page (read-only, no personal state)
@@ -103,7 +103,7 @@ Phases 0–2 constitute the product's spine. If work stopped after Phase 2, long
 
 **Tests required**
 
-- Scope filter: singles never enter the catalogue, under every input shape
+- Scope filter: singles do not enter the catalogue, under every input shape. **The requirement is unchanged and must not be weakened**; only its justification changed on 2026-08-23 from a permanent principle to a current boundary
 - Self-service additions are capped at 30/hour and 100/day per user
 - Upsert idempotency: re-ingesting an album produces no duplicates
 - Rate limiter genuinely limits — this is easy to get subtly wrong and expensive to discover in production
@@ -181,7 +181,25 @@ Recorded here because this section otherwise reads as a single, closed reopening
 
 **The latency half of that criterion — "within seconds" — is not addressed by this slice** and remains open (`current-state.md` §8). Making local results stop waiting for MusicBrainz is not the same as making MusicBrainz faster.
 
-**Explicitly not delivered.** Labels, external links, track recording MBIDs and producer credits are **captured but not modelled** — they get columns when a feature needs them, from stored payloads, at no fetch cost. **Artist details remain an open decision** (`product-spec.md` §8.9 neighbourhood): they are the only item needing an extra request, one per artist, since `/artist/` has never been called at all.
+**Explicitly not delivered.** Labels, external links, track recording MBIDs and producer credits are **captured but not modelled** — they get columns when a feature needs them, from stored payloads, at no fetch cost. **Artist details remain unbuilt**, and they are the only item needing an extra request, one per artist, since `/artist/` has never been called at all. **That last fact became load-bearing on 2026-08-23** — see the third reopening below.
+
+**A third reopening, for catalogue depth. [DECIDED 2026-08-23]**
+
+**Phase 1's definition of done was found unmet a second time**, in the same shape as the reachability finding above and for the same reason: every Phase 1 case was exercised against fixtures or against a findable album, and the failure only appears at catalogue scale.
+
+It requires: _"click through to the artist, **browse their discography**."_ Measured against staging, **163 of 261 artists (62.5%) hold exactly one album**, so the majority of artist pages render a name, one cover and nothing else — no sort control and no active span, both of which the page suppresses below two releases. A discography of one album does not satisfy that criterion, and `design-reference.md` §5.4 makes this surface **primary** for this product.
+
+**The per-artist cap is not the cause and raising it is not the fix.** The cap only removes an artist's third and subsequent album, so an artist holding one was never capped; **the artist count is invariant under the cap**, and removing it recovers 139 albums while adding no artist. The binding constraint is that the seed source is a global _album_ chart. Full evidence and the decisions are in `product-spec.md` §8.9.
+
+**Why this is a Phase 1 reopening rather than Phase 5 work.** Phase 1 owns the seed and the popularity abstraction, and this is its own definition-of-done criterion going unmet. **Discovery charts remain Phase 5 and remain undecided.**
+
+**Not yet delivered, not scheduled, and deliberately not designed here.** The immediate boundary is albums, EPs and mixtapes, a curated starting set, additive expansion only, and cap 2 retained as a temporary cold-start device.
+
+**The blocking prerequisite is the curated starting set, and it is undecided.** Breadth is _initially curated_ (`product-spec.md` §8.9), so the population to deepen is not yet known — and it must not be substituted with the existing chart-selected artists, which are the very population the decision exists to reconsider. **Nothing downstream can start until that set is decided**, including any measurement of it. The sequence is: decide the curated set, measure those artists upstream, set the practical depth boundary from that measurement, decide the ingestion strategy, and only then run anything.
+
+**One capability is missing and is not to be built ahead of that.** Depth requires a browse-by-artist call the MusicBrainz client does not have — `musicbrainz.ts` exposes `getReleaseGroup`, `getRelease` and `searchReleaseGroups` only. Building it before the curated set exists would mean writing it to a guessed response shape and testing it against fixtures encoding the same guess, which is the failure recorded in `fixtures.ts`.
+
+Sequencing against `product-spec.md` §8.10 faults 1 and 2, and against the enrichment queue backlog, is a further planning question and is not answered here.
 
 ---
 

@@ -3,8 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { classify, formatPartialDate, parsePartialDate } from './scope';
 
 /**
- * "Singles are never ingested" is a non-negotiable rule, and this is the only
- * place it is enforced. Everything downstream assumes it holds.
+ * Singles are outside the current catalogue boundary, and this is the only
+ * place that is enforced. Everything downstream assumes it holds.
+ *
+ * **These assertions must not be weakened.** The rule they cover was amended on
+ * 2026-08-23 — it previously read "singles are never ingested" and is now a
+ * current boundary rather than a permanent principle — but only the
+ * justification changed, never the behaviour (`docs/product-spec.md` §8.9).
  */
 describe('classify — in scope', () => {
   it('accepts a plain album', () => {

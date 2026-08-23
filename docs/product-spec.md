@@ -113,7 +113,7 @@ Revised entries supersede earlier choices made during the same session.
 | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Metadata source | MusicBrainz                                                                                                                                                                                                                 |
 | Artwork         | Cover Art Archive plus a fallback source                                                                                                                                                                                    |
-| Ingestion       | Seed a popular subset, then fetch on demand and cache                                                                                                                                                                       |
+| Ingestion       | Seed a popular subset, then fetch on demand and cache. **Superseded in part 2026-08-23 (§8.9)** — "grow on demand" is no longer the whole model; depth is expanded deliberately for included artists                        |
 | Missing albums  | **Self-service.** Users search MusicBrainz in-app and add any in-scope release instantly. Scope filter blocks singles; rate limit prevents bulk junk **[DECIDED — supersedes an earlier "admin-approved requests" choice]** |
 | User edits      | None. Catalogue is read-only downstream of MusicBrainz                                                                                                                                                                      |
 | Streaming       | Outbound links only. No OAuth, no import, no playback                                                                                                                                                                       |
@@ -158,7 +158,7 @@ Revised entries supersede earlier choices made during the same session.
 - **Genres and tags**, and browsing by them.
 - **Rating distribution** on album pages (a histogram rather than a bare average).
 - **Per-item list commentary.**
-- **Richer artist pages** — grouping by type, related artists, aggregate stats.
+- **Richer artist pages** — grouping by type, related artists, aggregate stats. **Note the latent conflict:** §6 decided the discography is "never grouped by type", settled when no artist held more than three releases. Catalogue depth (§8.9) makes that conflict live, though not at the immediate boundary.
 - **History import** from Last.fm or Spotify, as a bulk collection backfill.
 - **Profile favourites** — a small set of pinned albums representing your taste at a glance.
 - **Year in review** — the annual personal-stats artifact that drives enormous organic sharing for Letterboxd and Spotify.
@@ -204,6 +204,8 @@ Primary: name and discography as an artwork grid. **One interleaved chronologica
 **Sorting by average rating is deferred, and so is any artist-level aggregate rating.** This line previously carried both as `[INFERRED]`, on the stated grounds that sorting "reuses the collection view's sort machinery". **That rationale no longer holds**: the collection view has no sort machinery, and building it is blocked on product decisions of its own. The question the note asked — whether to ship date-only and defer the rest — was answered in favour of date-only, so artist sorting proceeds independently and collection sorting is **not** a prerequisite for it.
 
 Sorting by popularity waits for the popularity layer in Phase 5.
+
+**The interleaved run stands at the immediate depth boundary, and is a known casualty of the long-term one. [2026-08-23]** "Never grouped by type" was decided when no artist held more than three releases. At the boundary in §8.9 — albums, EPs and mixtapes — a major artist reads as roughly ten to twenty items and the run stays readable. If depth later admits live albums and compilations, sixty items interleaved chronologically with eighteen albums is not a readable run, and this decision reopens. **It is not reopened now**, and it must not be pre-emptively redesigned; see `design-reference.md` §12.
 
 ### Profile page
 
@@ -341,6 +343,8 @@ Listed rather than assumed. Each names who it blocks.
 
 Distinct users is the load-bearing choice: it stops one person relistening an album twenty times from manufacturing a chart position, and it means a user backfilling three hundred albums contributes at most +1 to each.
 
+**This definition is already longplayr's own popularity, and it excludes album likes.** Recorded 2026-08-23 because §8.9 names engagement popularity as a direction that would include hearts. The two must be reconciled when a formula is decided rather than one silently overriding the other — **and this chart definition is the one that is currently decided.**
+
 **Backfilled collection data still counts here, even where it generates no feed events.** Feed silence is about not spamming followers; interest is still interest, and an album someone adds while backfilling is an album they cared enough to record. Note that this is measured by `added_at`, so a backdated `listened_on` has no effect on chart eligibility either way — the same separation the amended feed-eligibility rule makes.
 
 **Highest rated this week.** Albums that received at least one new rating in the last 7 days, ranked by **all-time average**, requiring **at least 5 ratings total** to qualify. Ties broken by rating count.
@@ -378,29 +382,58 @@ Character set, length, reserved names, and whether a deleted account's handle be
 
 ---
 
-**8.9 — Catalogue composition: curated seed versus external popularity. [OPEN — raised 2026-08-21]**
+**8.9 — Catalogue breadth, depth and popularity. [RESOLVED IN PRINCIPLE 2026-08-23 — raised 2026-08-21 as "curated seed versus external popularity"]**
 
-The catalogue's current 338 albums came from **ListenBrainz sitewide play counts**, which selects for globally popular records. That is a defensible default and it is not the only option; the observation that prompted this is that the resulting catalogue does not represent the taste the product intends to signal.
+**The original title was wrong, and so was the question.** This was framed as a choice between a curated seed and an external popularity chart — one axis, two options. There are **three** separable things here, and conflating them is what made the section unanswerable:
 
-**Two decisions, deliberately separate, because they carry different risk:**
+|                                                            | Decided                                                                                                                                                                                                                                          | Not decided                               |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------- |
+| **Breadth** — which artists and albums enter at all        | **Initially curated, eventually open-ended.** The curated set is the primary expression of longplayr's identity; popularity seeding continues alongside it. A curated list is a **bootstrapping mechanism, not the definition of the catalogue** | The list itself                           |
+| **Depth** — how much of an artist we hold once they are in | **Completion-oriented.** _If longplayr includes an artist, we aim to include everything we can find for that artist, rather than only their most popular releases_                                                                               | What "complete" means, and its algorithm  |
+| **Popularity** — how albums are ranked                     | **A separate signal from membership.** Catalogue membership never depends on popularity                                                                                                                                                          | The formula, and the field question below |
 
-**(A) Catalogue composition** — what is findable and addable without falling back to MusicBrainz. Low risk: a larger, better-chosen catalogue is strictly better, and nothing is harmed by an album existing. Choosing which release groups to ingest is **selection, not authorship**, so it does not touch the rule that the catalogue is read-only downstream of MusicBrainz.
+**Do not describe any of this as "curation" in a way that implies a permanently hand-curated finite collection.** It is not one. There is no fixed universe of artists, and an artist absent today is not permanently outside the catalogue. Self-service addition remains a valid route in.
 
-**(B) Discovery charts** — what the product _recommends_ on the cold-start surface (§8.3, Phase 5). Here there is a real tension with §2's non-goal, **"Not a score authority … the product should not present itself as arbitrating what's good."** A hand-picked recommendation surface is an editorial voice. That may be the right strategy — a product with a point of view is a stronger cold start than a play-count chart — but it contradicts a written non-goal and must be decided rather than drifted into.
+**The measured evidence that reframed the question, 2026-08-23.** The catalogue held 362 albums across 261 artists, and **163 artists (62.5%) held exactly one album**, 94 held two, 4 held three.
 
-**(A) can be answered without answering (B).**
+**The per-artist cap was not the cause, and this section previously said it was.** It read _"the existing seed capped at 2 albums per artist, **which is why** every artist page currently holds at most three releases and discographies read thin."_ The first clause is true and the causal claim is false. The cap only ever removes an artist's _third and subsequent_ album, so an artist holding one was never capped. Measured from the committed dry run: **140 of the 249 artists in the seed source contributed exactly one album**, and **the artist count is invariant under the cap** — for any cap ≥ 1 the same 249 artists appear, and only the album total moves (249 at cap 1, 358 at cap 2, 497 uncapped). Removing the cap recovers 139 albums, **78 of them in 15 artists, and adds no artist at all.** Fleetwood Mac, Massive Attack, Black Sabbath, The Clash and Depeche Mode each hold one album and none of them was ever capped.
 
-**The architecture already accommodates (A).** `PopularitySource` is an interface, and `architecture.md` §8 anticipates the source changing; a `CuratedSource` is a fourth branch beside `ListenBrainzSource`, `InternalActivitySource` and `BlendedSource`. The seeding pipeline, the per-artist cap, the scope filter and the artwork queue are unchanged.
+**The binding constraint is that the source is a global _album_ chart**, which selects albums and admits artists incidentally. Depth cannot come from it at any cap.
 
-**The real work is MBID resolution, not ingestion.** A curated list is text; `PopularEntry` requires a release-group MBID and states the rule plainly — implementations must drop entries lacking one rather than guessing by name, _"guessing by name is how wrong records enter a catalogue."_ Resolving title + artist to an MBID is fuzzy: reissues, deluxe editions, inconsistent artist credits, compilations. The suggested shape is to resolve **once**, review the misses by hand, and commit the result as a versioned MBID list that reseeding reads deterministically.
+**The cap therefore has no permanent status.** It survives only as a temporary cold-start device on the popularity seed, at 2, unchanged — reclassified rather than retuned. **"Raise the cap to 5" is explicitly rejected as the product answer.** Once depth exists the cap converges to irrelevance, since a depth pass restores those 139 albums anyway and more evenly.
 
-**Cost is bounded and known.** Three rate-limited MusicBrainz requests per album — resolve, release group, release detail for the tracklist — serialised at one per second. Roughly 25 minutes of MusicBrainz time per 500 albums, plus artwork. A 1,000-album curated seed is an afternoon, not a project.
+**A one-album artist page is acceptable for a genuinely one-album artist, and not acceptable as the dominant catalogue state.** `design-reference.md` §5.4 makes the artist page primary for this product; §5 above requires "aggregate signal across their catalogue", which one cover cannot deliver.
 
-**Two adjacent facts worth deciding at the same time:** the existing seed capped at **2 albums per artist**, which is why every artist page currently holds at most three releases and discographies read thin — `maxPerArtist` should be revisited with any reseed. And seeding must never run against a database the integration suite will touch, which has already destroyed a catalogue once.
+**The 27 hand-added albums are evidence, not a specification.** They demonstrate that the seeded catalogue and the product's intent diverge — which is what this section asserted in 2026-08-21 and had never measured. They are 27 records, most added in a single session while testing search, and **no editorial policy has been inferred from them.**
 
-**Unresolved:** whether to do (A) at all; the source list; whether (B) follows; the per-artist cap; and whether this is scheduled early or waits for Phase 5, since it is Phase 5 work and building ahead of the current phase needs saying so.
+**The immediate implementation boundary, which is narrower than every principle above:**
 
-**Two things changed since this was raised, both making it more tractable rather than more urgent.** The reachability defect in §8.10 that would have been _worsened_ by a larger catalogue is **fixed and shipped**; and every album on staging now has its MusicBrainz response stored locally (`current-state.md` §26), so examining what the catalogue holds — including track-level structure — is a local query rather than hundreds of rate-limited requests. **Neither decides anything here.** The strategy, the source list and the per-artist cap all remain unresolved, and **the seed must not run before they are settled.**
+- **Albums, EPs and mixtapes only.** No live albums, compilations, soundtracks or DJ-mixes yet — even though catalogue scope already admits them, so adding them later is a **depth-policy decision, not a scope decision**
+- **Singles excluded**, and **not permanently** — see below
+- **MusicBrainz only.** No Discogs
+- **Cap 2 retained** on the popularity seed as a temporary mechanism
+- **Additive expansion only.** No destructive reseed and no catalogue deletion: `collection_entries`, `favourite_albums` and `want_to_listen` all cascade from `albums`, so deleting a catalogue row deletes user data
+
+**Singles: the boundary is decided, the permanence is not. [AMENDED 2026-08-23]** `CLAUDE.md` previously carried _"Singles are never ingested"_ as a non-negotiable. The exclusion stands for the initial boundary; **the permanence does not.** Completionism should not exclude material by release type as a matter of principle, and there are cases it must eventually reach: an artist who released only singles, a standalone single whose track appears on no album, a unique B-side, and obscure regional or promotional releases carrying material relevant to the eventual completion concept.
+
+**The distinction that has to be preserved is between the single _release_ and the unique _recordings_ it contains.** A conventional single whose A-side already exists on an album may never need to be a separate catalogue object; a standalone recording or unique B-side may eventually need representing as a discovery or completion object, or as a catalogue release. **Which of those is right is undecided and must be asked.** It converges on questions already open — `data-model.md` §11.10 on recording identity, and §10.7 with §11.12 on a track becoming a catalogue and discovery object without becoming a social one. Nothing here adds a `recording_mbid` column, and deferring stays cheap because stored payloads already preserve recording MBIDs (`architecture.md` §19.5).
+
+**One consequence of enforcing scope at ingest, recorded so the future decision is informed.** `architecture.md` §7a keeps every upstream response verbatim so that recovering a field later never costs a round trip per album. **The scope filter is the one place the system discards upstream records outright** — no row, no payload, no ledger of what was rejected. Admitting singles later is therefore a full upstream re-traversal per artist rather than a local reshape. **This is an observation about cost, not a recommendation to build a ledger.**
+
+**Popularity is two concepts, and they are not the same thing. [DECIDED 2026-08-23]**
+
+1. **External source prominence** — what `albums.popularity_score` holds today: an ordinal signal from the active `PopularitySource`, legitimately sparse, meaningless across sources.
+2. **longplayr's own engagement popularity** — how many users added an album, hearted it, and possibly other signals later.
+
+**Membership never depends on either.** An album must not become invisible or second-class because no external source has heard of it: measured on 2026-08-23, **all 27 self-service albums carried `popularity_score = null` and all 335 seeded albums carried a score**, an exact correlation, which put every hand-added record last in search and excluded it from Browse Popular outright. **Absence of an external signal must never gate membership, search visibility or discovery, and must never be read as low merit.** It may break ties.
+
+**`popularity_score` is not being redefined as engagement.** Whether these become one field or two is undecided, and it interacts with `architecture.md` §8, whose `PopularitySource` model assumes **one active source writing one field** — a shape that cannot hold two coexisting signals. Note also that longplayr's own popularity is **already partly specified**: §8.3's "Popular this week" counts distinct users who added or relistened, measured by `added_at`. **It deliberately excludes album likes**, which the direction above would include, and that divergence must be reconciled when the formula is decided rather than assumed away.
+
+**Scheduling. [DECIDED 2026-08-23]** Catalogue composition is a **Phase 1 reopening, not Phase 5 work and not building ahead.** Phase 1's definition of done requires "click through to the artist, browse their discography", and a discography of one album does not satisfy it — the same shape of finding as the reachability reopening. **Discovery charts remain Phase 5 and remain undecided**, including whether they carry an editorial voice, which collides with §2's "not a score authority" non-goal. Nothing here decides how Browse Popular should behave once the null filter stops being defensible.
+
+**The operational consequence that most affects sequencing.** `architecture.md` §10 justifies Postgres search on the grounds that the hard problem is disambiguation, naming the popularity signal as one of three levers; §17 then records that **search relevance degrades with catalogue size before it degrades with traffic**; and §8.10 faults 1 and 2 remain unfixed. Depth pushes on all three at once — a much larger catalogue, with the popularity lever now confirmed as legitimately sparse, leaving the two levers that have known faults. **Whether search precision is settled before or after expansion is a planning question, deliberately not answered here.**
+
+**Still unresolved:** the curated list itself; the definition and algorithm for "complete"; the eventual treatment of singles; regional duplicates, alternate editions, remixes, promos, appearances and reissues; which further release types are admitted and when — **`broadcast` is rejected in code and discussed in no document**; how Discogs would supplement MusicBrainz as enrichment; the longplayr popularity formula and whether likes count; whether the two popularity concepts are one field or two; how discovery consumes popularity; and whether discovery charts receive an editorial voice.
 
 **8.10 — Upstream search: breadth, and whether it matches artists. [PARTLY RESOLVED — raised 2026-08-21; the reachability half decided 2026-08-22]**
 
@@ -656,7 +689,9 @@ Specifically to investigate: applicable **Digital Services Act** obligations for
 
 ### 10.7 Catalogue depth, and eventual completion
 
-**Recorded 2026-08-22. Direction, not built scope. The completion algorithm is explicitly undecided and must not be inferred.**
+**Recorded 2026-08-22. The completion algorithm is explicitly undecided and must not be inferred.**
+
+> **This section split on 2026-08-23, and only one half moved.** Its **catalogue-depth** half — that once an artist is included the goal is eventual completion of their in-scope body of work — is now **decided product principle**, recorded in §8.9 and in `CLAUDE.md`, with a deliberately narrow immediate boundary **identified and assigned to a Phase 1 reopening — assigned, not scheduled, and blocked on a curated starting set that does not exist yet.** Its **completion** half did not move: everything below about how completion is calculated, whether a percentage is the right framing, and where it would surface remains **direction, not built scope**. **Deepening a discography is not completion tracking.**
 
 The album is longplayr's social object and remains so. This section is about the **catalogue** underneath it becoming capable of representing more of recorded music than a canonical album list does.
 
@@ -666,7 +701,7 @@ The album is longplayr's social object and remains so. This section is about the
 
 **The eventual experience might be something like _"you've heard 80% of this artist's documented output"_**, with the remainder browsable. That phrasing is illustrative, not a specification.
 
-**What is decided here is only the constraint, and it is architectural rather than product:** the domain model must not make these relationships impossible to represent later. That constraint is recorded in `architecture.md` §19.
+**This paragraph is superseded in part.** It read _"What is decided here is only the constraint, and it is architectural rather than product."_ **That is no longer true**: a product decision on catalogue depth was taken on 2026-08-23 (§8.9). The architectural constraint still stands alongside it — the domain model must not make these relationships impossible to represent later, recorded in `architecture.md` §19 — but it is no longer the only decided thing here.
 
 **Everything else is speculative and must stay that way:**
 

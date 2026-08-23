@@ -431,12 +431,18 @@ choices already built into search, profile and `AlbumCover`, and they stand.
 
 ## 12. Surfaces that recorded direction will reopen
 
-`docs/product-spec.md` §10 records decided-but-unbuilt product direction. Two pieces of it land on components this document already treats as settled, so they are flagged here to stop a future session marking those components finished.
+`docs/product-spec.md` §10 records decided-but-unbuilt product direction. Three pieces of it land on components this document already treats as settled, so they are flagged here to stop a future session marking those components finished.
 
 **The action card gains a fourth toggle.** Want to Listen (§10.1) is a fifth user–album relation alongside collection, favourite, like and relisten. §3 measured the reference's card as three icon toggles — Watch, Like, Watchlist — and §11.4 already caps the card's width below 1024px. A Want to Listen control fits that borrowed pattern almost exactly, which is fortunate, but the card's five documented states in the development gallery describe collection state only. **They will need revisiting, not extending by analogy** — in particular, "not collected" is currently one state and would become two, since an album can plausibly be uncollected-and-wanted. Whether that state is even reachable is an unresolved product question (§10.1) and must not be answered by drawing it.
 
 **The profile gains identity fields.** Photo and bio are already specified (§3, and `product-spec.md` §5); only city is new (§10.3). The current profile migration deliberately shows identity only, because no collection data exists. When those fields arrive the profile header composition is the thing that changes, not the collection grid.
 
-**Neither is a design task yet.** Both depend on product questions that `product-spec.md` §10 requires be asked rather than inferred, and a design that answers them by drawing them is the same failure as code that answers them by implementing them.
+**The artist page stops being thin, and eventually outgrows its own composition. [2026-08-23]** §5.4 of this document says the artist page is primary for us and that we design past the reference's thin filmography. **We had not** — 163 of 261 artists held exactly one album, so 62.5% of artist pages rendered a name, one cover, and neither the sort control nor the active span, both of which the page suppresses below two releases. Catalogue depth (`product-spec.md` §8.9) fixes the input, not the composition.
+
+**At the immediate boundary the composition holds.** Albums, EPs and mixtapes put a major artist at roughly ten to twenty items, which the `relaxed` captioned grid and `product-spec.md` §6's interleaved chronological run were designed for and have simply never been shown. **The first honest test of §5.4's claim is still ahead of us**, and the grid should not be judged finished until a genuinely deep discography has been looked at.
+
+**The long-term direction breaks it.** If depth later admits live albums and compilations, sixty items interleaved chronologically with eighteen albums is not a readable run, and §6's "never grouped by type" **[DECIDED]** reopens — alongside `product-spec.md` §5's "richer artist pages: grouping by type", which already says the opposite. **That conflict is recorded, not resolved, and must not be pre-emptively designed.**
+
+**None of these is a design task yet.** All depend on product questions that `product-spec.md` §10 and §8.9 require be asked rather than inferred, and a design that answers them by drawing them is the same failure as code that answers them by implementing them.
 
 Taste overlap (§10.2) and messaging (§10.4) have **no design work recorded at all**, deliberately — messaging in particular is blocked on a legal precondition, and sketching an inbox would imply a shape the safety architecture has not earned yet.

@@ -10,9 +10,21 @@ export type DatePrecision = Database['public']['Enums']['date_precision'];
  * Catalogue scope.
  *
  * Albums, EPs and mixtapes — including live albums, compilations and
- * soundtracks. **Singles are never ingested.** Enforced here, at ingest, so an
- * out-of-scope release group never becomes a row; filtering at query time would
- * mean carrying the exclusion in every read forever.
+ * soundtracks. **Singles are outside the current boundary.** Enforced here, at
+ * ingest, so an out-of-scope release group never becomes a row; filtering at
+ * query time would mean carrying the exclusion in every read.
+ *
+ * **This boundary is not permanent, and this comment used to say it was.** It
+ * read "Singles are never ingested", which is no longer the rule: the exclusion
+ * holds today, but "singles are permanently excluded" is explicitly undecided
+ * (`docs/product-spec.md` §8.9, amended 2026-08-23). Completionism should not
+ * exclude material by release type as a matter of principle, and the eventual
+ * treatment turns on the single *release* versus the unique *recordings* it
+ * carries — a standalone track or a B-side found nowhere else.
+ *
+ * **Nothing here changes until that is decided.** Do not relax the filter, and
+ * do not read the two rejection sets below as the same kind of rule: one is a
+ * boundary, the other is a judgement about what counts as music.
  */
 
 /** MusicBrainz primary types we accept, lowercased. */
@@ -22,8 +34,15 @@ const ACCEPTED_PRIMARY: Record<string, AlbumType> = {
 };
 
 /**
- * A release group whose primary type is Single is out of scope even when it
- * carries a secondary type we otherwise accept.
+ * Outside the **current** boundary, by primary type. A release group whose
+ * primary type is Single is out of scope even when it carries a secondary type
+ * we otherwise accept.
+ *
+ * Both entries are temporary in principle rather than excluded on merit, and
+ * `broadcast` in particular has never been discussed in any document — it is
+ * recorded as an open item in `docs/product-spec.md` §8.9. Note that it is
+ * remix and demo *singles* that this rejects; remix and demo *albums* are
+ * accepted secondary types below.
  */
 const REJECTED_PRIMARY = new Set(['single', 'broadcast']);
 

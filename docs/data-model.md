@@ -86,6 +86,10 @@ A MusicBrainz **release group** — the abstract record, independent of pressing
 
 **Scope constraint.** Per the catalogue scope decision, only albums, EPs and mixtapes are ingested; singles are excluded. Live albums, compilations and soundtracks are included. This is enforced **at ingest**, not at query time — an out-of-scope release group should never become a row.
 
+**This is a current boundary, not a permanent one. [AMENDED 2026-08-23]** The singles exclusion holds today and no code changed with this amendment, but **"singles are permanently excluded" is explicitly not decided** (`product-spec.md` §8.9). The eventual treatment turns on a distinction this model does not yet make: **the single _release_ versus the unique _recordings_ it contains** — a standalone track or a B-side appearing on no album. That converges on §11.10 rather than opening a new question, and **nothing here adds a column.**
+
+Note also that the **immediate depth boundary is narrower than this scope**: live albums, compilations and soundtracks are in scope but are not being ingested by the depth work, so admitting them is a depth-policy decision rather than a scope one.
+
 ### AlbumArtist
 
 Join table connecting albums to every credited artist. **This is what makes _Watch the Throne_ appear on both Jay-Z's and Kanye West's pages.**
@@ -416,7 +420,7 @@ Every catalogue entity has a unique MBID. Re-ingesting an album is an upsert on 
 
 **~~9.1 — Representative release for tracklists.~~ RESOLVED.** Earliest official release, with a deterministic fallback chain. See §2, Track.
 
-**9.2 — MusicBrainz identifier changes.** MBIDs can be merged upstream when duplicate entities are reconciled; the old identifier redirects rather than disappearing. Our unique constraints assume stability. A re-sync strategy that follows redirects and merges local rows is needed — not for launch, but before the catalogue is large enough that a merge causes visible breakage.
+**9.2 — MusicBrainz identifier changes.** MBIDs can be merged upstream when duplicate entities are reconciled; the old identifier redirects rather than disappearing. Our unique constraints assume stability. A re-sync strategy that follows redirects and merges local rows is needed — not for launch, but before the catalogue is large enough that a merge causes visible breakage. **That line moved closer on 2026-08-23:** the catalogue is now open-ended in breadth and completion-oriented in depth (`product-spec.md` §8.9), so "large enough" arrives sooner than a bounded seed implied. Still not scheduled.
 
 **~~9.3 — Partial release dates.~~ RESOLVED.** Store as precise as the source allows, with defaults filling the gaps. See §2, Album.
 
