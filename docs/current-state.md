@@ -12,7 +12,7 @@
 | 4. What gets built and when                  | `docs/development-plan.md`                   |
 | 5. Where we are right now                    | this file                                    |
 
-Verified against the staging database and a clean-tree build on 2026-08-19.
+Verified against the staging database and a clean-tree build on **2026-08-24**, and against CI run **32750259240** on `a5e56a1`.
 
 **Phase 1 implementation is complete.** **The design foundation is complete.** **Phase 2 is in progress:**
 
@@ -78,37 +78,49 @@ Lists, follows, activity, feed, notifications, messaging, taste overlap and prof
 
 ### Staging catalogue
 
-| Entity                          | Count         |
-| ------------------------------- | ------------- |
-| Albums                          | **338**       |
-| Artists                         | **241**       |
-| Releases                        | **6,388**     |
-| Tracks                          | **4,751**     |
-| Albums with no tracklist        | **0**         |
-| Representative releases `found` | **338 / 338** |
+Measured 2026-08-23. **The previous figures in this table were stale by 24 albums** — they read 338 / 241 / 6,388 / 4,751 and had not been updated since 2026-08-19, through the payload backfill and 24 self-service additions.
+
+| Entity                               | Count         |
+| ------------------------------------ | ------------- |
+| Albums                               | **362**       |
+| Artists                              | **261**       |
+| Releases                             | **6,567**     |
+| Tracks                               | **5,109**     |
+| Albums with no tracklist             | **0**         |
+| Albums with a representative release | **362 / 362** |
+| `release_group` payloads             | **362 / 362** |
+| `release` payloads                   | **339 / 362** |
+
+**163 artists (62.5%) hold exactly one album**, 94 hold two, and 4 hold three — Radiohead, Ye, Lana Del Rey and Various Artists, each of which reached three through a self-service addition rather than the seed. **No artist exceeds 0.8% of the catalogue**, so the seed's anti-concentration device worked; sparsity, not concentration, is the problem. Full analysis in §28.
 
 ### Artwork
 
 | `artwork_status` | Albums  |
 | ---------------- | ------- |
-| `found`          | **336** |
+| `found`          | **360** |
 | `absent`         | **0**   |
 | `failed`         | **2**   |
 | `pending`        | **0**   |
 
+**Coverage does not fall off for obscure records.** All **27 of 27** hand-added albums resolved artwork, including Harold Budd, Dee D. Jackson, Strawberry Switchblade and 池玲子's 恍惚の世界. Measured 2026-08-23, and it is the strongest evidence that a less mainstream catalogue is operationally viable.
+
 ### Queue and accounts
 
-|                       |                                                       |
-| --------------------- | ----------------------------------------------------- |
-| `ingestion_jobs`      | 81 succeeded, 2 failed (exhausted artwork), 0 pending |
-| `catalogue_additions` | 3                                                     |
-| `profiles`            | 3 (test accounts — see §8)                            |
+|                       |                                                          |
+| --------------------- | -------------------------------------------------------- |
+| `ingestion_jobs`      | 513 succeeded, 2 failed, **341 outstanding** — see below |
+| `catalogue_additions` | **27**                                                   |
+| `profiles`            | 3 (test accounts — see §8)                               |
+
+> **⚠️ The job queue is clogged, and it will not clear on its own.** 314 `fetch_artwork` pending, 6 stuck in `running`, 21 `fetch_tracklist` pending. **312 of the 314 target albums that already have `artwork_status = 'found'`** — redundant work enqueued when the payload backfill re-ingested every album on 2026-08-23. The cron runs **daily at 04:00 with a batch of 10**, so the backlog alone is **~34 days**, and the 21 useful tracklist jobs sit behind ~320 useless ones (claim order is `priority asc, id asc`; every job is priority 100). **This is an operational prerequisite for any catalogue expansion**, which would enqueue thousands more. The 6 stale `running` jobs are the pre-existing no-reclaim behaviour already recorded in §8.
 
 **Eleven migrations applied; local and staging are in sync**, confirmed with `npx supabase migration list --linked` on 2026-08-22 after `20260821120000_create_upstream_payloads` was pushed to staging ahead of the code that needs it, confirmed with `npx supabase migration list --linked` on 2026-08-19. Two were pushed to staging that day: `20260818120000_create_collection`, and `20260819100000_clear_wishlist_on_create_only` correcting the clearing rule (§15). Staging can be queried read-only with `npx supabase db query --linked "<sql>"`, which is how these numbers were checked.
 
 ### Git state
 
-**`HEAD` and `origin/main` are both `0e3a33f`.** The working tree is clean, nothing is uncommitted, and the branch is neither ahead nor behind. The design foundation, every Phase 2 slice through collection sorting, and both Phase 1 reopenings are committed and pushed:
+**`HEAD` and `origin/main` are both `fa625bd`**, verified identical after an explicit fetch, pushed as a normal fast-forward from `248e926`. The working tree is clean apart from this checkpoint, and the branch is neither ahead nor behind.
+
+**CI run #52 (ID `32666703742`) on `fa625bd` is green**, read directly from the GitHub API: `completed/success`, **attempt 1**, both jobs successful, 12m 07s, executing **208 unit and component, 372 integration, 1 seed and 73 end-to-end** tests on Node 22. **No CI retry was consumed** — CI allows two, and neither was needed; the log contains no `retry #`, `flaky` or `✘`. The `Upload Playwright report` step shows as _skipped_, which is the `if: failure()` guard behaving correctly and is therefore evidence the suite passed. The design foundation, every Phase 2 slice through collection sorting, and both Phase 1 reopenings are committed and pushed:
 
 | Commit    | Slice                                                  |
 | --------- | ------------------------------------------------------ |
@@ -128,6 +140,8 @@ Lists, follows, activity, feed, notifications, messaging, taste overlap and prof
 | `f2e0aab` | Search reachability — unconditional, streamed fallback |
 | `59f1b6f` | Future direction, architectural constraints, backfill  |
 | `0e3a33f` | Checkpoint: future direction reconciled                |
+| `248e926` | Checkpoint reconciled; CYCLE HANDOFF convention        |
+| `fa625bd` | **Catalogue breadth, depth and popularity — §28**      |
 
 `e1f29c3`, earlier, recorded the Want to Listen profile-visibility decision and changed no code.
 
@@ -150,7 +164,9 @@ The habit of leaving implementation uncommitted while documentation lands ahead 
 
 **Staging is untouched by both the Favourites and Want to Listen work** — 338 albums, 241 artists, 6,388 releases, 4,751 tracks, 3 profiles, 11 relisten events, 2 reviews, **0 favourites and 0 wishlist rows**. The `@darryl` fixture (§19) is exactly as approved.
 
-**Collection entries stood at 13 on 2026-08-20**, which is the twelve-row fixture plus one album added by hand through the deployed app (_Born to Die_, unrated, 2026-08-20 09:53 UTC). **That count moves whenever the maintainer uses staging, and is not a number to assert from memory** — read it before quoting it. The fixture itself is unchanged.
+**Collection entries stood at 10 on 2026-08-23**, down from 13 on 2026-08-20. **That count moves whenever the maintainer uses staging, and is not a number to assert from memory** — read it before quoting it.
+
+**The `@darryl` design fixture has drifted and no longer matches §19.** Only **4 of its 12 documented entries survive** — In Rainbows, Kid A, OK Computer and Born to Die — alongside 6 albums hand-added on 2026-08-21. OK Computer's 9.6 rating is now null and its relisten count is 4 rather than 3; reviews are 1 where §19 records 2, and relisten events are 5 where it records 11. **All 13 fixture albums are still in the catalogue, so this was not a cascade** — the entries were removed directly, through ordinary use of the deployed app. The states §19 exists to exercise — a real `0.0`, the three backdated listens, liked-but-unrated, and the no-state tile — are **no longer exercised**. §19's own standing rule says to update its table in the same pass when that happens; **that has not been done**, and it is recorded here rather than silently repaired.
 
 No branch protection — GitHub gates it behind a paid plan for private repositories, and that was declined. **`rm -rf .next && npm run verify:full` before pushing is the compensating control**, per `CLAUDE.md`; an earlier version of this line said `verify`, which is the fast loop and does not run Playwright.
 
@@ -414,7 +430,7 @@ None of these reopen Phase 1.
 | Email confirmation disabled on staging                           | Turned off deliberately so signup works without SMTP. **Production must have it on**, which means real SMTP configured before launch                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | Three test accounts on staging                                   | Two own `catalogue_additions` rows; deleting them nulls `user_id` and leaves the rows as anonymous audit records, which is the designed behaviour                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | Local Node drifted to v20                                        | CI pins Node 22. `@supabase/supabase-js` needs a global WebSocket, so integration and seed commands need `NODE_OPTIONS=--experimental-websocket` until the local runtime is restored                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| Artists have at most 3 releases                                  | The seed capped at 2 per artist, so the deep-discography case is untested against real data                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Artists have at most 3 releases                                  | **EXPLAINED AND DECIDED 2026-08-23 (§28), still true as a fact.** The cap was **not** the cause: it only removes an artist's third and subsequent album, so the 163 one-album artists were never capped. The cap is retained at 2 as a cold-start device and is no longer a catalogue rule. The deep-discography case remains **untested against real data**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | Design-foundation code uncommitted                               | §1 — verified clean-tree at every step, held for review                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | ~~Integration tests leak local auth rows~~                       | **RESOLVED 2026-08-19, and the attribution was wrong.** It was never the integration suite: measured from an empty `auth.users`, a full run of 253 tests across 15 files returns it to **zero**. The leak was entirely `tests/e2e/auth.spec.ts`, which created three real users per run and had no cleanup hook at all — three runs had left exactly nine rows. Fixed in `c486093` with the pattern `collection.spec.ts` already used, and confirmed at zero after a full `verify:full`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | **Intermittent sign-out failure in `auth.spec.ts`**              | **[OPEN] — flaky, cause not established.** One of **two** unexplained flakes now on record; the other is the row below, and neither has been reproduced deliberately. One run of `verify:full` failed `sign up, choose a handle, sign out, sign back in` on a 30s test timeout: the click on Sign out landed, but the header never swapped to the signed-out state. **Not reproduced in four subsequent runs**, including a cold-`.next` run and two full `verify:full` runs, so cold compilation was tested and ruled out. Unrelated to the review and collection slices — it predates both. Watch it; do not "fix" it with a longer timeout until the cause is known                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
@@ -429,6 +445,16 @@ None of these reopen Phase 1.
 | **Staging `service_role` key printed into a session transcript** | **[OPEN] — no action taken, awaiting a decision. 2026-08-23.** While sourcing credentials for the payload backfill, `supabase projects api-keys` was run **without** `--reveal` on the expectation that keys would be masked. **Legacy Supabase keys are JWTs and print in full regardless**, so the staging `service_role` key appeared in command output and therefore in that session's transcript. **It did not persist anywhere**: verified absent from every repository file tracked and untracked, from git history via `log -S`, from staged content, from `.next`, `test-results` and `playwright-report`, and from every `.env*` file. The backfill itself piped the key through a shell variable without echoing it, and the key was transmitted only to Supabase as intended authentication — **no third party received it**. **Nothing has been rotated or revoked**, deliberately: whether transcript exposure warrants rotation depends on where those transcripts are retained, which is the maintainer's call. Rotating would mean updating the key in Vercel too, since staging reads it from there                                                                                                                                                                                                                                                                                                                                                                                                           |
 | **Browse is very tall at phone width**                           | **[OPEN]** — 8,122px at 390px. `relaxed` is 2-up on a phone, so Popular's 24 captioned albums run 12 rows before Recently added begins. Observation, not a defect: consistency with the migrated artist page was the stronger constraint, and the alternatives were changing the query limit or inventing a per-breakpoint density. Revisit when the real charts arrive and a "show more" boundary has to be decided anyway                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | **`AlbumGrid` passes no `priority`**                             | **[OPEN]** — Next flags the first Popular cover as LCP and asks for eager loading. Pre-existing and identical on the artist page. Deliberately not fixed during a presentation-only migration: choosing how many leading cells get `priority` is its own decision and it affects every grid surface at once                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+
+---
+
+### A local end-to-end failure mode worth knowing, found 2026-08-23
+
+**Aborted tests leave database residue, and the next run fails on it.** During the catalogue-curation cycle a `verify:full` run failed **12 end-to-end tests** under load. Those tests died mid-flight before their cleanup hooks ran, leaving **7 orphaned `auth.users`, 7 profiles, 7 collection entries and one rating** in the local database — where the suite normally returns `auth.users` to zero.
+
+The next run then failed `collection.spec.ts:107` with `Average score` reading **`8.02 ratings`** instead of `8.5`. That was not a flake and not a race: the leftover row was _In Rainbows_ rated **7.5** on an orphaned account, and `(8.5 + 7.5) / 2 = 8.0`. **After `npm run db:reset` plus `npm run db:seed:fixtures`, the suite passed 73/73.**
+
+**Two things to carry from this.** A red end-to-end run can poison the next one, so **reset the local database before re-running rather than re-running twice** — and note that `playwright.config.ts` sets `retries: 0` locally against `2` on CI, so a single local flake fails the whole run where CI would absorb it.
 
 ---
 
@@ -450,7 +476,9 @@ The message is not the rate-limit one, the zone is global rather than per-IP, we
 
 This one cause explains three separate symptoms: the seed's 21 ingest failures, the 44 missing tracklists, and the intermittently empty MusicBrainz fallback on the search page.
 
-**Policy is unchanged**, and a test pins the attempt count at three. **[OPEN] — longer, jittered backoff.** Three attempts at 2s and 4s all land inside roughly six seconds, which is too narrow a window to escape a shed. Raised, deliberately not resolved.
+~~**Policy is unchanged**, and a test pins the attempt count at three. **[OPEN] — longer, jittered backoff.** Three attempts at 2s and 4s all land inside roughly six seconds, which is too narrow a window to escape a shed. Raised, deliberately not resolved.~~
+
+**RESOLVED 2026-08-24 in `a5e56a1`.** Retry behaviour is now parameterised. `DEFAULT_RETRY` preserves the interactive three attempts at 2s and 4s exactly; `BACKGROUND_RETRY` gives background catalogue walks five attempts with equal jitter across roughly thirty seconds. **The window this section called too narrow was measured failing twice**: two curated dry runs lost three then two artists to this exact shed, different artists each time. Under the new policy every artist that had failed on a 503 succeeded. Full account in §29.
 
 `musicbrainz.ts` captures the response body and rate-limit headers on any non-OK response and classifies 503s as `server busy` or `rate limited`, so the next occurrence explains itself.
 
@@ -487,8 +515,11 @@ See `docs/product-spec.md` §8 and `docs/data-model.md` §9 for the authoritativ
 - **Whether the decade filter exists.** `design-reference.md` §5.6 says the filter bar becomes "something like rated/unrated, liked, reviewed, **decade**, and sort options"; `product-spec.md` §6 omits decade entirely. The two documents disagree, and §5.6's wording is explicitly tentative
 - **Edition selection needs a migration before it can start.** `data-model.md` §—collection entry specifies `release_id` as "the edition, if the user cared to specify one", and **the column does not exist** on `collection_entries`. Not a contradiction — the data model describes the intended model — but a prerequisite, alongside undecided lazy-fetch and edition-display behaviour
 - **Favourites reordering needs an interaction model.** The schema is ready — `favourite_albums_position_unique` is already `deferrable` so a reorder can move several rows in one transaction — but no service function exists and the interaction was deferred rather than designed
-- **Catalogue composition — curated seed versus external popularity** (`product-spec.md` §8.9, raised 2026-08-21). The 338 albums came from ListenBrainz play counts, which selects for globally popular records rather than for the taste the product intends to signal. Two separable decisions: **catalogue composition**, which is low-risk selection, and **discovery charts**, which is editorial voice and collides with §2's "not a score authority" non-goal. `PopularitySource` already accommodates a `CuratedSource`; the real work is MBID resolution. Also revisit `maxPerArtist`, currently 2, which is why artist pages hold at most three releases
+- ~~**Catalogue composition — curated seed versus external popularity.**~~ **RESOLVED IN PRINCIPLE 2026-08-23** in `product-spec.md` §8.9, which was retitled **Catalogue breadth, depth and popularity** because the original question was the wrong one. **Breadth** is initially curated and eventually open-ended; **depth** is completion-oriented for included artists; **popularity** is a separate signal that never determines membership. See §28. **What remains open is listed there**, and the curated starting set is the blocking one
 - **Upstream search: breadth and artist matching** (`product-spec.md` §8.10, raised 2026-08-21). ~~**The unreachability half**~~ **RESOLVED AND BUILT** — decided and shipped 2026-08-22 in `f2e0aab` (§25): the MusicBrainz fallback is available for every signed-in query regardless of local result count, and local results no longer wait for it. What remains open is unchanged: "show more", the trigram threshold, the `simple` text configuration, and artist matching
+- **Whether depth applies to pseudo-artists — `Various Artists` above all. [OPEN — raised 2026-08-23, and it must not be answered implicitly]** `Various Artists` sits in the catalogue under the canonical MusicBrainz MBID `89ad4ac3-39f7-470e-963a-56509c546377`, disambiguated upstream as _"add compilations to this artist"_. It is MusicBrainz's catch-all for every compilation in the database, not an artist. **Under a completion-oriented depth rule, treating it as an ordinary artist causes uncontrolled expansion.** Related and equally unresolved: whether `[unknown]` and `[no artist]` are the same class, and whether the rule is "pseudo-artists are excluded from depth" or something narrower. **This is not yet recorded in `product-spec.md` §8.9** — it was found after that section was written, and by decision it lands in the next cycle's STEP C rather than being back-filled now.
+  - **One pre-existing statement makes this sharper.** `data-model.md` §2 says _"'Various Artists' is a real MusicBrainz artist and **arrives as an ordinary row**. **[INFERRED]** It gets an artist page like any other."_ That was harmless under a bounded seed and is now the exact assumption that would produce the runaway. **It is deliberately untouched**, and by the repo's own convention `[INFERRED]` means "flagged for correction"
+- **Whether the curated starting set is a list of _artists_ or a list of _albums_. [OPEN — raised 2026-08-23]** Not cosmetic. The ListenBrainz seed is an **album** list and it produced 163 one-album artists, because artists entered incidentally. **A curated album list would reproduce that sparsity by the same mechanism**; a curated artist list composes naturally with depth. Cheap to decide deliberately, expensive to discover later. **Must not be inferred from the existing chart seed**
 - Report reason categories (Phase 6)
 - MBID merge handling, handle reuse after deletion
 - Genre and tag data
@@ -1191,7 +1222,7 @@ Recorded in `tests/e2e/search.spec.ts` itself. Locally `MUSICBRAINZ_CONTACT` is 
 | `ingest_release_group` jobs pending | **0**         |
 | `ingest_release_group` jobs failed  | **0**         |
 
-The 23 albums without a `release` payload are **expected, not missing**: those hold no representative release to fetch a tracklist from, the Various Artists compilation being the standing case.
+~~The 23 albums without a `release` payload are **expected, not missing**: those hold no representative release to fetch a tracklist from.~~ **That explanation is wrong, corrected 2026-08-23.** Measured: **all 362 albums have a representative release and all 362 render tracks.** The 23 are albums whose _release fetch_ failed during the interrupted backfill — 21 carry `tracklist_status = 'failed'` with `fetch_tracklist` jobs still pending. So the backfill is **362/362 at release-group level and 339/362 at release level**, and the gap is a residue of the interruption rather than a property of those albums. It does not undermine the claim that catalogue analysis is now a local query, but it does mean release-level analysis has a 23-album hole.
 
 **The process exited non-zero after its 3600s budget, and that is not a failed backfill.** `drainJobs` claims **any** job kind, so once every `ingest_release_group` job was done the loop carried on into the `fetch_artwork` and `fetch_tracklist` jobs each re-ingest had enqueued. The timeout arrived during that follow-on work, **after** the payload objective was complete — which the counts above establish independently of the exit code.
 
@@ -1203,25 +1234,184 @@ Six `fetch_artwork` jobs left in `running` with no mechanism to reclaim them —
 
 ---
 
+## 28. Catalogue curation cycle — decisions recorded, nothing implemented
+
+**Committed as `fa625bd`, CI #52 green.** A decision-and-documentation cycle. **No implementation, no seed run, no database write, no migration, no scope-filter change, no cap change, no completion tracking.** The only executable files touched were `scope.ts` and `scope.test.ts`, and both changed **comment blocks alone** — verified as a zero-line executable diff.
+
+### The three decisions, and the distinction that must survive
+
+| Axis           | Decided                                                                                                                                                                                                                                 | Immediate boundary                                    |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| **Breadth**    | **Initially curated, eventually open-ended.** No fixed universe of artists; no artist permanently outside. The curated set is the primary expression of identity and a **bootstrapping mechanism, not the definition of the catalogue** | A curated starting set — **which does not exist yet** |
+| **Depth**      | **Completion-oriented.** _If longplayr includes an artist, we aim to include everything we can find for that artist, rather than only their most popular releases_                                                                      | Albums, EPs and mixtapes only                         |
+| **Popularity** | **A separate signal from membership.** Two distinct concepts: external source prominence, and longplayr's own engagement popularity. They may eventually be separate signals                                                            | Unchanged; `popularity_score` **not** redefined       |
+
+**Do not read "catalogue curation" as a permanently hand-curated finite collection.** It is not one, and the section was retitled for that reason.
+
+### The finding that reframed the cycle
+
+The question was "what should the per-artist cap be?" **The evidence says the cap is nearly irrelevant.** 163 of 261 artists hold one album; the cap only ever removes an artist's _third and subsequent_, so those artists were never capped. **The artist count is invariant under the cap** — the same 249 artists appear at any cap ≥ 1, and only the album total moves (249 at cap 1, 358 at cap 2, 497 uncapped). Removing it recovers 139 albums, 78 of them in 15 artists, and **adds no artist at all**. Fleetwood Mac, Massive Attack, Black Sabbath, The Clash and Depeche Mode each hold one album and none was capped.
+
+**The binding constraint is that the seed source is a global _album_ chart**, which admits artists incidentally. **Cap 2 is retained, unchanged, reclassified as a cold-start device.** "Raise it to 5" is explicitly rejected as the product answer.
+
+### The `CLAUDE.md` non-negotiable that changed
+
+_"Singles are never ingested"_ became **"Singles are outside the current catalogue boundary, and that boundary is not permanent."** The exclusion stands, enforcement is unchanged, no code changed. What changed is permanence: **"singles are out of the initial scope" is decided; "singles are permanently excluded" is not.** The eventual treatment turns on the **single _release_ versus the unique _recordings_ it contains** — a standalone track, or a B-side appearing nowhere else — and is undecided. A singles-only artist is currently unreachable by every route including self-service, which is a **known, temporary exception** to the open-ended breadth rule.
+
+### Scheduling — assigned, not scheduled
+
+Recorded as a **third Phase 1 reopening**, on the definition-of-done criterion _"click through to the artist, browse their discography"_. **Assigned to a phase is not scheduled work**, and it is **blocked on the curated starting set**. Discovery charts remain Phase 5 and remain undecided, including whether they carry an editorial voice.
+
+### Recorded without resolving
+
+- `PopularitySource` assumes **one active source writing one field** and cannot hold two coexisting popularity signals (`architecture.md` §8)
+- §8.3's "Popular this week" **already is** longplayr's own popularity, and **deliberately excludes album likes**, which the recorded direction would include
+- Scope enforcement **discards upstream records outright** — no row, no payload, no ledger — so admitting singles later is a full re-traversal, not a local reshape. **Not a reason to build a ledger**
+- The artist page composition **survives the immediate boundary and reopens beyond it**; `product-spec.md` §6's "never grouped by type" collides with §5's "richer artist pages: grouping by type"
+- MBID merge handling (`data-model.md` §9.2) **arrives sooner** under an open-ended catalogue
+- **Search is the load-bearing operational risk.** `architecture.md` §17 records that relevance degrades with catalogue size before traffic; §10 names popularity as one of three disambiguation levers and §8.9 confirms it is legitimately sparse; §8.10 faults 1 and 2 leave the other two with known defects. **Whether search precision is settled before or after expansion is unanswered**
+
+### Verification history, stated in full
+
+| Run                           | Result                                   |
+| ----------------------------- | ---------------------------------------- |
+| Local `verify:full` #1        | `EXIT=0`, **73/73** end-to-end, 8.6m     |
+| Local `verify:full` #2        | `EXIT=1`, **61/73 — 12 failures**, 18.0m |
+| Local e2e, polluted database  | `EXIT=1`, **70/73 — 3 failures**, 9.5m   |
+| Local e2e, **clean baseline** | `EXIT=0`, **73/73**, 6.5m                |
+| **CI #52**                    | **green, attempt 1**, 208 / 372 / 1 / 73 |
+
+**Code under test was byte-identical across all four local runs.** One failure was database residue and is explained above; **the other two are the pre-existing `[OPEN]` flakes** — the race at `collection.spec.ts:277` and the load-sensitive flake at `collection-sort.spec.ts:268`. **Neither is resolved.** A green CI run on a comment-only commit is weak evidence about a load-sensitive flake; the red 61/73 run on identical code is the stronger data point.
+
+---
+
+## 29. Curated tranche and MusicBrainz resilience — implemented, verified, committed and CI-green
+
+**This section supersedes §27 and §28.** Both are left exactly as written: §28 recorded the decisions when nothing had been implemented, and §27 listed a five-step sequence that was correct when written. Steps 1 to 3 of that sequence are now done. **Neither section is rewritten, because both were true at the time.**
+
+**Commit `a5e56a1`, CI run `32750259240`, conclusion `success` on the exact pushed SHA.** Both jobs green on the first attempt, no Playwright retry consumed.
+
+### The distinction that matters most in this section
+
+**Nothing has been ingested.** Four different things are true at once and must not be conflated:
+
+|                                       | State                                                                                       |
+| ------------------------------------- | ------------------------------------------------------------------------------------------- |
+| **Verified / discovered content**     | 353 albums across 28 artists, established read-only. **Not in any database**                |
+| **Schema and application capability** | Deployed: `hydration_status`, `discover_curated_artist`, browse, depth policy, retry policy |
+| **Staging**                           | 362 albums, unchanged. Migrations applied and backfilled                                    |
+| **Actually ingested**                 | **Zero curated albums. Zero curated jobs enqueued.**                                        |
+
+### The curated tranche
+
+**28 artists, selected as the first tranche of an editorial starting set** — not a whitelist, not a membership boundary. Identity was established per artist: 19 where MusicBrainz's own provider relationship agreed with the identifier already held, 2 of those additionally corroborated by comparing discographies, 5 resolved by looking up the Spotify URL MusicBrainz holds, and **2 by human decision**. Provenance is stored beside each identity in `curated-artists.ts`.
+
+**The Wake produced a general architectural rule.** Four artists share that name upstream; the curated one is the Scottish band. MusicBrainz's US-goth entity claims the Spotify URL carrying the Scottish band's discography, while the Scottish entity claims a URL belonging to a Finnish death-metal band — **two upstream links wrong, in opposite directions.** Resolution by cross-link alone selects the wrong artist. `architecture.md` §19.1 now records that a provider cross-link is evidence about identity, never a determination of it, and that curation outranks correspondence evidence, which outranks an upstream claim.
+
+**`K` is in the set and contributes nothing.** Both her release groups are singles, so under the current boundary she yields zero albums. That is the singles exception made concrete, not a resolution failure.
+
+**Final read-only dry run: 28/28 artists, 353/353 depth-passing, 353 unique, 0 duplicates, 0 truncation, 34 browse requests, 185s.** Every per-artist count matched its independently established figure. The database was byte-identical before and after — confirmed four times across four runs.
+
+### Progressive hydration
+
+A browse response carries every column an album card needs and no releases, so a discography costs **one request per hundred release groups instead of two per album** — 34 against 723 for this tranche. Detail is fetched when someone opens the album. **Identity is complete from the first write**; nothing provisional is minted, so §19.1 is satisfied by construction.
+
+`albums.hydration_status` is `pending` / `fetched`, read together with `representative_release_id`. Two states, not the four used by artwork and tracklists: `absent` would encode twice a fact the column pair already carries, and `failed` would duplicate what `ingestion_jobs` owns.
+
+### Artist-level recovery — `discover_curated_artist`
+
+**The resilience cycle's documentation step was deferred at the time and is recorded here.**
+
+Discovery runs as one `discover_curated_artist` job per curated artist on the existing queue. **No new table, no new status, one enum value.** The four states the model needs already existed:
+
+| Meaning                | Representation                                     |
+| ---------------------- | -------------------------------------------------- |
+| never attempted        | no row for `(kind, target_mbid)`                   |
+| queued or in flight    | `pending` / `running`                              |
+| successfully processed | `succeeded`, which `markSucceeded` leaves in place |
+| exhausted              | `failed` after `max_attempts`                      |
+
+23 artists succeeding and 5 failing **ingests the 23** and leaves the 5 as durable retryable rows carrying their error. A later run enqueues only what is unresolved — the partial unique index covers `pending`/`running`, so a terminally `failed` artist can be enqueued again **without resetting any status**, while a `succeeded` one is skipped in application code. A run with unresolved artists reports **INCOMPLETE**.
+
+**Request-level and artist-level retry are separate and must stay so.** Five HTTP attempts inside one browse; then, if those are spent, the artist itself waits for a later attempt behind the queue's own 30s / 5min / 30min backoff.
+
+### MusicBrainz resilience
+
+Two distinct failure modes, found in sequence by four dry runs:
+
+| Run | Result             | Cause                                 |
+| --- | ------------------ | ------------------------------------- |
+| 1   | 326 — 3 failed     | HTTP 503 edge shedding                |
+| 2   | 312 — 2 failed     | HTTP 503, **different artists**       |
+| 3   | 290 — 4 failed     | `fetch failed` — transport, unretried |
+| 4   | **353 — 0 failed** | both covered                          |
+
+**Runs 1 and 2 reproduced the HTTP 503 edge shedding recorded in §9**, losing different artists each time — which is what established it as transient rather than artist-specific. `BACKGROUND_RETRY` was implemented against exactly that evidence, and under it every artist that had previously failed on a 503 succeeded.
+
+The third run then exposed a second, distinct mode: the retry loop guarded HTTP responses and **not the call that produces them**, so transport-level `fetch failed` exceptions escaped on the first attempt whatever the policy said. The `catch` is now scoped to the `fetch` alone, so a parsing or programming error cannot become a network retry.
+
+**429 remains unretried. [OPEN]** Only `status >= 500` retries; a 429 throws immediately. **Deliberately unchanged** — it was not observed in any evidence motivating this work, and changing it was explicitly out of scope. It is recorded here so it is not rediscovered as a surprise.
+
+### Known limitation — partial write within one artist
+
+**A browse failure produces no partial albums**: the throw precedes the write loop, so nothing is written. **A failure during an individual album write does not have that guarantee** — albums already written for that artist remain.
+
+Retries are idempotent and recover through the existence check, so the state converges, and the job records the failure. **[OPEN] — partial write within one artist is not prevented, only healed.** It is untested, and it is a real limitation rather than a solved guarantee. **Non-blocking**: it did not occur in any run, and the recovery path makes it self-correcting.
+
+### End-to-end flake — still `[OPEN]`
+
+**It did not fire on CI run `32750259240`, and that does not resolve it.** The finding in §8 is load-sensitive and one clean run is weak evidence.
+
+**One data point should be added to the record: a local `verify:full` during this cycle lost 16 tests**, against the previously documented range of one to seven. All three known signatures appeared. An isolated re-run of the same suite on identical code passed 75/75 in 6.5 minutes against 22.1 minutes for the failing run, so the cause was load — but **16 exceeds what this document had previously seen.**
+
+### Staging
+
+Both migrations applied through the documented procedure. **362 albums before and after; 362 `fetched`, 0 `pending`; enum exactly `{pending, fetched}`; `discover_curated_artist` present with all prior job kinds intact; 856 jobs before and after; 0 curated discovery jobs.** No row created, deleted or lost. The backfill keyed on the `release_group` payloads actually held — **0 albums were marked `fetched` without that evidence.**
+
+**Sequencing deviation.** The migrations were applied **after STEP F and before STEP G**, rather than after review. They were applied legitimately, verified exactly, and independently reviewed afterwards, which found no defect. **The impact is procedural rather than technical**: the review gate could not have blocked something already applied.
+
+**`albums.updated_at` was bumped on all 362 rows.** The backfill is a real `UPDATE` and `albums_set_updated_at` fired as designed; the column means "when this row last changed", and it did. **No application code reads or orders by it** — verified across `src/`. STEP G judged this acceptable. **It is not undone and no history is rewritten.**
+
+### Future catalogue decisions — open, and **not** blockers on this cycle
+
+**These are questions for a later cycle. None of them contradicts or invalidates the implementation reviewed and pushed as `a5e56a1`**, and none reopens it. They are recorded here so the next cycle inherits them stated rather than rediscovered:
+
+1. **Whether the curated starting set expands beyond 28.** The tranche is deliberately a first tranche; the rest of the list is undecided (`product-spec.md` §8.9)
+2. **Whether future expansion applies only to curated artists**, or also to other catalogue populations such as the artists already present from the popularity seed
+3. **How a curated artist with zero in-depth albums is treated** — `K` is in the set and contributes nothing under the current boundary, which is the singles exception made concrete
+4. **Browse Popular treatment for unranked curated albums.** `getPopularAlbums` filters `popularity_score is not null`, so curated albums would not appear there
+5. **`Various Artists` and pseudo-artists**, still explicitly unresolved and not to be answered implicitly
+6. **Timing and conditions for ingesting future tranches**, including the artwork queue backlog
+
+**The distinction that matters here.** The completed cycle built and verified a capability; these decide how far and how often it is used. **An open question about the second is not a defect in the first.** The 353 albums are discovered and verified, and remain un-ingested by decision rather than by obstruction.
+
+### What this does not change
+
+Browse Popular still excludes `popularity_score = null`, so all 353 would be invisible there. The artwork queue backlog is untouched. The 285-album gap between `scope.ts` and the current depth boundary remains a depth-policy decision. `Various Artists` remains unresolved.
+
+---
+
 ## 27. Where to start next
 
-**Catalogue curation — `product-spec.md` §8.9.** Recommended 2026-08-23. **Not started, and it should begin at STEP A of the cycle in `CLAUDE.md`, not at implementation.**
+**Decide the curated starting artist set.** This is a product and taste decision that cannot be derived from the repository, and **everything else in catalogue work is blocked behind it.**
 
-**The question, restated so it is legible without the conversation that produced it.** The catalogue was seeded from **ListenBrainz sitewide play counts**, which selects for globally popular records. The observation that opened this was that the resulting catalogue **does not represent the taste the product intends to signal**. §8.9 separates two decisions that must not be collapsed: **(A) catalogue composition**, which is low-risk selection, and **(B) discovery charts**, which is editorial voice and collides with §2's _"not a score authority"_ non-goal. **A can be answered without B.**
+**The sequence is fixed and must not be reordered:**
 
-**Why it is next rather than something else:**
+1. **Decide the curated starting set** — and decide deliberately whether it is a list of **artists** or of **albums** (§11; an album list reproduces the one-album-artist sparsity)
+2. **Measure those artists' release groups** upstream
+3. **Set the practical depth boundary** from that measurement, and surface edge cases
+4. **Decide the ingestion strategy**
+5. **Only then run any expansion**
 
-- **Its blocker is gone.** A catalogue miss could previously be **unreachable** — loose local matches suppressed the MusicBrainz fallback, so a larger catalogue would have made the failure _more_ likely. That is fixed, shipped in `f2e0aab`, and CI-green (§25). Curating before that fix would have scaled up a known failure.
-- **Analysis is now cheap.** All **362 staging albums have their MusicBrainz responses stored locally** (§26), so examining what the catalogue actually contains — including track-level structure — is a local query rather than hundreds of rate-limited requests.
-- **The per-artist cap is a seed parameter, not a locked rule.** `seed-selection.ts` states it plainly: _"a cold-start device, not a catalogue rule… later seeds can raise or drop the cap entirely."_ At **2 per artist**, every artist page holds at most three releases, which makes thin a surface `design-reference.md` §5.4 calls **primary** for this product. Revisit it _with_ any reseed, not after.
-- **Phase 2 does not need finishing first.** Its definition of done is already met (§1); filtering, edition selection and favourites reordering are scope beyond that line, not gaps in it.
+**Three standing prohibitions:**
 
-**Two constraints on that cycle:**
+- **Do not manufacture a substitute curated set from the existing chart-selected artists.** They are the population the decision exists to reconsider, and measuring them spends MusicBrainz requests on the wrong catalogue
+- **Do not build the browse-by-artist capability ahead of step 1.** It would be written to an unverified response shape and tested against fixtures encoding the same guess — the exact failure recorded in `fixtures.ts`, which once produced a real catalogue where every album had an empty tracklist
+- **Do not resolve the `Various Artists` question implicitly** (§11). It needs an explicit decision when the depth strategy is defined
 
-- **Do not invent a curation strategy.** The source list, whether (B) follows, and the cap's value are **all undecided** and must be asked.
-- **The seed must not run until the decision is made.** Reseeding is the expensive, hard-to-reverse half.
+**Two operational prerequisites before anything is ingested**, neither of which is a product decision: the **clogged job queue** (§1 — ~34 days of backlog at the current cadence), and the **§8.10 search-precision sequencing question**.
 
-**Also worth weighing but not blocking:** §8.10 faults 1 and 2 remain open — the trigram threshold and the `simple` text configuration still produce noisy local results. A larger catalogue makes results noisier even though it can no longer make a record unreachable.
+**Also carried forward, deliberately not fixed in this cycle:** the pre-existing `data-model.md` §2 statement that Various Artists "arrives as an ordinary row"; the stale Phase 1 status counts at `development-plan.md:69` (338/241/6,388/4,751, actually 362/261/6,567/5,109); and the `@darryl` fixture drift in §19.
 
 ---
 
