@@ -81,8 +81,26 @@ A MusicBrainz **release group** — the abstract record, independent of pressing
 | `first_release_date`     | Earliest known release. Stored as a **full date with defaults filled**: missing day → the 1st, missing month → January. **[DECIDED]**            |
 | `release_date_precision` | `day` / `month` / `year` — records what was _actually_ known **[INFERRED]**                                                                      |
 | `artwork_*`              | See §6                                                                                                                                           |
+| `hydration_status`       | `pending` / `fetched` — whether the full release-group detail has been fetched. See below **[DECIDED 2026-08-24]**                               |
 
 **On dates.** MusicBrainz dates are frequently year-only or year-month. Storing a full date keeps sorting and range queries trivial; the separate precision marker keeps display honest, so a year-only release shows as `2004` rather than the invented `1 January 2004`. Storing the date without precision would make that distinction unrecoverable — the marker is what leaves room to handle dates more precisely later, as you flagged, without a migration or a re-ingest. **[INFERRED — a small addition to what was decided; drop it if you'd rather keep the column count down and accept lossy display.]**
+
+**On hydration.** An album may exist before its full detail has been fetched. Progressive hydration (`architecture.md` §7) creates album rows from a MusicBrainz _browse_ response, which carries every column the album card needs but no releases; the full `release-group` fetch is deferred until someone opens the album.
+
+`hydration_status` records which of those has happened, and it is read together with `representative_release_id`:
+
+| `hydration_status` | `representative_release_id` | Meaning                                                            |
+| ------------------ | --------------------------- | ------------------------------------------------------------------ |
+| `pending`          | null                        | minimal record; full detail not successfully fetched               |
+| `fetched`          | not null                    | full detail fetched, release group has releases                    |
+| `fetched`          | null                        | full detail fetched, release group genuinely holds **no** releases |
+
+**Two states, not four, and the omissions are deliberate.** `artwork_status` and `tracklist_status` both carry `absent` and `failed`; neither belongs here.
+
+- **No `absent`.** The fact it would record — fetched, and genuinely empty — is already carried by the column pair above. A third value would encode the same fact twice.
+- **No `failed`.** `pending` means "not successfully fetched", which is honest whether the attempt never happened, failed, or exhausted its retries. **The job queue remains the source of truth for retry and error state**, and duplicating it on the album would give one fact two homes that can disagree. The artwork precedent does not transfer: `failed` earns its place there because `artworkCoverage()` would otherwise report success it had not achieved, and hydration has no equivalent metric — a `pending` album is simply not hydrated.
+
+Adding a value later is a small migration, and there is precedent for exactly that in `artwork_status`, which shipped without `failed` and gained it when evidence demanded it.
 
 **Scope constraint.** Per the catalogue scope decision, only albums, EPs and mixtapes are ingested; singles are excluded. Live albums, compilations and soundtracks are included. This is enforced **at ingest**, not at query time — an out-of-scope release group should never become a row.
 

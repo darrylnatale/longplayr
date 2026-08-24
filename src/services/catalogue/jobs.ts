@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import type { Database } from '@/lib/supabase/database.types';
 
 import { CoverArtUnavailableError, fetchAndStoreArtwork } from './artwork';
+import { discoverAndIngestArtist } from './curated-tranche';
 import { ingestReleaseGroup } from './ingest';
 import { enqueueJob } from './queue';
 import { heldPayloadIds } from './payloads';
@@ -275,6 +276,17 @@ async function runJob(job: Job, admin: Admin): Promise<void> {
       if (result.status === 'failed') {
         throw new TracklistUnavailableError(result.reason);
       }
+      return;
+    }
+    case 'discover_curated_artist': {
+      // Browses one curated artist and creates whatever the tranche is missing.
+      //
+      // Throwing is the point: the request layer has already spent five
+      // attempts under BACKGROUND_RETRY, so a failure here means the *artist*
+      // needs a later attempt, and that is exactly what markFailed provides —
+      // back to pending behind 30s/5min/30min, then terminally failed and
+      // visible. Nothing about this artist is written on failure.
+      await discoverAndIngestArtist(job.target_mbid, admin);
       return;
     }
     case 'fetch_releases':

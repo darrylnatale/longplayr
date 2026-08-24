@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { after } from 'next/server';
 
 import { ActionCard, type ActionCardState } from '@/components/ActionCard';
 import { AlbumCover } from '@/components/AlbumCover';
@@ -7,6 +8,8 @@ import { Container } from '@/components/Container';
 import { ScoreBadge } from '@/components/ScoreBadge';
 import { SectionHeader } from '@/components/SectionHeader';
 import { getAlbumByMbid } from '@/services/catalogue/queries';
+import { drainJobs } from '@/services/catalogue/jobs';
+import { enqueueJob, INTERACTIVE_JOB_PRIORITY } from '@/services/catalogue/queue';
 import { getMyCollectionState } from '@/services/collection';
 import { getMyFavourite } from '@/services/collection/favourites';
 import { getMyWantToListen } from '@/services/collection/want-to-listen';
@@ -121,6 +124,31 @@ export default async function AlbumPage({ params }: PageProps<'/albums/[mbid]'>)
   const album = await getAlbumByMbid(mbid);
 
   if (!album) notFound();
+
+  // Progressive hydration: an album created from a browse response holds no
+  // releases and therefore no tracklist until its full detail is fetched.
+  //
+  // **Never awaited.** Hydration costs two rate-limited MusicBrainz requests,
+  // and the page must not wait on them — the same reason a self-service add
+  // drains its artwork through `after()` rather than inline. The page renders
+  // from what is already held; the tracklist appears on the next view.
+  //
+  // Safe to run on every view of a pending album: the partial unique index on
+  // (kind, target_mbid) rejects a duplicate job, and `enqueueJob` treats that
+  // rejection as success. Once hydrated the branch is dead, so a fetched album
+  // costs nothing here.
+  if (album.hydration_status === 'pending') {
+    after(async () => {
+      try {
+        await enqueueJob('ingest_release_group', mbid, { priority: INTERACTIVE_JOB_PRIORITY });
+        await drainJobs(1);
+      } catch {
+        // Deliberately swallowed. The job is queued and the daily cron will
+        // collect it; failing here would surface an error for work the reader
+        // never asked for. ingestion_jobs owns retry and error state.
+      }
+    });
+  }
 
   const actionState = await resolveActionState(album.id);
 
@@ -268,7 +296,18 @@ export default async function AlbumPage({ params }: PageProps<'/albums/[mbid]'>)
           </SectionHeader>
 
           {album.tracks.length === 0 ? (
-            <p className="py-4 text-sm text-text-muted">No tracklist available for this release.</p>
+            album.hydration_status === 'pending' ? (
+              // An intentional state, not an empty one. This album's detail has
+              // not been fetched yet; a bare "no tracklist available" would
+              // claim a fact we have not established and read as a defect.
+              <p className="py-4 text-sm text-text-muted" data-testid="tracklist-pending">
+                Fetching the tracklist from MusicBrainz. Refresh in a moment.
+              </p>
+            ) : (
+              <p className="py-4 text-sm text-text-muted">
+                No tracklist available for this release.
+              </p>
+            )
           ) : (
             <ol className="text-sm">
               {album.tracks.map((track) => (

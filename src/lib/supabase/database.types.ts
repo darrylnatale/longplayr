@@ -77,6 +77,8 @@ export type Database = {
           first_release_date_precision:
             | Database["public"]["Enums"]["date_precision"]
             | null
+          hydration_status: Database["public"]["Enums"]["hydration_status"]
+          hydration_updated_at: string | null
           id: string
           mbid: string
           popularity_score: number | null
@@ -96,6 +98,8 @@ export type Database = {
           first_release_date_precision?:
             | Database["public"]["Enums"]["date_precision"]
             | null
+          hydration_status?: Database["public"]["Enums"]["hydration_status"]
+          hydration_updated_at?: string | null
           id?: string
           mbid: string
           popularity_score?: number | null
@@ -115,6 +119,8 @@ export type Database = {
           first_release_date_precision?:
             | Database["public"]["Enums"]["date_precision"]
             | null
+          hydration_status?: Database["public"]["Enums"]["hydration_status"]
+          hydration_updated_at?: string | null
           id?: string
           mbid?: string
           popularity_score?: number | null
@@ -685,11 +691,13 @@ export type Database = {
       artwork_status: "pending" | "found" | "absent" | "failed"
       content_status: "live" | "removed"
       date_precision: "day" | "month" | "year"
+      hydration_status: "pending" | "fetched"
       job_kind:
         | "ingest_release_group"
         | "fetch_artwork"
         | "fetch_releases"
         | "fetch_tracklist"
+        | "discover_curated_artist"
       job_status: "pending" | "running" | "succeeded" | "failed"
       tracklist_status: "pending" | "found" | "absent" | "failed"
       user_status: "active" | "suspended" | "banned"
@@ -839,11 +847,13 @@ export const Constants = {
       artwork_status: ["pending", "found", "absent", "failed"],
       content_status: ["live", "removed"],
       date_precision: ["day", "month", "year"],
+      hydration_status: ["pending", "fetched"],
       job_kind: [
         "ingest_release_group",
         "fetch_artwork",
         "fetch_releases",
         "fetch_tracklist",
+        "discover_curated_artist",
       ],
       job_status: ["pending", "running", "succeeded", "failed"],
       tracklist_status: ["pending", "found", "absent", "failed"],

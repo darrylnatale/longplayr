@@ -17,7 +17,69 @@ const API_ROOT = 'https://musicbrainz.org/ws/2';
 /** One below the documented limit, so clock skew and jitter cannot push us over. */
 const REQUESTS_PER_SECOND = 0.9;
 
-const MAX_ATTEMPTS = 3;
+/**
+ * Retry policy for transient 5xx responses.
+ *
+ * Two workloads with opposite tolerances share this client. A background walk
+ * can afford to wait; someone pressing "Add" cannot. One global policy would
+ * have to be wrong for one of them, so the policy is a parameter.
+ */
+export type RetryPolicy = {
+  maxAttempts: number;
+  baseDelayMs: number;
+  /** Ceiling on any single delay. A guard on future parameter changes. */
+  maxDelayMs: number;
+  jitter: boolean;
+};
+
+/**
+ * The behaviour every caller had before policies existed, preserved exactly.
+ *
+ * Three attempts with delays of 2s and 4s. The exponential formula below
+ * reproduces the previous `2000 * attempt` for both of them — linear and
+ * exponential coincide over the only two delays a three-attempt policy takes —
+ * so interactive paths are unchanged by arithmetic rather than by a branch.
+ */
+export const DEFAULT_RETRY: RetryPolicy = {
+  maxAttempts: 3,
+  baseDelayMs: 2000,
+  maxDelayMs: Number.MAX_SAFE_INTEGER,
+  jitter: false,
+};
+
+/**
+ * For background walks, where a lost artist costs more than a slow one.
+ *
+ * Delays land in [1,2], [2,4], [4,8] and [8,16] seconds — roughly 30 seconds
+ * in total, against the ~6-second window that was twice observed failing to
+ * outlast MusicBrainz edge load shedding (docs/current-state.md §9).
+ *
+ * `maxDelayMs` does not bind at these values and is not meant to: it is a
+ * ceiling protecting future parameter changes, not a target.
+ */
+export const BACKGROUND_RETRY: RetryPolicy = {
+  maxAttempts: 5,
+  baseDelayMs: 2000,
+  maxDelayMs: 30_000,
+  jitter: true,
+};
+
+/**
+ * Delay before the `sleepIndex`-th retry, 1-based.
+ *
+ * **Equal jitter**, not full jitter: the result never falls below half the
+ * computed delay, so a retry cannot land back inside the one-second rate
+ * window. Full jitter can return nearly zero, which is the one thing the
+ * limiter exists to prevent.
+ */
+export function retryDelayMs(
+  policy: RetryPolicy,
+  sleepIndex: number,
+  random: () => number = Math.random,
+): number {
+  const raw = Math.min(policy.baseDelayMs * 2 ** (sleepIndex - 1), policy.maxDelayMs);
+  return policy.jitter ? raw / 2 + random() * (raw / 2) : raw;
+}
 
 const limiter = new RateLimiter(REQUESTS_PER_SECOND);
 
@@ -168,7 +230,46 @@ export class NotFoundError extends MusicBrainzError {
   }
 }
 
-async function request<T>(path: string, params: Record<string, string> = {}): Promise<T> {
+/**
+ * Describes a failure that happened before any HTTP response existed.
+ *
+ * Deliberately not routed through `describeFailure`: that function reports a
+ * status and rate-limit headers, and a transport failure has neither. Saying
+ * "MusicBrainz returned 0" would be inventing information.
+ */
+export function describeTransportFailure(path: string, cause: unknown): string {
+  const detail = cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause);
+  return `MusicBrainz request for ${path} failed in transport — no HTTP response was received [${detail}]`;
+}
+
+/**
+ * `fetch()` threw: DNS, connection reset, socket timeout, TLS — the request
+ * never reached a response.
+ *
+ * Extends `MusicBrainzError` so a caller catching that catches this too, but
+ * carries **no status and no diagnostics**, because none exist. That also means
+ * `isServerBusy()` and `isRateLimited()` both return false for it, which is
+ * correct: a transport failure is neither.
+ *
+ * Observed in a curated tranche dry run as four artists failing with
+ * `fetch failed`, each on its first and only attempt, because the retry loop
+ * used to guard HTTP responses and not the call that produces them.
+ */
+export class MusicBrainzTransportError extends MusicBrainzError {
+  readonly transportCause: unknown;
+
+  constructor(path: string, cause: unknown) {
+    super(describeTransportFailure(path, cause));
+    this.name = 'MusicBrainzTransportError';
+    this.transportCause = cause;
+  }
+}
+
+async function request<T>(
+  path: string,
+  params: Record<string, string> = {},
+  policy: RetryPolicy = DEFAULT_RETRY,
+): Promise<T> {
   assertIdentifiable();
 
   const url = new URL(`${API_ROOT}${path}`);
@@ -179,10 +280,26 @@ async function request<T>(path: string, params: Record<string, string> = {}): Pr
 
   let lastError: MusicBrainzError | undefined;
 
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const response = await limiter.schedule(() =>
-      fetch(url, { headers: { 'User-Agent': userAgent(), Accept: 'application/json' } }),
-    );
+  for (let attempt = 1; attempt <= policy.maxAttempts; attempt++) {
+    let response: Response;
+    try {
+      // The catch below is scoped to this call and nothing else. Widening it to
+      // cover the response handling would turn a parsing bug or a programming
+      // error into a silent network retry.
+      response = await limiter.schedule(() =>
+        fetch(url, { headers: { 'User-Agent': userAgent(), Accept: 'application/json' } }),
+      );
+    } catch (cause) {
+      // No response exists, so there is nothing to classify — but the failure is
+      // transient in exactly the way a 5xx is, and it goes through the same
+      // policy rather than a second retry system of its own.
+      lastError = new MusicBrainzTransportError(path, cause);
+      if (attempt < policy.maxAttempts) {
+        await sleep(retryDelayMs(policy, attempt));
+        continue;
+      }
+      throw lastError;
+    }
 
     if (response.ok) return (await response.json()) as T;
 
@@ -198,14 +315,24 @@ async function request<T>(path: string, params: Record<string, string> = {}): Pr
     const diagnostics = await captureDiagnostics(response);
     const message = describeFailure(response.status, path, diagnostics);
 
-    // 5xx is worth retrying whichever kind it is. Timing and attempt count are
-    // deliberately unchanged here — see docs/current-state.md §5 before tuning
-    // them, because the evidence says the current policy is not the problem.
+    // 5xx is worth retrying whichever kind it is. Timing and attempt count come
+    // from the caller's `RetryPolicy` rather than being fixed here.
+    //
+    // `DEFAULT_RETRY` preserves the interactive behaviour this path has always
+    // had — three attempts at 2s and 4s — and is unchanged. `BACKGROUND_RETRY`
+    // is the longer jittered policy, used only by background catalogue walks,
+    // because curated tranche dry runs showed that a ~6-second window was not
+    // wide enough to outlast MusicBrainz edge load shedding: artists were lost
+    // to 503s that a later attempt then resolved.
     if (response.status >= 500) {
       lastError = new MusicBrainzError(message, response.status, diagnostics);
-      if (attempt < MAX_ATTEMPTS) {
+      if (attempt < policy.maxAttempts) {
         // Back off well beyond the 1s window before trying again.
-        await sleep(2000 * attempt);
+        //
+        // Deliberately outside `limiter.schedule`: a sleeping retry must not
+        // hold the limiter queue against other callers, and the next attempt
+        // re-enters the limiter so pacing is still enforced.
+        await sleep(retryDelayMs(policy, attempt));
         continue;
       }
     }
@@ -332,4 +459,118 @@ export function searchReleaseGroups(query: string, limit = 25): Promise<MbSearch
     query,
     limit: String(limit),
   });
+}
+
+/**
+ * A page of an artist's release groups, from the browse endpoint.
+ *
+ * Every field is optional because none of them can be relied on: a browse
+ * response for an artist with no release groups omits the array entirely, and
+ * the count has been observed to disagree with the page it describes. The
+ * pagination below treats all of it as advisory.
+ */
+export type MbBrowseReleaseGroups = {
+  'release-group-count'?: number;
+  'release-group-offset'?: number;
+  'release-groups'?: MbReleaseGroup[];
+};
+
+/** Browse limit. MusicBrainz caps this at 100 and ignores larger values. */
+export const BROWSE_PAGE_SIZE = 100;
+
+/**
+ * Hard ceiling on pages for one artist — 2,000 release groups.
+ *
+ * No artist in the catalogue approaches this. It exists so that contradictory
+ * pagination metadata cannot turn into an unbounded loop against a
+ * rate-limited API, the same reason `seed.ts` bounds its own run twice.
+ */
+export const MAX_BROWSE_PAGES = 20;
+
+/**
+ * One page of release groups credited to an artist.
+ *
+ * `inc=artist-credits` is what makes the response usable without a second
+ * request: it carries the credit string an album row needs. Releases are
+ * deliberately **not** requested — the browse endpoint does not return them,
+ * which is the whole basis of progressive hydration
+ * (`docs/architecture.md` §7).
+ */
+export function browseReleaseGroupsByArtist(
+  artistMbid: string,
+  offset = 0,
+  policy: RetryPolicy = DEFAULT_RETRY,
+): Promise<MbBrowseReleaseGroups> {
+  return request<MbBrowseReleaseGroups>(
+    '/release-group',
+    {
+      artist: artistMbid,
+      limit: String(BROWSE_PAGE_SIZE),
+      offset: String(offset),
+      inc: 'artist-credits',
+    },
+    policy,
+  );
+}
+
+/**
+ * Every release group credited to an artist, paginated safely.
+ *
+ * Three independent stops, because the metadata driving the loop comes from
+ * upstream and any one of them can be wrong:
+ *
+ *   1. the page ceiling above
+ *   2. an empty page ends the walk regardless of what the count claimed
+ *   3. the offset must strictly advance
+ *
+ * An artist with no release groups returns an empty array. That is a fact about
+ * the artist, not a failure — `K` is in the curated set and has none in scope.
+ */
+export async function browseAllReleaseGroupsByArtist(
+  artistMbid: string,
+  policy: RetryPolicy = DEFAULT_RETRY,
+): Promise<{ groups: MbReleaseGroup[]; requests: number; truncated: boolean }> {
+  const groups: MbReleaseGroup[] = [];
+  const seen = new Set<string>();
+  let offset = 0;
+  let requests = 0;
+
+  for (let page = 0; page < MAX_BROWSE_PAGES; page++) {
+    const body = await browseReleaseGroupsByArtist(artistMbid, offset, policy);
+    requests += 1;
+
+    const batch = body['release-groups'] ?? [];
+    // An empty page ends the walk whatever the count said. A count larger than
+    // the data behind it would otherwise spin until the page ceiling.
+    if (batch.length === 0) return { groups, requests, truncated: false };
+
+    for (const rg of batch) {
+      // Browse has been observed to repeat a release group across page
+      // boundaries. A duplicate must not be counted twice.
+      if (rg?.id && !seen.has(rg.id)) {
+        seen.add(rg.id);
+        groups.push(rg);
+      }
+    }
+
+    // A page shorter than the limit is the last page. This is the stop that
+    // does not depend on the count being present or correct, and without it a
+    // response carrying no count walks to the page ceiling.
+    if (batch.length < BROWSE_PAGE_SIZE) return { groups, requests, truncated: false };
+
+    const next = offset + batch.length;
+    // Defensive rather than theoretical: a non-advancing offset is the one
+    // failure that turns a bounded walk into an infinite one.
+    if (next <= offset) return { groups, requests, truncated: true };
+    offset = next;
+
+    const total = body['release-group-count'];
+    if (typeof total === 'number' && Number.isFinite(total) && offset >= total) {
+      return { groups, requests, truncated: false };
+    }
+  }
+
+  // Reached the ceiling with pages still arriving. Reported rather than thrown:
+  // the caller gets what was found and is told it is incomplete.
+  return { groups, requests, truncated: true };
 }

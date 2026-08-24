@@ -24,6 +24,8 @@
     "db:seed:fixtures": "node scripts/with-websocket.mjs vitest run --project seed tests/seed/seed-fixtures.test.ts",
     "db:seed:catalogue": "node scripts/with-websocket.mjs vitest run --project seed tests/seed/seed-catalogue.test.ts",
     "db:seed:dryrun": "node scripts/with-websocket.mjs vitest run --project seed tests/seed/dry-run.test.ts",
+    "db:seed:curated": "node scripts/with-websocket.mjs vitest run --project seed tests/seed/curated-tranche.test.ts",
+    "db:seed:curated:dryrun": "node scripts/with-websocket.mjs vitest run --project seed tests/seed/curated-dry-run.test.ts",
     "db:backfill:artwork": "node scripts/with-websocket.mjs vitest run --project seed tests/seed/backfill-artwork.test.ts",
     "db:backfill:tracklists": "node scripts/with-websocket.mjs vitest run --project seed tests/seed/backfill-tracklists.test.ts",
     "db:backfill:payloads": "node scripts/with-websocket.mjs vitest run --project seed tests/seed/backfill-payloads.test.ts"

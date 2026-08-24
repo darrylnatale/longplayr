@@ -237,6 +237,54 @@ export const multiDiscAlbum: MbReleaseGroup = {
   ],
 };
 
+/**
+ * A **browse**-shaped release group, as `/release-group?artist=…` returns it.
+ *
+ * The distinguishing feature is the absence of `releases` — not an empty array,
+ * the key itself is missing. That is what progressive hydration relies on and
+ * why hydration state is recorded explicitly rather than inferred: a full fetch
+ * of a release group holding no releases produces an album that looks exactly
+ * like one created from this.
+ */
+export const browseReleaseGroup: MbReleaseGroup = {
+  id: '0b0e4f1e-1111-4000-8000-00000000b001',
+  title: 'Here Comes Everybody',
+  'primary-type': 'Album',
+  'secondary-types': [],
+  'first-release-date': '1985-09-01',
+  'artist-credit': [
+    {
+      name: 'The Wake',
+      artist: {
+        id: 'c2314623-e863-4fde-af8c-d6e00fec5f2c',
+        name: 'The Wake',
+        'sort-name': 'Wake, The',
+        type: 'Group',
+      },
+    },
+  ],
+};
+
+/** A browse record whose release group is outside the current depth boundary. */
+export const browseLiveAlbum: MbReleaseGroup = {
+  id: '0b0e4f1e-1111-4000-8000-00000000b002',
+  title: 'Live Somewhere',
+  'primary-type': 'Album',
+  'secondary-types': ['Live'],
+  'first-release-date': '1990',
+  'artist-credit': [
+    {
+      name: 'The Wake',
+      artist: {
+        id: 'c2314623-e863-4fde-af8c-d6e00fec5f2c',
+        name: 'The Wake',
+        'sort-name': 'Wake, The',
+        type: 'Group',
+      },
+    },
+  ],
+};
+
 export const allFixtures = {
   singleArtistAlbum,
   collaborationAlbum,

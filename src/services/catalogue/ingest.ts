@@ -75,14 +75,42 @@ async function upsertArtists(admin: Admin, mapped: MappedAlbum): Promise<Map<str
 }
 
 /** Upserts the album row itself, without its representative release. */
-async function upsertAlbum(admin: Admin, mapped: MappedAlbum): Promise<string> {
+/**
+ * Upserts the album row and settles its hydration state.
+ *
+ * **Hydration is never downgraded.** A curated artist may be re-processed after
+ * a transient upstream failure, and its release groups may already have been
+ * ingested in full — by an earlier run, or by another artist crediting the same
+ * record. Writing `pending` over those would leave `pending` alongside a
+ * populated `representative_release_id`, a combination the model does not
+ * define, and would tell every sweep the album still needed fetching.
+ *
+ * The column is therefore written in a second statement rather than as part of
+ * the upsert: the upsert omits it, so the value the row already carries is what
+ * comes back, and `pending` is only ever reached through the column default on
+ * insert. There is no path that writes `pending` over an existing row.
+ */
+async function upsertAlbum(
+  admin: Admin,
+  mapped: MappedAlbum,
+  hydration: HydrationState,
+): Promise<string> {
   const { data, error } = await admin
     .from('albums')
     .upsert(mapped.album, { onConflict: 'mbid' })
-    .select('id')
+    .select('id, hydration_status')
     .single();
 
   if (error) throw error;
+
+  const resolved: HydrationState = hydration === 'fetched' ? 'fetched' : data.hydration_status;
+
+  const { error: stateError } = await admin
+    .from('albums')
+    .update({ hydration_status: resolved, hydration_updated_at: new Date().toISOString() })
+    .eq('id', data.id);
+
+  if (stateError) throw stateError;
   return data.id;
 }
 
@@ -143,6 +171,8 @@ async function upsertReleases(
  * Separated from fetching so it can be tested against fixtures without any
  * network access — which matters while live calls are deliberately blocked.
  */
+export type HydrationState = Database['public']['Enums']['hydration_status'];
+
 export async function ingestReleaseGroupPayload(
   payload: Parameters<typeof mapReleaseGroup>[0],
   admin: Admin = createAdminClient(),
@@ -155,7 +185,21 @@ export async function ingestReleaseGroupPayload(
    * to avoid it.
    */
   fetchReleaseDetail?: (mbid: string) => Promise<ReleaseDetailOutcome>,
+  /**
+   * Hydration provenance, stated by the caller.
+   *
+   * **A compatibility default, not a provenance mechanism.** Every existing
+   * caller passes a full release-group payload, so `fetched` is correct for all
+   * of them and none had to change. The minimal path must pass `pending`
+   * explicitly — see `createMinimalAlbum`.
+   *
+   * **Nothing here inspects the payload to decide.** A browse response and a
+   * full response are both valid inputs and can look alike; guessing between
+   * them from shape is exactly what `hydration_status` exists to avoid.
+   */
+  options: { hydration?: HydrationState } = {},
 ): Promise<IngestResult> {
+  const hydration: HydrationState = options.hydration ?? 'fetched';
   let tracklist: TracklistResult | undefined;
   let mapped: MappedAlbum;
   try {
@@ -174,7 +218,7 @@ export async function ingestReleaseGroupPayload(
   await storeUpstreamPayload(admin, 'release_group', payload.id, payload);
 
   const artistIds = await upsertArtists(admin, mapped);
-  const albumId = await upsertAlbum(admin, mapped);
+  const albumId = await upsertAlbum(admin, mapped, hydration);
   await replaceCredits(admin, albumId, mapped, artistIds);
   const releaseIds = await upsertReleases(admin, albumId, mapped);
 
@@ -255,4 +299,26 @@ export async function ingestReleaseGroup(
       return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
     }
   });
+}
+
+/**
+ * Creates an album from a **browse** response, without fetching its detail.
+ *
+ * This is the write half of progressive hydration (`docs/architecture.md` §7).
+ * A browse record carries every column an album card needs — title, credit,
+ * primary type, first release date and the MBID — and no releases at all, so
+ * the album is created complete in identity and incomplete in detail.
+ *
+ * **Costs zero MusicBrainz requests.** The browse response has already been
+ * fetched by the caller; nothing here goes upstream. The two requests a full
+ * ingest would spend are deferred until someone opens the album.
+ *
+ * **Passes `pending` explicitly**, never relying on the compatibility default,
+ * because the provenance of this row is the whole point of recording it.
+ */
+export async function createMinimalAlbum(
+  browseRecord: Parameters<typeof mapReleaseGroup>[0],
+  admin: Admin = createAdminClient(),
+): Promise<IngestResult> {
+  return ingestReleaseGroupPayload(browseRecord, admin, undefined, { hydration: 'pending' });
 }

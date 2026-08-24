@@ -1,0 +1,26 @@
+-- longplayr — durable recovery for curated artist discovery
+--
+-- Curated tranche discovery browses one artist at a time. A transient
+-- MusicBrainz edge shed (docs/current-state.md §9) can exhaust the request-level
+-- retries for one artist while the other twenty-seven succeed, and the tranche
+-- must not lose that artist: the successful work is additive and worth keeping,
+-- but the failure has to survive the process exiting.
+--
+-- No new table and no new status. `ingestion_jobs` already provides every part
+-- of the lifecycle this needs:
+--
+--   never attempted      no row for (kind, target_mbid)
+--   pending / running    the job is queued or in flight
+--   successfully done    status 'succeeded', which markSucceeded leaves in place
+--   exhausted            status 'failed' after max_attempts
+--
+-- `target_mbid` is deliberately not foreign-keyed — the existing comment notes
+-- that a job routinely runs before the row it will create exists — so an artist
+-- MBID is as valid a target as a release-group MBID.
+--
+-- The partial unique index on (kind, target_mbid) where status in
+-- ('pending','running') gives the wanted behaviour for free: an artist already
+-- queued cannot be queued twice, while a terminally failed artist can simply be
+-- enqueued again without resetting anything.
+
+alter type public.job_kind add value 'discover_curated_artist';

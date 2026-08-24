@@ -62,3 +62,5 @@ transcript.md
 seed-report.txt
 seed-report.json
 seed-dry-run.json
+curated-tranche-report.json
+curated-tranche-dry-run.json
