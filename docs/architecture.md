@@ -188,11 +188,15 @@ _When to revisit._ If job volume or failure-handling complexity grows past what 
 
 **Resolved when the mechanism was implemented, 2026-08-24:**
 
-**The threshold is 90 minutes, global, and bounded by worker lifetime rather than job duration.** `updated_at` on a `running` row is the moment its _batch_ was claimed, not the moment that job began — the tenth job in a batch already looks stale before it starts — so job duration is the wrong variable. Only two workers claim, and both are hard-bounded here: the cron at `maxDuration = 60`, and every seed runner that drains at a 3600-second vitest timeout. **Past 60 minutes no such process is alive, so a still-`running` row is abandoned by definition**; 90 is that ceiling plus half again, covering clock skew and teardown lag. A per-kind threshold was rejected: it would be tuned against duration, and nothing retains per-job durations because `updated_at` is overwritten on termination.
+**The threshold is 90 minutes, global, and bounded by worker lifetime rather than job duration.** **[RATIONALE CORRECTED 2026-08-25; the value is unchanged — see _Drain lifecycle: one claim per job_ below.]** Four workers claim, and each is bounded by the process holding the claim: the cron drain at `maxDuration = 60`, the search `after()` drain at the search route's 60, the album-page `after()` drain at whatever its route defaults to — it sets none — and every seed runner that drains at a 3600-second vitest timeout. **Past 60 minutes no such process is alive, so a still-`running` row is abandoned by definition**; 90 is that ceiling plus half again, covering clock skew and teardown lag. A per-kind threshold was rejected: it would be tuned against duration, and nothing retains per-job durations because `updated_at` is overwritten on termination.
+
+**Two statements were removed from that paragraph on 2026-08-25 rather than softened.** It argued that `updated_at` on a `running` row is the moment its _batch_ was claimed, so the tenth job in a batch looks stale before it starts — which per-job claiming makes false, since `updated_at` is now approximately the moment that job itself began. And it said only two workers claim, which was never true of the two `after()` drains. **A duration-derived threshold is therefore now possible, and is still declined**: worker lifetime remains the safer variable, and the durations themselves are still not retained. Leaving either statement in place would have left a reader unable to tell which of the code and the record was wrong.
 
 **`attempts` is the fencing token, and `markSucceeded`/`markFailed` now settle only their own execution.** Both were bare updates on `id`. They now also require `status = 'running'` and the claimed `attempts`, so a worker returning after its claim was reclaimed and re-taken matches nothing. **`attempts` needs no new column to serve this**: `claim_ingestion_jobs` increments it and returns the incremented row, making it a natural monotonic claim counter. Both conditions earn their place — status catches a row reclaimed but not yet re-claimed, attempts catches one that has been. A discarded completion is reported as **`superseded`** in `DrainSummary` rather than being silently dropped.
 
-**Reclaim preserves `attempts`.** It counts execution _starts_, and a stranded job did start, so preserving is the reading that changes retry semantics least — and it can never produce more than `max_attempts` starts. The cost runs the other way: a job stranded twice gets one real attempt before terminal failure. Two things bound that. A reclaimed row keeps its `id`, and claiming is ordered `priority asc, id asc`, so it returns to the **front** of the queue, whereas stranding only ever hits the **tail** of a batch. And a marker is written to `last_error`, so a job exhausted this way says so.
+**Reclaim preserves `attempts`.** It counts execution _starts_, and a stranded job did start, so preserving is the reading that changes retry semantics least. The cost runs the other way: a job stranded twice gets one real attempt before terminal failure — bounded by a reclaimed row keeping its `id`, since claiming is ordered `priority asc, id asc` and it therefore returns to the **front** of the queue. And a marker is written to `last_error`, so a job exhausted this way says so.
+
+**One claim in that paragraph was false, and is corrected rather than dropped. [OPEN]** It read that preserving `attempts` _"can never produce more than `max_attempts` starts"_. Nothing enforces that. `max_attempts` is consulted in exactly one place — `markFailed` — which runs only when a job throws inside a live process; neither `claim_ingestion_jobs` nor the reclaim consults it. A job claimed, stranded and reclaimed repeatedly therefore has `attempts` incremented on every claim, past `max_attempts`, with **no terminal state ever reached** — neither retried to exhaustion nor surfaced as failed. **The behaviour is unchanged by this correction.** A second statement went stale on 2026-08-25: stranding no longer "only ever hits the **tail** of a batch", because per-job claiming leaves no batch tail — it hits the one job in flight.
 
 **Reclaim is a single `UPDATE` and needs no migration, RPC or `skip locked`.** Postgres evaluates the predicate under the row lock, so a concurrent reclaimer blocks, re-reads, finds `pending` and takes nothing. It cannot race `claim_ingestion_jobs` either: that touches only `pending` rows and this only `running` ones, so the predicates are disjoint.
 
@@ -205,6 +209,79 @@ _When to revisit._ If job volume or failure-handling complexity grows past what 
 **Partial writes within one artist stay as they are.** A write failing mid-loop leaves the albums already written; the existence check heals it on a later run — the Durutti Column holds 32 of 37 on staging and converges without damage. **Making artist ingestion transactional is explicitly not attempted here**, and remains `[OPEN]`.
 
 **Queue fairness is a separate `[OPEN]` problem and is not addressed.** `claim_ingestion_jobs` has no kind filter, so older artwork and tracklist jobs precede newly queued curated work. That is a scheduling question; this is a crash-recovery one. They interacted once — the backlog made a run long enough to be killed — but neither fixes the other.
+
+### Drain lifecycle: one claim per job **[DECIDED 2026-08-25]**
+
+**Decision: `drainJobs` claims one job immediately before executing it, rather than claiming a batch and then working through it.**
+
+**This supersedes the claim mechanics of the section above and nothing else in it.** The reclaim, the fencing, the 90-minute threshold and the `attempts` semantics are unchanged; only the shape of the loop that claims work changes.
+
+**The defect is the one that section named and did not solve.** `claim_ingestion_jobs` marks all N rows `running` and increments `attempts` in one statement, before any of them has run. At millisecond zero of a drain nothing distinguishes the job being executed from the N−1 not yet touched, so a killed worker abandons all of them. Reclaim converted a permanent leak into a bounded delay; it did not reduce how many rows leak per interruption.
+
+**The invariant, stated exactly: at any instant, at most one row is `running` on behalf of a given worker.** An interruption can therefore abandon at most one row instead of N.
+
+**This is prevention of _multi-job_ stranding, and it is structural rather than probabilistic. It is not prevention of stranding.** A job individually longer than its worker's remaining life still strands, is still reclaimed, and still returns to the head of the queue.
+
+`claim_ingestion_jobs` is unchanged — no migration, no ordering change, no new RPC. It is called with `batch_size = 1` in a loop, and `for update skip locked` gives the same divide-not-duplicate guarantee at one row as at ten.
+
+**A job enqueued during a drain may therefore be claimed later in the same invocation — an approved consequence of per-job claiming rather than a separate decision — so `maxJobs` bounds the jobs an invocation actually processes rather than only those pending when it began**, and preventing it would need a high-water mark inside `claim_ingestion_jobs`, which this boundary forbids.
+
+**Why not simply reduce the batch size.** It lowers the frequency without removing the mechanism, and it cannot help where a single job exceeds the ceiling — at `N = 1` such a job still strands. It also reaches only the cron: `drainJobs` has four callers, and the four `discover_curated_artist` rows stranded on staging were stranded by a **seed runner** at the same batch size, not by the cron. Batch size is a number callers pick; the defect is in the loop they call.
+
+#### The time budget
+
+**An optional, caller-supplied wall-clock budget, checked before each claim. There is no default.**
+
+|                        |                                                                                                                                                                     |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **When it is checked** | Before each claim, never between claim and execution. A claimed job is always run                                                                                   |
+| **What it never does** | Interrupt work already in progress. A job that crosses the budget runs to completion — the budget governs only whether to _start_ more                              |
+| **Default**            | **None.** An absent budget means no deadline                                                                                                                        |
+| **`maxJobs`**          | Retained as a secondary cap, demoted from safety mechanism. The loop ends at the first of: `maxJobs` reached, budget says do not start another, or nothing to claim |
+
+**Why there is no default.** No single value is correct for both a 60-second function that has already spent 55 of them and a 3600-second test runner, and a wrong default fails silently in either direction — premature stopping is invisible throughput loss, absence of protection is invisible stranding.
+
+**Why an optional budget is safe here, when it would not have been before.** Prevention lives in the claiming, not in the budget. A caller supplying no budget still has a worst case of one stranded row. The budget refines a floor that already holds, which is exactly why the two are separable.
+
+**Exactly one of the four callers supplies a budget.**
+
+| Caller                   | Worker ceiling                                 | Budget   | Why                                                                                                                                                                                                                                                                                                 |
+| ------------------------ | ---------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **cron drain route**     | 60s, explicit `maxDuration`                    | **45s**  | The caller that demonstrably strands rows nightly, and the only one whose ceiling the repository states                                                                                                                                                                                             |
+| **search `after()`**     | 60s, inherited from the search page route      | **none** | An add was measured at about a minute against that same ceiling, so a remaining-time budget would frequently be zero and would silently disable the `after()` cover fetch it exists for. Trading a shipped improvement for a probability reduction is wrong where the worst case is already one row |
+| **album page `after()`** | **unstated** — the route sets no `maxDuration` | **none** | No defensible number exists without inventing one, and it claims a single job, so its worst case is already the irreducible one                                                                                                                                                                     |
+| **seed runners**         | 3600s vitest timeout                           | **none** | A per-pass budget silently halves throughput: the runner loops a fixed number of passes and breaks only on an empty claim, so a truncated pass does not break early                                                                                                                                 |
+
+**The cron's 45 seconds is derived from its own `maxDuration`, in one place, with 15 seconds of headroom.** The headroom is **not** sized for the post-drain `queueDepth` counts and the response, which are sub-second. It is sized for the in-flight job's overrun: a job started at the deadline must still fit inside the ceiling, and at the measured ~9-second artwork figure a job starting at 45s finishes near 54s. A 50-second budget would leave about a second and is a bet on the mean rather than the tail. **This is a derived number, not a measured one, and it remains a bet on a tail that cannot be eliminated.**
+
+#### What the tests must establish, and one thing they cannot
+
+**Two properties are under test, and only one is reachable by exhausting a budget.** An in-process test cannot kill its own worker, and throwing from inside a job runner is not an interruption — the failure path settles the row.
+
+- **The structural invariant is asserted from inside the runner, mid-drain.** A stub queries `ingestion_jobs` while it is executing and asserts that exactly one row is `running`. This is the only honest proof of the invariant, and it fails immediately under batched claiming.
+- **The deadline is asserted after the drain, on row state.** The jobs that were started are `succeeded`, the rest are `pending` with `attempts = 0`, and no row is left `running`. **`attempts` is the discriminator** — a never-claimed row carries 0 and a claimed-then-abandoned row carries 1; status alone cannot tell them apart.
+
+Also required: the deadline check precedes the claim, and moving it after must fail a test; a job already claimed finishes beyond the budget, pinning the accepted limitation as intended behaviour rather than leaving it untested; `maxJobs` still caps; the existing concurrency, reclaim and fencing tests pass unchanged; the deadline guard is mutation-tested; and the cron's budget is asserted strictly below its `maxDuration`, so the two cannot drift.
+
+**No test can establish that no job ever strands**, and the "finishes beyond the budget" test is the evidence that none can.
+
+#### Open and deferred, stated so none of it reads as solved
+
+**[OPEN] — `attempts` can exceed `max_attempts` through repeated interruption.** Recorded in full in the corrected paragraph above. Closing it means deciding whether a strand should consume an attempt at all, which reopens retry semantics settled on 2026-08-24. **Not reopened here.**
+
+**[OPEN] — an individually oversized job.** Longer than its worker's life, so it strands, is reclaimed, returns to the front of the queue by `id`, and strands again. This cycle reduces its blast radius from the whole batch to itself; it does not make such a job complete or fail. Splitting `fetch_artwork` per size and making curated discovery resumable per browse page are candidate treatments, and **neither is decided**.
+
+**[OPEN] — the album page route states no `maxDuration`.** Its worker ceiling is unknown to the repository. Not set here: that is a page route contract change.
+
+**[OPEN] — the search `after()` drain may run with little or no remaining budget**, given an add measured at about a minute against a 60-second ceiling. Suspected, unquantified, not measured in this cycle. It is capped at one row by the claiming change regardless, which is the useful demonstration that the invariant protects callers we cannot measure.
+
+**Queue fairness remains `[OPEN]` and is untouched.** `claim_ingestion_jobs` still has no kind filter and still orders `priority asc, id asc`, so older artwork jobs precede newly queued curated work. One consequence deserves recording because it is not obvious: **reclaim returns a stranded row to `pending` with its original `id`, so a row reclaimed today lands behind every job enqueued before it.** The four reclaimed curated-discovery rows on staging sit behind roughly 288 artwork jobs. Reclaim works exactly as designed and still leaves them weeks away.
+
+**Deferred, unchanged, and not to be inferred from anything above:** kind-aware claiming and kind-specific batch sizes — both of which need the fairness question answered first, since a batch is an arbitrary mixture of kinds; artwork decomposition; resumable curated discovery; managed queue infrastructure, whose revisit criterion is still the one recorded under _Ingestion paths_ above; and **cron frequency, unchanged at daily and capped there by the hosting plan**.
+
+**Staging recovery is not part of this cycle.** The rows stranded on staging remain recoverable through the mechanism already deployed, and remain unrecovered. No staging execution belongs in a code cycle — mixing them would make the resulting queue state unattributable to either.
+
+**Provider integration is untouched.** Nothing here reads, writes or contemplates a Spotify identifier; §19.1 is unaffected.
 
 ### Progressive hydration **[DECIDED 2026-08-24]**
 
@@ -364,6 +441,17 @@ Proportionate to risk, not uniform coverage.
 - **Interrupted workers** — a job left `running` by a killed process must be reclaimed and must run again. **Covered since 2026-08-24**: stale detection and its boundary, concurrent reclaimers, reclaim racing a normal claim, attempt preservation, terminal exhaustion after stranding, and untouched `pending`/`succeeded`/`failed` rows — plus the two that matter most, a late worker's success and a late worker's _failure_ both being unable to overwrite a newer execution. The race that matters is a **legitimate worker against the reclaim**, not two claimants (§7).
 - **Catalogue scope** — singles must not enter the catalogue under any input shape. **The test requirement is unchanged and must not be weakened**; only its justification is now a current boundary rather than a permanent principle (§7, `product-spec.md` §8.9).
 - **Authorisation** — since RLS isn't the primary mechanism, application checks are the only barrier and must be tested directly.
+- **One job at a time** — the drain's structural invariant, asserted from _inside_ an executing job by counting `running` rows mid-drain, not inferred from what a drain produced. An in-process test cannot kill its own worker and a throwing runner is not an interruption, so observing the table while work is in flight is the only honest proof (§7).
+
+### Integration isolation is a contract the runner must actually enforce **[2026-08-25]**
+
+The integration project shares one database and its config has always said so — `fileParallelism: false`, with the comment that running these files in parallel would let them see each other's rows. **That project-level setting was demonstrably not sufficient to guarantee the intended isolation**, so `npm run test:integration` now passes `--no-file-parallelism` explicitly. The contract is unchanged; only its enforcement moved to the command, where it is observable.
+
+**What that change is not.** During one window of sustained back-to-back heavy local runs, 14 integration tests failed, including pre-existing ones in `curated-recovery.test.ts`; two single-file runs failed in the same window. **The failures then stopped reproducing — including without the flag** — across eight subsequent focused runs and two full-suite runs. So the flag **must not be described as the proven cause or the proven fix** of that window. It is not, and an earlier report in this cycle said so with more confidence than the evidence supported.
+
+**What is inference rather than explanation.** Per-job claiming replaces one claim round trip per drain with one per job, which plausibly increases the number of interleaving points between any two concurrent drains. That is a reasonable mechanism and it is unrefuted; it is **not** an established causal account of the observed failures. The `claim_ingestion_jobs` RPC itself was probed directly and honours `batch_size = 1` correctly.
+
+**The load-sensitivity finding in `docs/current-state.md` §8 stays `[OPEN]` and is not closed by any of this.** These observations belong to it as further data points, on the integration suite rather than only on Playwright.
 
 ---
 

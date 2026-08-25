@@ -37,26 +37,33 @@ const BACKOFF_SECONDS = [30, 300, 1800];
 /**
  * How long a `running` row may sit before it is treated as abandoned.
  *
- * **This is bounded by worker lifetime, not by job duration**, and the
- * distinction is the whole reason a single global value is safe.
- * `updated_at` on a `running` row is the moment its *batch* was claimed, not
- * the moment that job began: the tenth job in a batch already has a stale-
- * looking timestamp before it starts. So "how long can a job run" is the wrong
- * question. The right one is how long a process can hold a claim at all.
+ * **This is bounded by worker lifetime, not by job duration.** The right
+ * question is not "how long can a job run" but "how long can a process hold a
+ * claim at all", and every process that claims here is hard-bounded:
  *
- * Two workers claim jobs, and both are hard-bounded in this repository:
- *
- *   Vercel cron     60s     `maxDuration` on the drain route
- *   Seed runners  3600s     the vitest timeout on every runner that drains
+ *   Vercel cron          60s     `maxDuration` on the drain route
+ *   Search `after()`     60s     inherited from the search page route
+ *   Album page `after()`   ?     the route states none; the platform default
+ *   Seed runners       3600s     the vitest timeout on every runner that drains
  *
  * Past 60 minutes no such process is still alive, so a row still `running` is
  * abandoned by definition. 90 minutes is that ceiling plus half again, which
  * covers clock skew between the app and database clocks and any teardown lag.
+ * The album route's unstated ceiling does not weaken that: whatever the
+ * platform default is, it is nowhere near an hour.
  *
- * **Deliberately not per-kind.** A per-kind value would be tuned against job
- * duration — the wrong variable — and would imply a precision no measurement
- * supports: nothing retains per-job durations, because `updated_at` is
- * overwritten when the job terminates.
+ * **The rationale was corrected on 2026-08-25; the value did not change.** This
+ * used to argue that `updated_at` on a `running` row is the moment its *batch*
+ * was claimed, so the tenth job in a batch looks stale before it starts. Per-job
+ * claiming makes that false — `updated_at` is now approximately the moment that
+ * job itself began. It also said only two workers claim, which was never true
+ * of the two `after()` drains.
+ *
+ * **A duration-derived threshold is therefore now possible, and is still
+ * declined.** Worker lifetime remains the safer variable, and the durations
+ * themselves are still not retained: `updated_at` is overwritten when the job
+ * terminates. A per-kind value is rejected for the same reason — it would be
+ * tuned against duration and imply a precision no measurement supports.
  */
 const STALE_AFTER_MINUTES = 90;
 
@@ -75,6 +82,19 @@ export type DrainSummary = {
    * after its claim was reclaimed and re-claimed by someone else.
    */
   superseded: number;
+  /**
+   * Why the loop stopped.
+   *
+   * Reported because a short drain is otherwise indistinguishable from an empty
+   * queue, and this cycle exists precisely because work that stops quietly is
+   * the failure mode nobody notices.
+   *
+   * **A caller that supplies a budget must not loop on `claimed === 0`**: a
+   * budget stop can claim nothing and still leave the queue full. Loop on
+   * `stoppedBecause !== 'drained'` instead. The seed runners supply no budget,
+   * so their existing `claimed === 0` check remains correct.
+   */
+  stoppedBecause: 'drained' | 'budget' | 'max_jobs';
 };
 
 /** Artwork states that warrant another attempt. `found` and `absent` are settled. */
@@ -346,13 +366,29 @@ async function runJob(job: Job, admin: Admin): Promise<void> {
  * **`attempts` is left exactly as it is.** It counts *execution starts* — it is
  * incremented at claim, and `markFailed` compares it against `max_attempts` —
  * and a stranded job did start. Preserving it is therefore the reading that
- * changes retry semantics least, and it can never produce more than
- * `max_attempts` starts. The cost runs the other way: a job stranded twice gets
- * one real attempt before terminal failure. Two things bound that. A reclaimed
- * row keeps its original `id`, and claiming is ordered `priority asc, id asc`,
- * so it returns to the *front* of the queue — while stranding only ever hits
- * the *tail* of a batch. And `RECLAIM_MARKER` lands in `last_error`, so a job
- * exhausted this way says so rather than looking like a silent failure.
+ * changes retry semantics least. The cost runs the other way: a job stranded
+ * twice gets one real attempt before terminal failure, bounded because a
+ * reclaimed row keeps its original `id` and claiming is ordered
+ * `priority asc, id asc`, so it returns to the *front* of the queue. And
+ * `RECLAIM_MARKER` lands in `last_error`, so a job exhausted this way says so
+ * rather than looking like a silent failure.
+ *
+ * **[OPEN] — `attempts` can exceed `max_attempts` through repeated
+ * interruption, and this comment used to claim otherwise.** It read that
+ * preserving `attempts` "can never produce more than `max_attempts` starts".
+ * Nothing enforces that. `max_attempts` is consulted in exactly one place —
+ * `markFailed` — which runs only when a job throws inside a live process;
+ * neither `claim_ingestion_jobs` nor this function consults it. A job claimed,
+ * stranded and reclaimed repeatedly therefore has `attempts` incremented on
+ * every claim, past `max_attempts`, with no terminal state ever reached —
+ * neither retried to exhaustion nor surfaced as failed. **The behaviour is
+ * deliberately unchanged**; see docs/architecture.md §7. Per-job claiming makes
+ * it *rarer*, because an interruption now inflates one row rather than N, which
+ * is a reduction in frequency and not a fix.
+ *
+ * A second statement went stale on the same date: stranding no longer "only
+ * ever hits the *tail* of a batch", because per-job claiming leaves no batch
+ * tail — it hits the one job in flight.
  *
  * **`run_after` is deliberately left alone.** The row was claimed, which
  * required `run_after <= now()`, so it is already in the past and the job is
@@ -454,36 +490,104 @@ async function markFailed(
 }
 
 /**
- * Claims and runs up to `batchSize` jobs.
+ * Claims and runs jobs **one at a time**, up to `maxJobs`.
  *
- * Jobs run sequentially. The MusicBrainz rate limiter serialises requests
+ * **One claim per job, and that is the whole point.** This used to claim the
+ * whole batch in a single `claim_ingestion_jobs` call and then work through it.
+ * That marked every row `running` before any of them had run, so at millisecond
+ * zero nothing distinguished the job being executed from the ones not yet
+ * touched — and a worker killed mid-loop abandoned all of them. Measured on
+ * staging: a 60-second cron claiming 10 jobs that average 9 seconds strands 4
+ * a night (docs/architecture.md §7).
+ *
+ * **The invariant: at any instant, at most one row is `running` on behalf of
+ * this worker.** An interruption can therefore abandon at most one row instead
+ * of N. That is prevention of *multi-job* stranding, and it is structural. It
+ * is **not** prevention of stranding: a job individually longer than its
+ * worker's remaining life still strands, is still reclaimed, and still returns
+ * to the head of the queue.
+ *
+ * `claim_ingestion_jobs` is untouched — it is simply called with a batch size
+ * of one. `for update skip locked` gives the same divide-not-duplicate
+ * guarantee at one row as at ten, so concurrent drains still split the work.
+ *
+ * **A job enqueued during a drain may be claimed later in the same
+ * invocation.** `runJob` queues follow-up work — artwork after an ingest, a
+ * tracklist retry, artwork per album created by curated discovery — and per-job
+ * claiming can now reach it. That is an approved consequence of this design
+ * rather than a separate decision: preventing it would need a high-water mark
+ * inside the RPC. So `maxJobs` bounds the jobs this invocation actually
+ * processes, not only those pending when it began. In production a follow-up
+ * carries `DEFAULT_JOB_PRIORITY` and the highest `id`, so ordering puts it
+ * behind the existing backlog; on a near-empty queue it is claimed immediately.
+ *
+ * Jobs still run sequentially. The MusicBrainz rate limiter serialises requests
  * anyway, so concurrency here would buy nothing and only make failures harder
  * to attribute.
+ *
+ * @param maxJobs   Ceiling on jobs processed. A secondary cap, no longer the
+ *                  safety mechanism — that is the claiming shape above.
+ * @param options.budgetMs
+ *                  Wall-clock budget, measured from entry. **Optional with no
+ *                  default**, because no single value is right for both a
+ *                  60-second function that has already spent 55 of them and a
+ *                  3600-second seed runner. Checked *before* each claim and
+ *                  never between claim and execution, so a claimed job always
+ *                  runs — a job that crosses the budget finishes rather than
+ *                  being abandoned. Only the cron route supplies one.
  */
 export async function drainJobs(
-  batchSize = 10,
+  maxJobs = 10,
   admin: Admin = createAdminClient(),
+  options: { budgetMs?: number } = {},
 ): Promise<DrainSummary> {
+  const startedAt = Date.now();
+
   // Before claiming anything, return abandoned rows to the pool. A drain that
   // skipped this would claim around them forever: nothing else in the system
-  // moves a row out of `running`.
+  // moves a row out of `running`. Once per invocation, not per job — reclaim is
+  // a sweep, and running it in the loop would be the same UPDATE repeated.
   const reclaimed = await reclaimStaleJobs(admin);
 
-  const { data: jobs, error } = await admin.rpc('claim_ingestion_jobs', {
-    batch_size: batchSize,
-  });
-  if (error) throw error;
-
   const summary: DrainSummary = {
-    claimed: jobs?.length ?? 0,
+    claimed: 0,
     succeeded: 0,
     failed: 0,
     exhausted: 0,
     reclaimed,
     superseded: 0,
+    stoppedBecause: 'drained',
   };
 
-  for (const job of jobs ?? []) {
+  for (;;) {
+    if (summary.claimed >= maxJobs) {
+      summary.stoppedBecause = 'max_jobs';
+      break;
+    }
+
+    // Checked here — before the claim — and nowhere else. Checking after the
+    // claim would create exactly the row this cycle exists to stop creating:
+    // one marked `running` that no worker will ever run.
+    //
+    // `!== undefined` rather than a truthy test, deliberately. `budgetMs: 0` is
+    // a caller saying "I have no time left", and a truthy check would read that
+    // as "no budget" and drain the queue instead.
+    if (options.budgetMs !== undefined && Date.now() - startedAt >= options.budgetMs) {
+      summary.stoppedBecause = 'budget';
+      break;
+    }
+
+    const { data, error } = await admin.rpc('claim_ingestion_jobs', { batch_size: 1 });
+    if (error) throw error;
+
+    const job = data?.[0];
+    if (!job) {
+      summary.stoppedBecause = 'drained';
+      break;
+    }
+
+    summary.claimed += 1;
+
     try {
       await runJob(job, admin);
       const outcome = await markSucceeded(job, admin);

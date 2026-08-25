@@ -7,16 +7,48 @@ import { drainJobs, queueDepth } from '@/services/catalogue/jobs';
  * Drains the ingestion queue.
  *
  * Invoked on a schedule in deployed environments. Kept small on purpose: it
- * claims a batch, runs it, and reports. Everything interesting lives in the
- * service layer.
+ * claims and runs jobs one at a time until its budget or its cap stops it, then
+ * reports. Everything interesting lives in the service layer.
  *
- * Batch size is bounded by the MusicBrainz rate limit rather than by execution
- * speed — ten jobs is roughly ten seconds of wall time, comfortably inside a
- * serverless timeout while making steady progress.
+ * **The count is no longer the safety mechanism.** It used to be, on the
+ * reasoning that ten jobs is roughly ten seconds of wall time — which modelled
+ * a rate-limited job at about a second each. That is right for `fetch_tracklist`
+ * and wrong for `fetch_artwork`, which does not touch the MusicBrainz limiter at
+ * all and was measured on staging at roughly nine seconds. Ten of those do not
+ * fit in sixty, and the overflow was stranded in `running` every night. Safety
+ * now comes from `drainJobs` claiming one job at a time, and from the budget
+ * below; the count is a secondary cap.
  */
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * The platform's execution ceiling for this route.
+ *
+ * **Deliberately a literal.** Route segment config is extracted by static
+ * analysis at build time, and whether an imported constant survives that is not
+ * something the bundled Next documentation states either way. The budget below
+ * is derived *from* this in the same file, which gives one source of truth
+ * without betting on it.
+ */
 export const maxDuration = 60;
+
+/**
+ * Slack between the budget and the ceiling.
+ *
+ * **Sized for the in-flight job's overrun, not for the work after the drain.**
+ * `queueDepth`'s four counts and the JSON response are sub-second. What needs
+ * the room is a job started right at the deadline: at the measured ~9-second
+ * artwork figure, one starting at 45s finishes near 54s. A 50-second budget
+ * would leave about a second, which is a bet on the mean rather than the tail.
+ *
+ * This is a derived number, not a measured one, and it remains a bet on a tail
+ * that cannot be eliminated — a job longer than the headroom still strands.
+ */
+const DRAIN_HEADROOM_SECONDS = 15;
+
+/** Wall-clock budget for the drain. Never exceeds `maxDuration`, by construction. */
+export const DRAIN_BUDGET_MS = (maxDuration - DRAIN_HEADROOM_SECONDS) * 1000;
 
 const DEFAULT_BATCH_SIZE = 10;
 
@@ -38,6 +70,8 @@ export async function GET(request: NextRequest) {
   try {
     const summary = await drainJobs(
       Number.isFinite(batchSize) && batchSize > 0 ? Math.min(batchSize, 50) : DEFAULT_BATCH_SIZE,
+      undefined,
+      { budgetMs: DRAIN_BUDGET_MS },
     );
     return NextResponse.json({ ...summary, depth: await queueDepth() });
   } catch (error) {

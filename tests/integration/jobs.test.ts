@@ -14,6 +14,7 @@ import * as ingest from '@/services/catalogue/ingest';
 import { ingestReleaseGroupPayload } from '@/services/catalogue/ingest';
 import * as artwork from '@/services/catalogue/artwork';
 import { ARTWORK_BUCKET } from '@/services/catalogue/artwork';
+import { sleep } from '@/services/catalogue/rate-limiter';
 
 /**
  * Job queue against the real database.
@@ -100,7 +101,10 @@ describe('drainJobs', () => {
     stubIngestSuccess();
     await enqueueJob('ingest_release_group', MBID_A, { admin });
 
-    const summary = await drainJobs(10, admin);
+    // Capped at one job so this stays a test about settling a single job. An
+    // ingest queues artwork, and per-job claiming would otherwise run that too
+    // in the same invocation — deliberate behaviour, covered on its own below.
+    const summary = await drainJobs(1, admin);
 
     expect(summary).toMatchObject({ claimed: 1, succeeded: 1, failed: 0 });
     expect(await queueDepth(admin)).toMatchObject({ succeeded: 1, pending: 1 });
@@ -109,7 +113,8 @@ describe('drainJobs', () => {
   it('queues artwork as a follow-up job after a successful ingest', async () => {
     stubIngestSuccess();
     await enqueueJob('ingest_release_group', MBID_A, { admin });
-    await drainJobs(10, admin);
+    // One job: this asserts the follow-up is *queued*, so it must not also run.
+    await drainJobs(1, admin);
 
     // Separate job so a Cover Art Archive failure cannot fail metadata that
     // already succeeded.
@@ -208,6 +213,7 @@ describe('drainJobs', () => {
       exhausted: 0,
       reclaimed: 0,
       superseded: 0,
+      stoppedBecause: 'drained',
     });
   });
 
@@ -222,6 +228,184 @@ describe('drainJobs', () => {
     const [first, second] = await Promise.all([drainJobs(6, admin), drainJobs(6, admin)]);
 
     expect(first.claimed + second.claimed).toBe(6);
+  });
+
+  it('stops at maxJobs with work still queued', async () => {
+    stubIngestSuccess();
+    for (let i = 0; i < 3; i++) {
+      await enqueueJob('fetch_artwork', `0b0e4f1e-1111-4000-8000-00000000e0${i}0`, { admin });
+    }
+
+    const summary = await drainJobs(2, admin);
+
+    expect(summary).toMatchObject({ claimed: 2, succeeded: 2, stoppedBecause: 'max_jobs' });
+    expect(await queueDepth(admin)).toMatchObject({ pending: 1, running: 0 });
+  });
+
+  it('claims a follow-up job queued during the same invocation', async () => {
+    // An approved consequence of per-job claiming, not an accident: the claim
+    // for job two happens after job one has run, so work that job one queued is
+    // visible to it. `maxJobs` therefore bounds jobs actually processed, not
+    // jobs pending when the drain began. See docs/architecture.md §7.
+    stubIngestSuccess();
+    await enqueueJob('ingest_release_group', MBID_A, { admin });
+
+    const summary = await drainJobs(10, admin);
+
+    expect(summary).toMatchObject({ claimed: 2, succeeded: 2, stoppedBecause: 'drained' });
+    // The ingest, and the artwork job the ingest queued.
+    expect(await queueDepth(admin)).toMatchObject({ succeeded: 2, pending: 0, running: 0 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// One job at a time
+//
+// The structural property this cycle exists for. Claiming used to mark a whole
+// batch `running` before any of it had run, so a worker killed mid-loop
+// abandoned every unreached row — 4 a night on staging, at a 60-second ceiling
+// and jobs averaging 9 seconds.
+//
+// This is asserted from *inside* the executing job rather than inferred from
+// what a drain produced. An in-process test cannot kill its own worker, and
+// throwing from a runner is not an interruption — the failure path settles the
+// row. Observing the table mid-drain is the only honest proof.
+// ---------------------------------------------------------------------------
+
+describe('one job at a time', () => {
+  const MBIDS = [0, 1, 2].map((i) => `0b0e4f1e-1111-4000-8000-00000000d0${i}0`);
+
+  async function runningCount() {
+    const { count } = await admin
+      .from('ingestion_jobs')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'running');
+    return count ?? 0;
+  }
+
+  it('never has more than one job running at a time', async () => {
+    const observed: number[] = [];
+
+    // fetch_artwork deliberately: it queues no follow-up work, so this measures
+    // the claiming shape and nothing else.
+    vi.spyOn(artwork, 'fetchAndStoreArtwork').mockImplementation(async () => {
+      observed.push(await runningCount());
+      return { status: 'found', sizes: [500] };
+    });
+
+    for (const mbid of MBIDS) await enqueueJob('fetch_artwork', mbid, { admin });
+
+    await drainJobs(3, admin);
+
+    // Batch claiming produced [3, 3, 3] here. That is the defect, seen directly.
+    expect(observed).toEqual([1, 1, 1]);
+  });
+
+  it('leaves nothing running once the drain returns', async () => {
+    stubIngestSuccess();
+    for (const mbid of MBIDS) await enqueueJob('fetch_artwork', mbid, { admin });
+
+    await drainJobs(3, admin);
+
+    expect(await runningCount()).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The drain budget
+//
+// Bounds what a drain *starts*, never what it has already begun. The residual
+// this cannot remove is a single job longer than the remaining budget, which is
+// covered here as intended behaviour rather than left untested.
+// ---------------------------------------------------------------------------
+
+describe('drain budget', () => {
+  const MBIDS = [0, 1, 2, 3].map((i) => `0b0e4f1e-1111-4000-8000-00000000f0${i}0`);
+
+  async function jobRows() {
+    const { data } = await admin.from('ingestion_jobs').select('status, attempts').order('id');
+    return data ?? [];
+  }
+
+  /**
+   * The load-bearing budget test, and the mutation target.
+   *
+   * `budgetMs: 0` is a caller with no time left. Nothing may be claimed — and
+   * `attempts` is what proves it: a row never claimed carries 0, a row claimed
+   * and then abandoned carries 1. Status alone cannot tell those apart, which is
+   * precisely why stranded jobs were invisible for so long.
+   *
+   * Deterministic by construction: no timing, no sleeping, no clock injection.
+   */
+  it('claims nothing when the budget is already spent', async () => {
+    stubIngestSuccess();
+    for (const mbid of MBIDS) await enqueueJob('fetch_artwork', mbid, { admin });
+
+    const summary = await drainJobs(10, admin, { budgetMs: 0 });
+
+    expect(summary).toMatchObject({ claimed: 0, succeeded: 0, stoppedBecause: 'budget' });
+
+    const rows = await jobRows();
+    expect(rows).toHaveLength(MBIDS.length);
+    // Untouched, not merely unfinished.
+    expect(rows.every((row) => row.status === 'pending')).toBe(true);
+    expect(rows.every((row) => row.attempts === 0)).toBe(true);
+  });
+
+  it('leaves the jobs it did not reach pending and unclaimed', async () => {
+    vi.spyOn(artwork, 'fetchAndStoreArtwork').mockImplementation(async () => {
+      await sleep(80);
+      return { status: 'found', sizes: [500] };
+    });
+    for (const mbid of MBIDS) await enqueueJob('fetch_artwork', mbid, { admin });
+
+    const summary = await drainJobs(10, admin, { budgetMs: 120 });
+
+    expect(summary.stoppedBecause).toBe('budget');
+
+    const rows = await jobRows();
+    const untouched = rows.filter((row) => row.status === 'pending');
+    // Asserted on the set rather than an exact count: the number that fits in
+    // the budget depends on machine speed, but every row left behind must be
+    // pristine whatever that number is.
+    expect(untouched.length).toBeGreaterThan(0);
+    expect(untouched.every((row) => row.attempts === 0)).toBe(true);
+    expect(rows.some((row) => row.status === 'running')).toBe(false);
+  });
+
+  it('lets a job already claimed finish past the budget', async () => {
+    // The accepted limitation, pinned as intended behaviour. The budget governs
+    // whether to start work, and never interrupts work in flight — which is why
+    // a job longer than its worker's life can still strand.
+    vi.spyOn(artwork, 'fetchAndStoreArtwork').mockImplementation(async () => {
+      await sleep(300);
+      return { status: 'found', sizes: [500] };
+    });
+    await enqueueJob('fetch_artwork', MBIDS[0], { admin });
+
+    const summary = await drainJobs(10, admin, { budgetMs: 50 });
+
+    expect(summary).toMatchObject({ claimed: 1, succeeded: 1 });
+    const [row] = await jobRows();
+    expect(row.status).toBe('succeeded');
+  });
+
+  it('reports a drained queue rather than a budget stop when work runs out', async () => {
+    stubIngestSuccess();
+    await enqueueJob('fetch_artwork', MBIDS[0], { admin });
+
+    const summary = await drainJobs(10, admin, { budgetMs: 30_000 });
+
+    expect(summary).toMatchObject({ claimed: 1, stoppedBecause: 'drained' });
+  });
+
+  it('treats an absent budget as no deadline at all', async () => {
+    stubIngestSuccess();
+    for (const mbid of MBIDS) await enqueueJob('fetch_artwork', mbid, { admin });
+
+    const summary = await drainJobs(10, admin);
+
+    expect(summary).toMatchObject({ claimed: 4, succeeded: 4, stoppedBecause: 'drained' });
   });
 });
 
@@ -572,7 +756,7 @@ describe('stale running recovery', () => {
 
     // Reclaim touches only `running`; claiming touches only `pending`. Run
     // together they must not interfere.
-    const [, summary] = await Promise.all([reclaimStaleJobs(admin), drainJobs(10, admin)]);
+    const [, summary] = await Promise.all([reclaimStaleJobs(admin), drainJobs(1, admin)]);
 
     expect(summary.succeeded).toBe(1);
     expect(summary.reclaimed).toBe(0);
@@ -690,7 +874,7 @@ describe('late worker fencing', () => {
     await enqueueJob('ingest_release_group', MBID_A, { admin });
     stubIngestSuccess();
 
-    const summary = await drainJobs(10, admin);
+    const summary = await drainJobs(1, admin);
 
     expect(summary.succeeded).toBe(1);
     expect(summary.superseded).toBe(0);
