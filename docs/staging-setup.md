@@ -198,6 +198,35 @@ npm run db:seed:dryrun    # same env; reports selection, writes nothing
 
 ---
 
+## 5a. Run the curated tranche
+
+**Approved 2026-08-24 for the first tranche only** — 28 artists, 353 albums under the current depth boundary (`product-spec.md` §8.9). This is a different mechanism from §5: it browses each curated artist's release groups and creates albums at `hydration_status = 'pending'`, rather than fetching each album in full.
+
+> **⚠️ Staging only.** Never run this against the local database or any database the integration suite touches. That suite truncates `albums` and `artists`, and on a database holding users the truncation cascades into their collections, favourites and wishlists.
+
+Confirm the target and the selection first — this writes nothing:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=<staging-url> \
+SUPABASE_SERVICE_ROLE_KEY=<staging-service-key> \
+MUSICBRAINZ_CONTACT=https://github.com/darrylnatale/longplayr \
+npm run db:seed:curated:dryrun
+```
+
+Then, with the same environment:
+
+```bash
+npm run db:seed:curated
+```
+
+Expect **28 artists**, roughly **34 browse requests**, and **353 albums** less whatever is already held — five curated artists are already in the catalogue from the §5 seed, so `alreadyPresent` will be non-zero against staging even though it was zero against a local fixture database.
+
+**Two outcomes that are correct rather than faults.** `K` contributes **no albums**, because both her release groups are singles and therefore out of catalogue scope; she is in the curated set deliberately and produces no artist row. And every created album carries **no popularity score**, so the albums appear in Browse's _Recently added_ but not in _Popular_ — a deferred product decision, not a defect.
+
+Artwork is enqueued rather than fetched inline, so covers arrive as the job queue drains and albums render the designed placeholder until then. The drain route accepts a larger batch than the daily cron default if that wait matters.
+
+---
+
 ## 6. Still mandatory
 
 The **real-data smoke test** remains a gate on Phase 1. The seed exercises much
