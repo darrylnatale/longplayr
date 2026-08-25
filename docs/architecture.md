@@ -172,6 +172,40 @@ _Why this approach._ It introduces no new vendor, and it correctly separates the
 
 _When to revisit._ If job volume or failure-handling complexity grows past what a cron-drained table handles comfortably, move to a managed platform. The service layer means callers don't change.
 
+### Interrupted drains and stale jobs **[DECIDED 2026-08-24]**
+
+**Decision: a durable stale-`running` reclaim, generic across every job kind.**
+
+**The defect.** `drainJobs` claims a whole batch atomically — `claim_ingestion_jobs` marks each row `running` and increments `attempts` in one statement — then processes the batch sequentially in JavaScript. If the process dies mid-loop, every claimed-but-unreached row stays `running`, and **nothing in the system ever transitions a row out of `running`.** There is no lease, no heartbeat, no worker identity and no expiry. The recovery sweeps cannot help either: `enqueueMissingArtwork` skips targets with outstanding work, and `enqueueJob` swallows the `23505` the partial unique index raises, so a stranded row makes its target invisible to **every** existing path.
+
+**It is recurring, not a one-off.** Measured on staging 2026-08-25: 6 rows stranded 2026-08-23, 2 on 2026-08-24, 4 on 2026-08-25 — the latter two matching the `0 4 * * *` cron exactly. The drain route sets `maxDuration = 60` and claims 10; artwork jobs averaged roughly 9 seconds, so a full batch cannot reliably finish inside the ceiling.
+
+**Scope is crash and interruption recovery only.** Detection of stale `running` rows, returning them to `pending`, integration into the normal drain path, tests for the interrupted-worker case, and an evidence-based threshold. **Unchanged: retry parameters, batch size, claim ordering, priorities, artwork cadence, curated ingestion behaviour, and the schema** — the last unless the design proves impossible without it.
+
+**One mechanism for all kinds.** The defect is in the generic claim/drain lifecycle rather than in artwork or curated discovery, and the observed damage already spans both.
+
+**What this does and does not achieve.** Reclaim makes stranded jobs **recoverable**; it does **not prevent new strandings**, because the 60-second execution ceiling is untouched. The outcome is a permanent leak converted into a bounded delay, not an interruption-proof queue.
+
+**Resolved when the mechanism was implemented, 2026-08-24:**
+
+**The threshold is 90 minutes, global, and bounded by worker lifetime rather than job duration.** `updated_at` on a `running` row is the moment its _batch_ was claimed, not the moment that job began — the tenth job in a batch already looks stale before it starts — so job duration is the wrong variable. Only two workers claim, and both are hard-bounded here: the cron at `maxDuration = 60`, and every seed runner that drains at a 3600-second vitest timeout. **Past 60 minutes no such process is alive, so a still-`running` row is abandoned by definition**; 90 is that ceiling plus half again, covering clock skew and teardown lag. A per-kind threshold was rejected: it would be tuned against duration, and nothing retains per-job durations because `updated_at` is overwritten on termination.
+
+**`attempts` is the fencing token, and `markSucceeded`/`markFailed` now settle only their own execution.** Both were bare updates on `id`. They now also require `status = 'running'` and the claimed `attempts`, so a worker returning after its claim was reclaimed and re-taken matches nothing. **`attempts` needs no new column to serve this**: `claim_ingestion_jobs` increments it and returns the incremented row, making it a natural monotonic claim counter. Both conditions earn their place — status catches a row reclaimed but not yet re-claimed, attempts catches one that has been. A discarded completion is reported as **`superseded`** in `DrainSummary` rather than being silently dropped.
+
+**Reclaim preserves `attempts`.** It counts execution _starts_, and a stranded job did start, so preserving is the reading that changes retry semantics least — and it can never produce more than `max_attempts` starts. The cost runs the other way: a job stranded twice gets one real attempt before terminal failure. Two things bound that. A reclaimed row keeps its `id`, and claiming is ordered `priority asc, id asc`, so it returns to the **front** of the queue, whereas stranding only ever hits the **tail** of a batch. And a marker is written to `last_error`, so a job exhausted this way says so.
+
+**Reclaim is a single `UPDATE` and needs no migration, RPC or `skip locked`.** Postgres evaluates the predicate under the row lock, so a concurrent reclaimer blocks, re-reads, finds `pending` and takes nothing. It cannot race `claim_ingestion_jobs` either: that touches only `pending` rows and this only `running` ones, so the predicates are disjoint.
+
+**One thing implementation corrected in the plan. `run_after` is left untouched rather than set to `now()`.** The row was claimed, which required `run_after <= now()`, so it is already in the past and immediately eligible. Writing `now()` proved actively harmful: `run_after` is computed from the app clock and compared against the database clock, and **milliseconds of skew were enough to make a reclaimed job invisible to the very next claim** — caught by the terminal-failure test. `markFailed` already carried this warning for delays near zero; reclaim is that case.
+
+**Duplicate execution from a reclaim race** remains idempotent at the data level — artwork refetches, `ingest_release_group` upserts, curated discovery converges through the per-album existence check — but the loser of an insert race throws and consumes an attempt.
+
+**Current staging rows must not be repaired by hand.** Twelve jobs are stale as of 2026-08-25 — 4 `discover_curated_artist` and 8 `fetch_artwork` — and the count grows with each interrupted cron. They are to be recovered **through the implemented mechanism** once it is reviewed and verified, then verified from the database and queue. The 4 `fetch_artwork` rows in terminal `failed` are a different condition and are not reclaim's concern.
+
+**Partial writes within one artist stay as they are.** A write failing mid-loop leaves the albums already written; the existence check heals it on a later run — the Durutti Column holds 32 of 37 on staging and converges without damage. **Making artist ingestion transactional is explicitly not attempted here**, and remains `[OPEN]`.
+
+**Queue fairness is a separate `[OPEN]` problem and is not addressed.** `claim_ingestion_jobs` has no kind filter, so older artwork and tracklist jobs precede newly queued curated work. That is a scheduling question; this is a crash-recovery one. They interacted once — the backlog made a run long enough to be killed — but neither fixes the other.
+
 ### Progressive hydration **[DECIDED 2026-08-24]**
 
 **A third ingestion path, for expanding an artist's discography.** The two paths above are release-group-first: something already names a release group, and we fetch it. Neither can answer "give me everything by this artist", which is what a curated catalogue needs.
@@ -327,6 +361,7 @@ Proportionate to risk, not uniform coverage.
 - **Feed eligibility** — the anti-flood rule is a single condition whose failure floods every follower's feed. Test both directions: a backfill generates nothing, and an interactive add with a backdated `listened_on` still generates an event.
 - **Hard deletion** — cascades must be complete; an orphan is a privacy failure, not a bug.
 - **Rating aggregation** — nulls excluded, one-decimal rounding, thin-data behaviour.
+- **Interrupted workers** — a job left `running` by a killed process must be reclaimed and must run again. **Covered since 2026-08-24**: stale detection and its boundary, concurrent reclaimers, reclaim racing a normal claim, attempt preservation, terminal exhaustion after stranding, and untouched `pending`/`succeeded`/`failed` rows — plus the two that matter most, a late worker's success and a late worker's _failure_ both being unable to overwrite a newer execution. The race that matters is a **legitimate worker against the reclaim**, not two claimants (§7).
 - **Catalogue scope** — singles must not enter the catalogue under any input shape. **The test requirement is unchanged and must not be weakened**; only its justification is now a current boundary rather than a permanent principle (§7, `product-spec.md` §8.9).
 - **Authorisation** — since RLS isn't the primary mechanism, application checks are the only barrier and must be tested directly.
 

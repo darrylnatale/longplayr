@@ -8,6 +8,7 @@ import {
   enqueueJob,
   enqueueMissingArtwork,
   queueDepth,
+  reclaimStaleJobs,
 } from '@/services/catalogue/jobs';
 import * as ingest from '@/services/catalogue/ingest';
 import { ingestReleaseGroupPayload } from '@/services/catalogue/ingest';
@@ -205,6 +206,8 @@ describe('drainJobs', () => {
       succeeded: 0,
       failed: 0,
       exhausted: 0,
+      reclaimed: 0,
+      superseded: 0,
     });
   });
 
@@ -489,5 +492,208 @@ describe('enqueueMissingArtwork', () => {
     expect(await artworkStatusOf(MBID_A)).toBe('found');
     // Nothing left to do, which is what recovery finishing looks like.
     expect(await enqueueMissingArtwork({ admin })).toMatchObject({ candidates: 0, queued: 0 });
+  });
+});
+
+describe('stale running recovery', () => {
+  const STALE_MINUTES = 91;
+  const FRESH_MINUTES = 5;
+
+  /**
+   * Creates a row that looks exactly like an abandoned claim.
+   *
+   * Inserted rather than updated on purpose: `ingestion_jobs_set_updated_at` is
+   * a BEFORE UPDATE trigger, so any update rewrites `updated_at` to now() and a
+   * claim age cannot be backdated that way. Insert is not covered by it.
+   */
+  async function strand(
+    mbid: string,
+    minutesAgo: number,
+    attempts = 1,
+    status: Database['public']['Enums']['job_status'] = 'running',
+  ) {
+    const { data, error } = await admin
+      .from('ingestion_jobs')
+      .insert({
+        kind: 'ingest_release_group',
+        target_mbid: mbid,
+        status,
+        attempts,
+        updated_at: new Date(Date.now() - minutesAgo * 60_000).toISOString(),
+      })
+      .select('id')
+      .single();
+    if (error) throw error;
+    return data!.id;
+  }
+
+  async function row(id: number) {
+    const { data } = await admin.from('ingestion_jobs').select('*').eq('id', id).single();
+    return data!;
+  }
+
+  it('reclaims a genuinely stale running job', async () => {
+    const id = await strand(MBID_A, STALE_MINUTES);
+
+    expect(await reclaimStaleJobs(admin)).toBe(1);
+
+    const job = await row(id);
+    expect(job.status).toBe('pending');
+    expect(job.last_error).toMatch(/Reclaimed/);
+  });
+
+  it('leaves a freshly claimed running job alone', async () => {
+    const id = await strand(MBID_A, FRESH_MINUTES);
+
+    expect(await reclaimStaleJobs(admin)).toBe(0);
+    expect((await row(id)).status).toBe('running');
+  });
+
+  it('reclaims several stale jobs in one pass', async () => {
+    await strand(MBID_A, STALE_MINUTES);
+    await strand(MBID_B, STALE_MINUTES);
+
+    expect(await reclaimStaleJobs(admin)).toBe(2);
+  });
+
+  it('cannot reclaim the same job twice under concurrent reclaimers', async () => {
+    await strand(MBID_A, STALE_MINUTES);
+
+    const [first, second] = await Promise.all([reclaimStaleJobs(admin), reclaimStaleJobs(admin)]);
+
+    // The predicate is re-evaluated under the row lock, so the loser matches
+    // nothing and the job is handed back exactly once.
+    expect(first + second).toBe(1);
+  });
+
+  it('does not disturb a job another drain is legitimately claiming', async () => {
+    await enqueueJob('ingest_release_group', MBID_A, { admin });
+    stubIngestSuccess();
+
+    // Reclaim touches only `running`; claiming touches only `pending`. Run
+    // together they must not interfere.
+    const [, summary] = await Promise.all([reclaimStaleJobs(admin), drainJobs(10, admin)]);
+
+    expect(summary.succeeded).toBe(1);
+    expect(summary.reclaimed).toBe(0);
+  });
+
+  it('preserves attempts across reclaim', async () => {
+    const id = await strand(MBID_A, STALE_MINUTES, 2);
+
+    await reclaimStaleJobs(admin);
+
+    // A stranding is an execution start, which `attempts` already counted.
+    expect((await row(id)).attempts).toBe(2);
+  });
+
+  it('drives a reclaimed job to terminal failure rather than looping forever', async () => {
+    // Stranded at max_attempts: the next claim takes it past the ceiling, so a
+    // failure there is terminal. Preserving attempts is what bounds this.
+    const id = await strand(MBID_A, STALE_MINUTES, 3);
+    vi.spyOn(ingest, 'ingestReleaseGroup').mockRejectedValue(new Error('still broken'));
+
+    await drainJobs(10, admin);
+
+    const job = await row(id);
+    expect(job.status).toBe('failed');
+    expect(job.attempts).toBeGreaterThanOrEqual(job.max_attempts);
+  });
+
+  it('leaves genuinely stale pending, succeeded and failed jobs untouched', async () => {
+    // Inserted at their final status, never updated afterwards. An update here
+    // would fire `ingestion_jobs_set_updated_at` and make the row fresh, and
+    // the test would then pass even if reclaim stopped filtering on `running`
+    // — proving nothing. These three are old enough to be reclaimed and are
+    // spared only because of their status.
+    const pending = await strand(MBID_A, STALE_MINUTES, 1, 'pending');
+    const succeeded = await strand(MBID_B, STALE_MINUTES, 1, 'succeeded');
+    const failed = await strand('0b0e4f1e-1111-4000-8000-0000000000cc', STALE_MINUTES, 1, 'failed');
+
+    for (const id of [pending, succeeded, failed]) {
+      const age = Date.now() - new Date((await row(id)).updated_at).getTime();
+      expect(age).toBeGreaterThan(90 * 60_000);
+    }
+
+    expect(await reclaimStaleJobs(admin)).toBe(0);
+    expect((await row(pending)).status).toBe('pending');
+    expect((await row(succeeded)).status).toBe('succeeded');
+    expect((await row(failed)).status).toBe('failed');
+  });
+});
+
+describe('late worker fencing', () => {
+  /**
+   * The race this exists for, driven through the real drain path.
+   *
+   * The stub stands in for a slow worker: while execution A is "working", the
+   * row is handed back and re-claimed by execution B, exactly as a reclaim
+   * followed by another drain would leave it. When `drainJobs` then settles A,
+   * the fencing must discard it.
+   */
+  function takeOverDuring(outcome: 'succeed' | 'throw') {
+    vi.spyOn(ingest, 'ingestReleaseGroup').mockImplementation(async () => {
+      await admin.from('ingestion_jobs').update({ status: 'pending' }).eq('target_mbid', MBID_A);
+
+      // Execution B claims it and takes attempts = N + 1.
+      await admin.rpc('claim_ingestion_jobs', { batch_size: 1 });
+      await admin
+        .from('ingestion_jobs')
+        .update({ status: 'succeeded', last_error: null })
+        .eq('target_mbid', MBID_A);
+
+      if (outcome === 'throw') throw new Error('A was slow, and failed late');
+      return { status: 'ingested', albumId: 'stub', mbid: MBID_A };
+    });
+    vi.spyOn(artwork, 'fetchAndStoreArtwork').mockResolvedValue({ status: 'found', sizes: [500] });
+  }
+
+  async function state() {
+    const { data } = await admin
+      .from('ingestion_jobs')
+      .select('status, attempts, last_error')
+      .eq('target_mbid', MBID_A)
+      .eq('kind', 'ingest_release_group')
+      .single();
+    return data!;
+  }
+
+  it('a late success cannot overwrite the newer execution', async () => {
+    await enqueueJob('ingest_release_group', MBID_A, { admin });
+    takeOverDuring('succeed');
+
+    const summary = await drainJobs(1, admin);
+
+    // A's success is discarded rather than counted.
+    expect(summary.superseded).toBe(1);
+    expect(summary.succeeded).toBe(0);
+    expect((await state()).attempts).toBe(2);
+  });
+
+  it('a late failure cannot resurrect a succeeded job', async () => {
+    await enqueueJob('ingest_release_group', MBID_A, { admin });
+    takeOverDuring('throw');
+
+    const summary = await drainJobs(1, admin);
+
+    // Unfenced, this returned the row to `pending` with a backoff and undid a
+    // completed job — the worst outcome available here.
+    expect(summary.superseded).toBe(1);
+    expect(summary.failed).toBe(0);
+
+    const after = await state();
+    expect(after.status).toBe('succeeded');
+    expect(after.last_error).toBeNull();
+  });
+
+  it('the ordinary non-racing path still settles normally', async () => {
+    await enqueueJob('ingest_release_group', MBID_A, { admin });
+    stubIngestSuccess();
+
+    const summary = await drainJobs(10, admin);
+
+    expect(summary.succeeded).toBe(1);
+    expect(summary.superseded).toBe(0);
+    expect(summary.reclaimed).toBe(0);
   });
 });

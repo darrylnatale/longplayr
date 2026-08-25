@@ -34,11 +34,47 @@ type Job = Database['public']['Tables']['ingestion_jobs']['Row'];
 /** Backoff between attempts. Deliberately well beyond the 1s rate window. */
 const BACKOFF_SECONDS = [30, 300, 1800];
 
+/**
+ * How long a `running` row may sit before it is treated as abandoned.
+ *
+ * **This is bounded by worker lifetime, not by job duration**, and the
+ * distinction is the whole reason a single global value is safe.
+ * `updated_at` on a `running` row is the moment its *batch* was claimed, not
+ * the moment that job began: the tenth job in a batch already has a stale-
+ * looking timestamp before it starts. So "how long can a job run" is the wrong
+ * question. The right one is how long a process can hold a claim at all.
+ *
+ * Two workers claim jobs, and both are hard-bounded in this repository:
+ *
+ *   Vercel cron     60s     `maxDuration` on the drain route
+ *   Seed runners  3600s     the vitest timeout on every runner that drains
+ *
+ * Past 60 minutes no such process is still alive, so a row still `running` is
+ * abandoned by definition. 90 minutes is that ceiling plus half again, which
+ * covers clock skew between the app and database clocks and any teardown lag.
+ *
+ * **Deliberately not per-kind.** A per-kind value would be tuned against job
+ * duration — the wrong variable — and would imply a precision no measurement
+ * supports: nothing retains per-job durations, because `updated_at` is
+ * overwritten when the job terminates.
+ */
+const STALE_AFTER_MINUTES = 90;
+
+/** Written to `last_error` on reclaim, so an exhausted job stays diagnosable. */
+const RECLAIM_MARKER = `Reclaimed after sitting in running for over ${STALE_AFTER_MINUTES} minutes.`;
+
 export type DrainSummary = {
   claimed: number;
   succeeded: number;
   failed: number;
   exhausted: number;
+  /** Stale rows returned to pending before this drain claimed anything. */
+  reclaimed: number;
+  /**
+   * Completions discarded because the row had moved on — a worker finishing
+   * after its claim was reclaimed and re-claimed by someone else.
+   */
+  superseded: number;
 };
 
 /** Artwork states that warrant another attempt. `found` and `absent` are settled. */
@@ -296,23 +332,100 @@ async function runJob(job: Job, admin: Admin): Promise<void> {
   }
 }
 
-async function markSucceeded(job: Job, admin: Admin) {
-  await admin
+/**
+ * Returns abandoned `running` rows to `pending`.
+ *
+ * **One statement, and that is what makes it safe.** Postgres evaluates the
+ * predicate under the row lock, so a second reclaimer running concurrently
+ * blocks, re-reads, finds `status = 'pending'` and updates nothing. No
+ * `skip locked`, no advisory lock and no RPC is needed for that guarantee.
+ *
+ * It also cannot race `claim_ingestion_jobs`: that touches only `pending` rows
+ * and this touches only `running` ones, so their predicates are disjoint.
+ *
+ * **`attempts` is left exactly as it is.** It counts *execution starts* — it is
+ * incremented at claim, and `markFailed` compares it against `max_attempts` —
+ * and a stranded job did start. Preserving it is therefore the reading that
+ * changes retry semantics least, and it can never produce more than
+ * `max_attempts` starts. The cost runs the other way: a job stranded twice gets
+ * one real attempt before terminal failure. Two things bound that. A reclaimed
+ * row keeps its original `id`, and claiming is ordered `priority asc, id asc`,
+ * so it returns to the *front* of the queue — while stranding only ever hits
+ * the *tail* of a batch. And `RECLAIM_MARKER` lands in `last_error`, so a job
+ * exhausted this way says so rather than looking like a silent failure.
+ *
+ * **`run_after` is deliberately left alone.** The row was claimed, which
+ * required `run_after <= now()`, so it is already in the past and the job is
+ * immediately eligible again. Writing `now()` here would be worse, not
+ * neutral: `run_after` is computed from the app clock and compared against the
+ * database clock, and `markFailed` already records that anything needing a
+ * delay near zero must not do that. Milliseconds of skew were enough to make a
+ * reclaimed job invisible to the very next claim.
+ *
+ * **This makes stranding recoverable; it does not prevent it.** The 60-second
+ * ceiling on the cron is untouched, so a killed invocation still abandons the
+ * rest of its batch — the next drain picks them up.
+ */
+export async function reclaimStaleJobs(admin: Admin = createAdminClient()): Promise<number> {
+  const cutoff = new Date(Date.now() - STALE_AFTER_MINUTES * 60 * 1000).toISOString();
+
+  const { data, error } = await admin
     .from('ingestion_jobs')
-    .update({ status: 'succeeded', last_error: null })
-    .eq('id', job.id);
+    .update({ status: 'pending', last_error: RECLAIM_MARKER })
+    .eq('status', 'running')
+    .lt('updated_at', cutoff)
+    .select('id');
+
+  if (error) throw error;
+  return data?.length ?? 0;
 }
 
-async function markFailed(job: Job, admin: Admin, error: unknown): Promise<'retry' | 'exhausted'> {
+/**
+ * Settling a job is fenced: it lands only if the row is still the execution
+ * that claimed it.
+ *
+ * `attempts` is the fencing token. `claim_ingestion_jobs` increments it and
+ * returns the incremented row, so the in-memory `job` identifies one specific
+ * execution. If that claim was reclaimed and taken by someone else, the row now
+ * holds a higher `attempts` and the update matches nothing.
+ *
+ * Both conditions are load-bearing. `status = 'running'` catches a row that was
+ * reclaimed but not yet re-claimed; `attempts` catches one that has been. These
+ * used to be bare updates on `id`, which let a slow worker overwrite a newer
+ * execution — and in the `markFailed` case return an already `succeeded` job to
+ * `pending` with a backoff, resurrecting finished work.
+ */
+async function markSucceeded(job: Job, admin: Admin): Promise<'settled' | 'superseded'> {
+  const { data, error } = await admin
+    .from('ingestion_jobs')
+    .update({ status: 'succeeded', last_error: null })
+    .eq('id', job.id)
+    .eq('status', 'running')
+    .eq('attempts', job.attempts)
+    .select('id');
+
+  if (error) throw error;
+  return (data?.length ?? 0) > 0 ? 'settled' : 'superseded';
+}
+
+async function markFailed(
+  job: Job,
+  admin: Admin,
+  error: unknown,
+): Promise<'retry' | 'exhausted' | 'superseded'> {
   const message = error instanceof Error ? error.message : String(error);
   const exhausted = job.attempts >= job.max_attempts;
 
   if (exhausted) {
-    await admin
+    const { data, error: updateError } = await admin
       .from('ingestion_jobs')
       .update({ status: 'failed', last_error: message })
-      .eq('id', job.id);
-    return 'exhausted';
+      .eq('id', job.id)
+      .eq('status', 'running')
+      .eq('attempts', job.attempts)
+      .select('id');
+    if (updateError) throw updateError;
+    return (data?.length ?? 0) > 0 ? 'exhausted' : 'superseded';
   }
 
   // Back to pending with a delay. attempts was already incremented at claim
@@ -324,16 +437,20 @@ async function markFailed(job: Job, admin: Admin, error: unknown): Promise<'retr
   // zero should use the database clock instead.
   const delay = BACKOFF_SECONDS[Math.min(job.attempts - 1, BACKOFF_SECONDS.length - 1)];
 
-  await admin
+  const { data, error: updateError } = await admin
     .from('ingestion_jobs')
     .update({
       status: 'pending',
       last_error: message,
       run_after: new Date(Date.now() + delay * 1000).toISOString(),
     })
-    .eq('id', job.id);
+    .eq('id', job.id)
+    .eq('status', 'running')
+    .eq('attempts', job.attempts)
+    .select('id');
 
-  return 'retry';
+  if (updateError) throw updateError;
+  return (data?.length ?? 0) > 0 ? 'retry' : 'superseded';
 }
 
 /**
@@ -347,6 +464,11 @@ export async function drainJobs(
   batchSize = 10,
   admin: Admin = createAdminClient(),
 ): Promise<DrainSummary> {
+  // Before claiming anything, return abandoned rows to the pool. A drain that
+  // skipped this would claim around them forever: nothing else in the system
+  // moves a row out of `running`.
+  const reclaimed = await reclaimStaleJobs(admin);
+
   const { data: jobs, error } = await admin.rpc('claim_ingestion_jobs', {
     batch_size: batchSize,
   });
@@ -357,16 +479,20 @@ export async function drainJobs(
     succeeded: 0,
     failed: 0,
     exhausted: 0,
+    reclaimed,
+    superseded: 0,
   };
 
   for (const job of jobs ?? []) {
     try {
       await runJob(job, admin);
-      await markSucceeded(job, admin);
-      summary.succeeded += 1;
+      const outcome = await markSucceeded(job, admin);
+      if (outcome === 'superseded') summary.superseded += 1;
+      else summary.succeeded += 1;
     } catch (error) {
       const outcome = await markFailed(job, admin, error);
       if (outcome === 'exhausted') summary.exhausted += 1;
+      else if (outcome === 'superseded') summary.superseded += 1;
       else summary.failed += 1;
     }
   }
