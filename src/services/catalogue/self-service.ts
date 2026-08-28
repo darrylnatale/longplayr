@@ -2,7 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 
 import { err, ok, type Result } from '../result';
 import { getCurrentProfile, getCurrentUser } from '../profiles';
-import { ingestReleaseGroup } from './ingest';
+import { findHeldAlbum, ingestReleaseGroup, reconcileCredits } from './ingest';
 import { enqueueJob } from './jobs';
 import { INTERACTIVE_JOB_PRIORITY } from './queue';
 import { searchReleaseGroups, type MbReleaseGroup } from './musicbrainz';
@@ -151,12 +151,24 @@ export async function addAlbumFromUpstream(
 
   const admin = createAdminClient();
 
-  const { data: existing } = await admin
-    .from('albums')
-    .select('mbid')
-    .eq('mbid', mbid)
-    .maybeSingle();
-  if (existing) return ok({ mbid });
+  const held = await findHeldAlbum(admin, mbid);
+  if (held) {
+    // Held is not the same as complete. An interrupted ingest can leave an
+    // album row whose credits were never written, and the check this replaced
+    // could not tell the difference — so the album stayed unreachable from its
+    // own artist page, permanently.
+    //
+    // **Still no upstream request, which is the whole point of this branch.**
+    // The repair reads the stored payload, so an add of an album we already
+    // hold stays as cheap as it was — this path runs while a reader waits.
+    //
+    // The outcome is deliberately not surfaced to the user. Nothing was added,
+    // which is what they asked about; a repair that did or did not happen to a
+    // record they already had is not their business, and inventing an error for
+    // it would report a failure where the request succeeded.
+    if (!held.hasCredits) await reconcileCredits(admin, held.id, mbid);
+    return ok({ mbid });
+  }
 
   let result: Awaited<ReturnType<typeof ingestReleaseGroup>>;
   try {

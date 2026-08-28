@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 
 import type { Database } from '@/lib/supabase/database.types';
 import { singleArtistAlbum } from '@/services/catalogue/fixtures';
+import { ingestReleaseGroupPayload } from '@/services/catalogue/ingest';
 import * as ingest from '@/services/catalogue/ingest';
 import {
   addAlbumFromUpstream,
@@ -364,5 +365,35 @@ describe('upstream failure', () => {
 
     expect(result.ok === false && result.error).toBe('out_of_scope');
     expect(await additionCount()).toBe(0);
+  });
+});
+
+describe('an album held without its credits', () => {
+  it('is reconciled on a repeat add, spending no upstream request', async () => {
+    await onboardedUser();
+
+    // A real ingest, not `stubIngest`: this needs a genuine album with a real
+    // stored payload, because the repair reads that payload rather than
+    // re-fetching. The stub writes neither.
+    await ingestReleaseGroupPayload(singleArtistAlbum, admin);
+
+    const { data: album } = await admin.from('albums').select('id').eq('mbid', MBID).single();
+    await admin.from('album_artists').delete().eq('album_id', album!.id);
+
+    const ingestSpy = stubIngest();
+    const result = await addAlbumFromUpstream(MBID);
+
+    expect(result.ok).toBe(true);
+    // The album was already held, so nothing was ingested and nothing was
+    // audited — the repair does not turn a no-op into an addition.
+    expect(ingestSpy).not.toHaveBeenCalled();
+    expect(await additionCount()).toBe(0);
+
+    const { data } = await admin
+      .from('albums')
+      .select('album_artists(artists(name))')
+      .eq('mbid', MBID)
+      .single();
+    expect((data?.album_artists ?? []).map((row) => row.artists?.name)).toEqual(['Radiohead']);
   });
 });

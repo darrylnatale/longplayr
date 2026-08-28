@@ -62,6 +62,39 @@ export async function storeUpstreamPayload(
 }
 
 /**
+ * One stored payload, or null when none is held.
+ *
+ * The counterpart to `storeUpstreamPayload`, and deliberately narrow: it
+ * returns the verbatim snapshot and nothing else. **Reading a payload is not
+ * modelling one** — the caveat on this module applies with full force, and the
+ * one legitimate caller today is credit reconciliation, which needs the artist
+ * credit for an album whose row was written without it.
+ *
+ * **Null is an answer, not a failure.** `storeUpstreamPayload` runs before any
+ * album row is written, so a held album cannot lack a snapshot and this should
+ * never be null in practice. It is still returned rather than thrown, because
+ * the caller reconciling a catalogue of hundreds must be able to record one
+ * unreachable album and carry on.
+ */
+export async function readUpstreamPayload(
+  admin: Admin,
+  kind: UpstreamPayloadKind,
+  sourceId: string,
+  source: string = MUSICBRAINZ,
+): Promise<unknown | null> {
+  const { data, error } = await admin
+    .from('upstream_payloads')
+    .select('payload')
+    .eq('source', source)
+    .eq('kind', kind)
+    .eq('source_id', sourceId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data?.payload ?? null;
+}
+
+/**
  * Which of these identifiers we hold a payload of this kind for.
  *
  * Exists so the backfill sweep can ask once for a batch rather than once per

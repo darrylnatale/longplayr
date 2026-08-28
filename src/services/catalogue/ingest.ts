@@ -11,7 +11,7 @@ import {
   type MappedRelease,
 } from './map';
 import { getRelease, getReleaseGroup, NotFoundError } from './musicbrainz';
-import { storeUpstreamPayload } from './payloads';
+import { readUpstreamPayload, storeUpstreamPayload } from './payloads';
 import { enqueueJob } from './queue';
 import { recordTracklistStatus, storeTracklist, type TracklistResult } from './tracklist';
 
@@ -131,17 +131,38 @@ async function replaceCredits(
 
   // Credits can change upstream — an artist removed from a collaboration must
   // disappear here too, so this is a replace rather than an append.
+  //
+  // **Upsert first, delete second, and the order is load-bearing.** On success
+  // the two orders are indistinguishable: the delete's predicate does not read
+  // the pre-state, so the final rows are identical either way. They differ only
+  // when the process dies between the two statements.
+  //
+  //   delete → upsert   leaves `old ∩ new` — a strict subset when a credit was
+  //                     added upstream, so the album is missing a credit
+  //   upsert → delete   leaves `old ∪ new` ⊇ `new` — complete, possibly
+  //                     carrying one stale credit until the next ingest
+  //
+  // An extra credit puts an album on one artist page too many, is visible, and
+  // is corrected by the next successful ingest. A missing credit makes an album
+  // unreachable from the artist who made it, silently and permanently — which
+  // is exactly what happened to one album on staging.
+  //
+  // This also buys the completeness test its precision. Credit rows are written
+  // in ONE upsert, which is atomic, so under this order the only reachable
+  // incomplete state is zero credits — never a strict non-empty subset. That is
+  // what lets `findHeldAlbum` decide completeness by asking whether any credit
+  // exists at all.
+  const { error } = await admin
+    .from('album_artists')
+    .upsert(rows, { onConflict: 'album_id,artist_id' });
+  if (error) throw error;
+
   const { error: deleteError } = await admin
     .from('album_artists')
     .delete()
     .eq('album_id', albumId)
     .not('artist_id', 'in', `(${rows.map((r) => r.artist_id).join(',')})`);
   if (deleteError) throw deleteError;
-
-  const { error } = await admin
-    .from('album_artists')
-    .upsert(rows, { onConflict: 'album_id,artist_id' });
-  if (error) throw error;
 }
 
 /** Upserts release metadata, returning MBID → row id. Tracks are separate. */
@@ -321,4 +342,111 @@ export async function createMinimalAlbum(
   admin: Admin = createAdminClient(),
 ): Promise<IngestResult> {
   return ingestReleaseGroupPayload(browseRecord, admin, undefined, { hydration: 'pending' });
+}
+
+// ---------------------------------------------------------------------------
+// Completeness and credit reconciliation
+// ---------------------------------------------------------------------------
+
+/**
+ * An album we already hold, and whether it is actually complete.
+ *
+ * `hasCredits` is the whole reason this type exists. Three ingestion paths
+ * independently asked "does a row with this MBID exist?" and treated the answer
+ * as "is this album fully written?" — which is false, and was false on staging
+ * for a day. See `docs/architecture.md` §7, _Credit reconciliation and the
+ * completeness test_.
+ */
+export type HeldAlbum = { id: string; hasCredits: boolean };
+
+/**
+ * The shared existence check, and the only one any caller should use.
+ *
+ * **Costs exactly what the old check cost**: one round trip. The credits arrive
+ * as an embedded select rather than a second query, so asking the better
+ * question is free.
+ *
+ * The embed needs no foreign-key disambiguation. `album_artists` holds two
+ * foreign keys, but to two *different* tables, so exactly one relationship
+ * exists from `albums` — unlike `releases`, which has two paths and must name
+ * its key (`CLAUDE.md`).
+ */
+export async function findHeldAlbum(admin: Admin, mbid: string): Promise<HeldAlbum | null> {
+  const { data, error } = await admin
+    .from('albums')
+    .select('id, album_artists(artist_id)')
+    .eq('mbid', mbid)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) return null;
+
+  return { id: data.id, hasCredits: (data.album_artists ?? []).length > 0 };
+}
+
+/**
+ * What reconciliation did, reported precisely enough to count.
+ *
+ * **Four outcomes, not two, and the distinction is the point.** An album that
+ * could not be reconciled must never be counted as reconciled — a report that
+ * conflates them is how a partially written catalogue looks healthy.
+ */
+export type CreditReconciliation =
+  | { status: 'reconciled'; credits: number }
+  | { status: 'no_payload' }
+  | { status: 'out_of_scope'; reason: string };
+
+/**
+ * Writes the artist credits for an album whose row was written without them.
+ *
+ * **Costs zero MusicBrainz requests, always.** The caller either already holds
+ * the payload — curated discovery does, from its browse — or it is read from
+ * `upstream_payloads`, where a verbatim snapshot has been kept for every album
+ * since Phase 1's payload capture. Re-fetching would spend a rate-limited
+ * request on data already on disk, and on the self-service path it would spend
+ * it while a reader waits.
+ *
+ * **Writes credits and nothing else.** No `hydration_status`, no
+ * `representative_release_id`, no releases, no tracks, no artwork, no job rows,
+ * and — deliberately — no call to `storeUpstreamPayload`. Re-storing a payload
+ * read from disk would move `fetched_at`, making the snapshot lie about when it
+ * was taken.
+ *
+ * **Never called for a complete album.** Callers gate on `hasCredits`, so a
+ * complete album performs no writes at all; there is no path from the check to
+ * a write.
+ */
+export async function reconcileCredits(
+  admin: Admin,
+  albumId: string,
+  mbid: string,
+  /** The browse or release-group response, when the caller already holds one. */
+  payload?: Parameters<typeof mapReleaseGroup>[0],
+): Promise<CreditReconciliation> {
+  const stored = payload ?? (await readUpstreamPayload(admin, 'release_group', mbid));
+
+  // Structurally unreachable: `storeUpstreamPayload` runs before any album row
+  // is written, so a held album cannot lack a snapshot. Reported rather than
+  // thrown all the same — a reconcile pass over a curated artist must be able
+  // to record one unreachable album and finish the other thirty-six.
+  if (!stored) return { status: 'no_payload' };
+
+  let mapped: MappedAlbum;
+  try {
+    mapped = mapReleaseGroup(stored as Parameters<typeof mapReleaseGroup>[0]);
+  } catch (error) {
+    // Scope rules are explicitly temporary — the singles question is open and
+    // the depth boundary is documented as provisional — so an album ingested
+    // under yesterday's rules can fail today's. That must not abort a tranche
+    // over a record we already hold.
+    if (error instanceof OutOfScopeError) {
+      return { status: 'out_of_scope', reason: error.reason };
+    }
+    throw error;
+  }
+
+  const artistIds = await upsertArtists(admin, mapped);
+  await replaceCredits(admin, albumId, mapped, artistIds);
+
+  return { status: 'reconciled', credits: mapped.artists.length };
 }

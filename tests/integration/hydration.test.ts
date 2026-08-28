@@ -96,11 +96,25 @@ describe('minimal ingestion from a browse record', () => {
 
   it('still credits the artist, so the discography page works', async () => {
     await createMinimalAlbum(browseReleaseGroup, admin);
-    const { count } = await admin
-      .from('artists')
-      .select('mbid', { count: 'exact', head: true })
-      .eq('mbid', 'c2314623-e863-4fde-af8c-d6e00fec5f2c');
-    expect(count).toBe(1);
+
+    // **This asserted the wrong table until 2026-08-25.** It checked that a row
+    // existed in `artists`, which `upsertArtists` writes a statement earlier
+    // than the credit — so the test passed with credit-writing removed
+    // entirely, while promising in its name that the discography worked. The
+    // discography is built from `album_artists` and from nothing else
+    // (`src/services/catalogue/queries.ts`), so that is what it must assert.
+    const { data } = await admin
+      .from('albums')
+      .select('album_artists(position, artists(mbid))')
+      .eq('mbid', browseReleaseGroup.id)
+      .single();
+
+    expect(
+      (data?.album_artists ?? []).map((row) => ({
+        position: row.position,
+        mbid: row.artists?.mbid,
+      })),
+    ).toEqual([{ position: 0, mbid: 'c2314623-e863-4fde-af8c-d6e00fec5f2c' }]);
   });
 });
 
@@ -265,5 +279,38 @@ describe('backfill logic', () => {
       .in('mbid', [...withPayload]);
 
     expect((await row(singleArtistAlbum.id)).hydration_status).toBe('fetched');
+  });
+});
+
+describe('the hydration pair stays coherent', () => {
+  /**
+   * **Detection only. Nothing here repairs anything.**
+   *
+   * `fetched` and a representative release are written by two separate
+   * statements, so an interruption between them can leave `fetched` with a null
+   * `representative_release_id` — and unlike a missing credit, nothing heals it,
+   * because nothing re-triggers ingestion for an album already marked fetched.
+   *
+   * It has never occurred: staging measures zero rows in both directions. The
+   * repair is deliberately out of scope for this cycle — it would need an
+   * upstream fetch and therefore a different mechanism — and is recorded as a
+   * follow-up in `docs/architecture.md` §7. This test exists so the invariant
+   * cannot rot silently in the meantime.
+   */
+  it('a fetched album always holds a representative release', async () => {
+    await ingestReleaseGroupPayload(singleArtistAlbum, admin, detail);
+    await createMinimalAlbum(browseReleaseGroup, admin);
+
+    const { data } = await admin
+      .from('albums')
+      .select('mbid, hydration_status, representative_release_id');
+
+    const incoherent = (data ?? []).filter(
+      (album) =>
+        (album.hydration_status === 'fetched' && album.representative_release_id === null) ||
+        (album.hydration_status === 'pending' && album.representative_release_id !== null),
+    );
+
+    expect(incoherent).toEqual([]);
   });
 });

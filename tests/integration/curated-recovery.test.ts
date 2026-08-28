@@ -35,7 +35,7 @@ vi.mock('@/services/catalogue/musicbrainz', async (importOriginal) => {
   };
 });
 
-const { curatedTrancheStatus, enqueueCuratedTranche } =
+const { curatedTrancheStatus, discoverAndIngestArtist, enqueueCuratedTranche } =
   await import('@/services/catalogue/curated-tranche');
 const { drainJobs } = await import('@/services/catalogue/jobs');
 
@@ -327,5 +327,91 @@ describe('retry policy opt-in', () => {
     expect(mb.BACKGROUND_RETRY.jitter).toBe(true);
     expect(mb.DEFAULT_RETRY.maxAttempts).toBe(3);
     expect(mb.DEFAULT_RETRY.jitter).toBe(false);
+  });
+});
+
+describe('an album held without its credits is repaired, not skipped', () => {
+  const ALBUM_A = '11111111-0000-4000-8000-000000000001';
+
+  /** Reproduces an interrupted write: a real album row, its credits missing. */
+  async function stripCredits(mbid: string) {
+    const { data } = await admin.from('albums').select('id').eq('mbid', mbid).single();
+    await admin.from('album_artists').delete().eq('album_id', data!.id);
+  }
+
+  async function creditedArtists(albumMbid: string) {
+    const { data } = await admin
+      .from('albums')
+      .select('album_artists(artists(mbid))')
+      .eq('mbid', albumMbid)
+      .single();
+    return (data?.album_artists ?? []).map((row) => row.artists?.mbid);
+  }
+
+  it('reconciles it, and still counts it as already present rather than created', async () => {
+    const first = await discoverAndIngestArtist(ARTIST_A, admin);
+    expect(first.created).toBe(1);
+    expect(first.reconciled).toBe(0);
+
+    await stripCredits(ALBUM_A);
+    expect(await creditedArtists(ALBUM_A)).toEqual([]);
+
+    const second = await discoverAndIngestArtist(ARTIST_A, admin);
+
+    // Already held, so nothing is created — the additive guarantee is intact.
+    // But it needed repair, and that is reported separately rather than being
+    // folded into alreadyPresent, so a run that repaired something says so.
+    expect(second.created).toBe(0);
+    expect(second.alreadyPresent).toBe(1);
+    expect(second.reconciled).toBe(1);
+    expect(second.unreconciled).toBe(0);
+
+    expect(await creditedArtists(ALBUM_A)).toEqual([ARTIST_A]);
+  });
+
+  it('makes the album reachable from its artist again', async () => {
+    await discoverAndIngestArtist(ARTIST_A, admin);
+    await stripCredits(ALBUM_A);
+
+    // The exact join `getArtistByMbid` uses for a discography
+    // (`src/services/catalogue/queries.ts`): artist → album_artists → albums.
+    // Queried through the admin client rather than the page's server client,
+    // which would need cookie plumbing this suite does not have.
+    const discography = async () => {
+      const { data: artist } = await admin
+        .from('artists')
+        .select('id')
+        .eq('mbid', ARTIST_A)
+        .single();
+      const { data } = await admin
+        .from('album_artists')
+        .select('albums(mbid)')
+        .eq('artist_id', artist!.id);
+      return (data ?? []).map((row) => row.albums?.mbid);
+    };
+
+    // The damage, stated as the reader sees it: the album is in the catalogue
+    // and absent from the only page that lists it.
+    expect(await discography()).toEqual([]);
+
+    await discoverAndIngestArtist(ARTIST_A, admin);
+
+    expect(await discography()).toEqual([ALBUM_A]);
+  });
+
+  it('does not reconcile — or rewrite — an album whose credits are intact', async () => {
+    await discoverAndIngestArtist(ARTIST_A, admin);
+
+    const stamp = async () => {
+      const { data } = await admin.from('albums').select('updated_at').eq('mbid', ALBUM_A).single();
+      return data!.updated_at;
+    };
+    const before = await stamp();
+
+    const second = await discoverAndIngestArtist(ARTIST_A, admin);
+
+    expect(second.reconciled).toBe(0);
+    expect(second.unreconciled).toBe(0);
+    expect(await stamp()).toBe(before);
   });
 });

@@ -6,7 +6,7 @@ import { ListenBrainzSource } from '../discovery/listenbrainz';
 import type { PopularityRange } from '../discovery/popularity';
 
 import { artworkCoverage, fetchAndStoreArtwork } from './artwork';
-import { ingestReleaseGroup } from './ingest';
+import { findHeldAlbum, ingestReleaseGroup, reconcileCredits } from './ingest';
 import { enqueueJob } from './jobs';
 import { OutOfScopeError } from './map';
 import { selectSeedCandidates } from './seed-selection';
@@ -50,6 +50,15 @@ export type SeedReport = {
   catalogueOutcome: {
     ingested: number;
     alreadyPresent: number;
+    /**
+     * Already present, credit-less, and repaired from a stored payload.
+     *
+     * A subset of `alreadyPresent` rather than a sixth bucket — the album was
+     * held either way, so the mutual exclusivity above still holds.
+     */
+    reconciled: number;
+    /** Already present, credit-less, and NOT repaired. Never counted as reconciled. */
+    unreconciled: number;
     rejected: { mbid: string; title: string; reason: string }[];
     notFoundUpstream: { mbid: string; title: string }[];
     failed: { mbid: string; title: string; error: string }[];
@@ -250,6 +259,8 @@ export async function seedCatalogue(options: SeedOptions = {}): Promise<SeedRepo
     catalogueOutcome: {
       ingested: 0,
       alreadyPresent: 0,
+      reconciled: 0,
+      unreconciled: 0,
       rejected: [],
       notFoundUpstream: [],
       failed: [],
@@ -275,15 +286,22 @@ export async function seedCatalogue(options: SeedOptions = {}): Promise<SeedRepo
 
     onProgress?.(index + 1, entries.length, `${entry.artistName} — ${entry.title}`);
 
-    const { data: existing } = await admin
-      .from('albums')
-      .select('mbid')
-      .eq('mbid', entry.mbid)
-      .maybeSingle();
+    const held = await findHeldAlbum(admin, entry.mbid);
 
     try {
-      if (existing) {
+      if (held) {
         report.catalogueOutcome.alreadyPresent += 1;
+
+        // Held is not the same as complete. An interrupted run can leave an
+        // album row whose credits were never written, and the check this
+        // replaced could not tell the difference — so it skipped the one album
+        // that needed the work. Repaired from the stored payload, which costs
+        // no upstream request and therefore does not touch `upstreamFetches`.
+        if (!held.hasCredits) {
+          const outcome = await reconcileCredits(admin, held.id, entry.mbid);
+          if (outcome.status === 'reconciled') report.catalogueOutcome.reconciled += 1;
+          else report.catalogueOutcome.unreconciled += 1;
+        }
       } else {
         upstreamFetches += 1;
         const result = await ingestReleaseGroup(entry.mbid, admin);
@@ -374,6 +392,8 @@ export function formatSeedReport(report: SeedReport): string {
     '  Catalogue outcome (mutually exclusive)',
     `    ingested                   ${report.catalogueOutcome.ingested}`,
     `    already present            ${report.catalogueOutcome.alreadyPresent}`,
+    `      of which reconciled      ${report.catalogueOutcome.reconciled}`,
+    `      of which unreconciled    ${report.catalogueOutcome.unreconciled}`,
     `    rejected (out of scope)    ${report.catalogueOutcome.rejected.length}`,
     `    not found upstream         ${report.catalogueOutcome.notFoundUpstream.length}`,
     `    failed                     ${report.catalogueOutcome.failed.length}`,

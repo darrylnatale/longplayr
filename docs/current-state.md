@@ -1405,6 +1405,14 @@ The third run then exposed a second, distinct mode: the retry loop guarded HTTP 
 
 Retries are idempotent and recover through the existence check, so the state converges, and the job records the failure. **[OPEN] — partial write within one artist is not prevented, only healed.** It is untested, and it is a real limitation rather than a solved guarantee. **Non-blocking**: it did not occur in any run, and the recovery path makes it self-correcting.
 
+> **⚠️ Three claims in that paragraph were wrong, and they are corrected here rather than dropped. [CORRECTED 2026-08-25]** The paragraph is left standing because it was an honest account of what was believed, and because believing it is what let the defect sit unexamined for a day.
+>
+> **"Retries are idempotent and recover through the existence check"** — the existence check reads `albums.mbid` alone, so it recovers a **missing** album and skips a **partially written** one. **"The state converges"** — it does not; an album written without its credits stays that way permanently under this path. **"It did not occur in any run"** — it did, in the original interrupted tranche run on 2026-08-24, and produced exactly one such album.
+>
+> **What survives is the headline: partial write is not prevented, only healed** — and the healing is narrower than the paragraph reads. **"It is untested" was correct and remains the sharpest line in it**: `album_artists` is asserted in exactly one test file, and the specific invariant that failed had no test anywhere.
+>
+> Superseded by the `[OPEN]` finding in §31, whose extent question is now closed, and by _Credit reconciliation and the completeness test_ in `architecture.md`.
+
 ### End-to-end flake — still `[OPEN]`
 
 **It did not fire on CI run `32750259240`, and that does not resolve it.** The finding in §8 is load-sensitive and one clean run is weak evidence.
@@ -1555,9 +1563,58 @@ The practical effect is that the album counts toward `alreadyPresent: 353` and i
 
 **Not repaired, and deliberately so.** The remedy is a real decision with at least three shapes — repair the single row, make link-writing idempotent so `album_artists` is upserted when the album already exists, or make artist ingestion transactional (which `architecture.md` records as explicitly not attempted). Repairing by hand is also a manual catalogue mutation, which needs stating against the read-only-downstream rule rather than assumed past.
 
-> **⚠️ The extent is bounded heuristically, not proven.** The check that found it detects albums with **zero** links; an album missing **some** of its links is invisible to it. A separator heuristic over `display_credit` surfaced 7 candidates and explained 6 as single MusicBrainz entities whose names contain `&` or `,` — Bob Marley & The Wailers, Tyler, The Creator, Mumford & Sons, Macklemore & Ryan Lewis, Kruder & Dorfmeister — leaving only this one. **Good evidence, not proof.**
+> **⚠️ The extent was bounded heuristically, not proven.** The check that found it detects albums with **zero** links; an album missing **some** of its links is invisible to it. A separator heuristic over `display_credit` surfaced 7 candidates and explained 6 as single MusicBrainz entities whose names contain `&` or `,` — Bob Marley & The Wailers, Tyler, The Creator, Mumford & Sons, Macklemore & Ryan Lewis, Kruder & Dorfmeister — leaving only this one. **Good evidence, not proof.**
 >
 > **The cycle that owns this must begin at STEP A by establishing the full extent of partial `album_artists` link failures. It must not assume only one album is affected.**
+
+#### ✅ The extent question is closed — proven exhaustively, 2026-08-25
+
+**That instruction was carried out, and the heuristic bound above is now superseded by proof.** Left as written because it was an honest statement of what was known at the time, and because the instruction it carries is the reason the proof exists.
+
+**`upstream_payloads` turned out to be the audit instrument.** Every album holds a verbatim `release_group` snapshot — **707 of 707** — so each album's true credit list was already on disk and the whole catalogue could be checked at **zero MusicBrainz requests**. That capture was built for a different reason entirely, in the Phase 1 reopening (§24).
+
+Comparing every album's `album_artists` rows against the distinct artist MBIDs in its own stored payload:
+
+| Measure                     | Result  |
+| --------------------------- | ------- |
+| Albums compared             | **707** |
+| Exact credit match          | **706** |
+| Under-linked                | **1**   |
+| Over-linked                 | **0**   |
+| Payloads carrying no credit | **0**   |
+
+And repeated as a **set difference on artist identity** rather than on counts, which also catches a link pointing at the _wrong_ artist: `expected_but_missing 1`, `linked_but_not_in_payload 0`, `albums_affected 1`.
+
+**One missing credit, on one album, across the entire catalogue, with no spurious links anywhere.** The affected album is the one this finding already names — `Love in the Time of Recession`.
+
+**Two non-crash explanations were ruled out on the same data.** No stored payload carries a duplicate artist credit, and none carries an empty credit list, so neither `replaceCredits`'s empty-rows early return nor a failed artist upsert explains it. **Interruption mid-write is the only account consistent with the evidence.**
+
+#### The extent is closed. The defect is not — and it is structural, not one orphan
+
+**This finding is not "one album needs repairing", and framing it that way is how it would be got wrong.** The known orphan is the least consequential part of it: it sits at `hydration_status = 'pending'`, so opening its album page fires progressive hydration and the full ingest path repairs it unaided. **What is actually wrong is that three separate ingestion paths share a false assumption** — _album row exists ⇒ album fully written_ — encoded independently in `discoverAndIngestArtist`, `seedCatalogue` and `addAlbumFromUpstream`. Each reads `albums.mbid` alone and skips. Fixing only the curated path would leave the identical latent defect in the other two.
+
+**Two partial-write states exist, and they are not equally serious. The distinction must survive.**
+
+| State                                                       | Reachable via                 | Self-heals?                                         | Observed            |
+| ----------------------------------------------------------- | ----------------------------- | --------------------------------------------------- | ------------------- |
+| Album + no credits, `hydration = 'pending'`                 | curated path, interrupted     | **Yes** — hydration re-runs the full ingest on view | **1 album**         |
+| Album + no credits + no representative release, `'fetched'` | full ingest path, interrupted | **No** — nothing re-triggers a `fetched` album      | **0 — latent only** |
+
+The observed case is the benign one. **The latent one is worse and has never occurred**: `fetched` albums without a representative release measure **0**, and `pending` albums holding one measure **0**, so the hydration pair is coherent in both directions.
+
+**The healing is circular for the album that has it.** The only route that repairs `Love in the Time of Recession` is its own album page, which is exactly the page the defect makes unreachable from The Durutti Column's discography — 36 of 37. It remains reachable by MBID and by search.
+
+#### The approved repair — decided, **not yet performed**
+
+**Decided on 2026-08-25: after the implementation lands and passes review, the orphan is repaired by running the shipped reconciliation against that one MBID from its stored upstream payload, at zero MusicBrainz requests.** The repair is the fix demonstrating itself rather than a separate operational act.
+
+**This is mechanism-driven and sits inside the read-only-downstream rule rather than as an exception to it.** That rule is about provenance: no human invents catalogue facts. A hand-written `insert into album_artists` would breach it — not because the row's content would be wrong, but because a person would have chosen the `artist_id`. The approved repair authors nothing: the fact comes from a verbatim MusicBrainz snapshot and passes through the same mapping and write code that would have written it originally.
+
+A re-fetch was rejected as strictly worse — it costs upstream requests for data already on disk and pulls a _fresher_ payload that may differ, silently changing the album beyond the repair's intent. Waiting for self-healing was rejected because of the circularity above.
+
+> **⚠️ Nothing has been repaired. No staging row has been written at any point in this cycle.** When the repair runs it writes **at most two statements scoped to one album** — an `artists` upsert that is already a no-op, and one `album_artists` row at position 0. It writes no `albums` column, no `hydration_status`, no `representative_release_id`, no `upstream_payloads.fetched_at`, no job row and no user-owned table. Deleting one row reverses it exactly.
+
+**The design is recorded in `architecture.md` under _Credit reconciliation and the completeness test_ [DECIDED 2026-08-25], which is the authority. This section records where things stand, not what was decided.**
 
 ### `[OPEN]` — artwork is re-enqueued unconditionally after a hydration, even when the answer is already settled
 

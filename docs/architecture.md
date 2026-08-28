@@ -206,7 +206,17 @@ _When to revisit._ If job volume or failure-handling complexity grows past what 
 
 **Current staging rows must not be repaired by hand.** Twelve jobs are stale as of 2026-08-25 — 4 `discover_curated_artist` and 8 `fetch_artwork` — and the count grows with each interrupted cron. They are to be recovered **through the implemented mechanism** once it is reviewed and verified, then verified from the database and queue. The 4 `fetch_artwork` rows in terminal `failed` are a different condition and are not reclaim's concern.
 
-**Partial writes within one artist stay as they are.** A write failing mid-loop leaves the albums already written; the existence check heals it on a later run — the Durutti Column holds 32 of 37 on staging and converges without damage. **Making artist ingestion transactional is explicitly not attempted here**, and remains `[OPEN]`.
+**Partial writes within one artist stay as they are.** A write failing mid-loop leaves the albums already written. **Making artist ingestion transactional is explicitly not attempted here**, and remains `[OPEN]` — reconsidered and rejected again on 2026-08-25 for a new and better reason, recorded under _Credit reconciliation and the completeness test_ below.
+
+> **⚠️ One sentence of that paragraph was false, and is corrected rather than dropped. [CORRECTED 2026-08-25]**
+>
+> It read that _"the existence check heals it on a later run — the Durutti Column holds 32 of 37 on staging and converges without damage."_ **It does not heal it, and it did not converge.**
+>
+> The existence check reads `albums.mbid` and nothing else, so it heals a **missing** album and silently skips a **partially written** one — the case where the album row was committed and its `album_artists` credits were not. The album is then counted as already held, forever, by every path that looks.
+>
+> **The Durutti Column is the counterexample, and the sentence cited it as reassurance.** The 32-of-37 figure was accurate when written, before the staging recovery; all 37 album rows are present now and **36 are linked**. The 37th has sat in the catalogue since 2026-08-24 with no credit at all, reachable by MBID and unreachable from its own artist page. **The convergence claim is the reason nobody looked for it.**
+>
+> Superseded by _Credit reconciliation and the completeness test_ below, which makes the statement true by changing the check rather than by softening the sentence.
 
 **Queue fairness is a separate `[OPEN]` problem and is not addressed.** `claim_ingestion_jobs` has no kind filter, so older artwork and tracklist jobs precede newly queued curated work. That is a scheduling question; this is a crash-recovery one. They interacted once — the backlog made a run long enough to be killed — but neither fixes the other.
 
@@ -282,6 +292,39 @@ Also required: the deadline check precedes the claim, and moving it after must f
 **Staging recovery is not part of this cycle.** The rows stranded on staging remain recoverable through the mechanism already deployed, and remain unrecovered. No staging execution belongs in a code cycle — mixing them would make the resulting queue state unattributable to either.
 
 **Provider integration is untouched.** Nothing here reads, writes or contemplates a Spotify identifier; §19.1 is unaffected.
+
+### Credit reconciliation and the completeness test **[DECIDED 2026-08-25]**
+
+**Decision: an album counts as already held only if its row exists _and_ it carries at least one `album_artists` credit. An album that fails that test is reconciled from its stored upstream payload.**
+
+**This supersedes the _Partial writes within one artist_ paragraph above and nothing else in that section.** The reclaim, the fencing, the 90-minute threshold, the `attempts` semantics and per-job claiming are all unchanged.
+
+**Two defects, and only one of them makes damage permanent.** A write sequence interrupted between the album row and its credits is the **window**. Three callers then reading `albums.mbid` alone and skipping is the **skip**. The window is narrow and its damage is trivially repairable; the skip is what converts a moment's interruption into a permanent wrong answer, because nothing in the system ever looks again. **The skip is the defect being fixed.**
+
+**The false assumption was repository-wide, not curated-specific.** `discoverAndIngestArtist`, `seedCatalogue` and `addAlbumFromUpstream` each independently encode _album row exists ⇒ album fully written_. Fixing only the path where the damage was observed would leave the identical latent defect in the other two, so the completeness test is written **once** and shared by all three.
+
+**`replaceCredits` changes from delete-then-upsert to upsert-then-delete**, and this is the load-bearing change:
+
+| Order                      | An interruption mid-way leaves                                      |
+| -------------------------- | ------------------------------------------------------------------- |
+| delete → upsert _(before)_ | `old ∩ new` — a **strict non-empty subset** when a credit was added |
+| upsert → delete _(after)_  | `old ∪ new` ⊇ `new` — **complete**, possibly with one stale extra   |
+
+The final state on success is identical, and the delete's predicate does not depend on the pre-state, so this is a reordering rather than a behaviour change. **What it buys is a provable test.** Credit rows are written in **one** upsert statement, which is atomic, so after the reorder the only reachable incomplete state is **zero credits** — a strict non-empty subset becomes unreachable. That is what promotes _"does this album have any credit?"_ from a heuristic to a **complete** completeness test, and it is why the check can be this cheap.
+
+**The stale-extra-link trade is deliberate and is not a free win.** The reorder can leave an album carrying one credit too many where the old order could leave it one too few. An extra credit puts an album on one artist page it does not belong on; a missing credit makes an album unreachable from the artist who made it. The first is visible, harmless and corrected by the next successful ingest; the second is silent and permanent. **The trade is taken knowingly, in that direction.**
+
+**Reconciliation reads the stored payload and writes only credits.** `upstream_payloads` holds a verbatim `release_group` snapshot for every album — 707 of 707 on staging — because `storeUpstreamPayload` runs **before** any album row is written, so an album cannot exist without one. Reconciliation maps that snapshot and performs `upsertArtists` + `replaceCredits` and nothing else: it does not touch `hydration_status`, `representative_release_id`, releases, tracks, artwork, or `upstream_payloads.fetched_at`. **Callers holding a fresh payload pass it in** — curated discovery has one in hand from the browse — **and callers that do not, read it from disk.**
+
+**Cost is zero in the normal case, and that is why a blanket re-ingest was rejected.** The three callers sit at very different cost points: curated discovery holds the payload already, while the seed and self-service both perform their existence check **before** fetching, so unconditional re-ingestion would cost two rate-limited MusicBrainz requests per already-held album — roughly twelve minutes across a 353-album tranche, and a live upstream fetch on an interactive path. The completeness check instead folds into the single-row lookup those callers already make, and the repair runs only against genuinely broken rows.
+
+**Transactional ingestion was reconsidered and rejected again, for a stronger reason than before.** It is not merely unattempted — **it is impossible in the current sequence.** `ingestReleaseGroupPayload` makes a rate-limited HTTP request for the representative release's tracklist **between** the album write and the tracklist write, and no Postgres transaction can be held open across it. Closing the window that way would require restructuring to fetch-everything-then-write-everything. That may be the right long-term shape and is **not** foreclosed here; it repairs no existing data, and it does not by itself address the skip, which is the defect that made this permanent.
+
+**No schema-level constraint is introduced, because none is available.** A `CHECK` cannot span tables. A constraint trigger deferred to commit gains nothing, because the client issues each write in its own implicit transaction — it would fire inside the legitimate window between the album row and its credits and break ingestion outright. **Enforcement at the database is unreachable without transactional ingestion**, which is precisely why the guarantee is written in the service layer. This explanation lives here rather than in `data-model.md` §2, which describes what `AlbumArtist` _means_ and makes no integrity claim; the reason enforcement is architectural is that it is a property of how writes are sequenced, not of the entity. **`data-model.md` is unchanged by this decision.**
+
+**One latent state is detected and deliberately left unrepaired. `[OPEN]`** The same window exists one step later: an interruption between the album write and the representative-release write can leave `hydration_status = 'fetched'` with `representative_release_id` null. Unlike the credit case it does **not** self-heal, because nothing re-triggers ingestion for a `fetched` album. **It has never occurred** — zero rows on staging, in both directions of the pair. It is out of scope here because its repair needs upstream fetches and therefore a different mechanism, and because closing its window means moving the hydration upgrade to the end of the write sequence, which changes semantics two earlier cycles reasoned about deliberately. **An invariant test detects it; nothing repairs it.** Named as a follow-up, not folded in.
+
+**Deliberately unchanged, and not to be inferred from anything above:** no migration and no schema change; the queue, cron, drain, artwork and job code; progressive hydration and its two-state model; scope and depth policy; the artwork re-enqueue question, which remains `[OPEN]`; and the equivalent unaudited window in `upsertReleases` and `storeTracklist`.
 
 ### Progressive hydration **[DECIDED 2026-08-24]**
 

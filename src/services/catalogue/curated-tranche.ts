@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { CURATED_ARTISTS, type CuratedArtist } from './curated-artists';
 import { withinCurrentDepth } from './depth-policy';
 import { classify } from './scope';
-import { createMinimalAlbum } from './ingest';
+import { createMinimalAlbum, findHeldAlbum, reconcileCredits } from './ingest';
 import {
   BACKGROUND_RETRY,
   browseAllReleaseGroupsByArtist,
@@ -231,31 +231,58 @@ export function formatCuratedTrancheReport(report: CuratedTrancheReport): string
  * makes up to five attempts under `BACKGROUND_RETRY`. Throwing means those are
  * spent, and the *artist* now needs a later attempt.
  */
+/**
+ * What one artist's discovery did.
+ *
+ * `reconciled` and `unreconciled` are reported separately from `alreadyPresent`
+ * rather than folded into it. An album that was already held and an album that
+ * was already held **and had to be repaired** are different facts, and an album
+ * that could not be repaired must never be counted among those that were.
+ */
+export type ArtistIngestOutcome = {
+  discovered: number;
+  inDepth: number;
+  created: number;
+  /** Held before this run — including any that needed reconciling. */
+  alreadyPresent: number;
+  /** Held but credit-less, and successfully repaired from a payload. */
+  reconciled: number;
+  /** Held, credit-less, and NOT repaired — no stored payload, or out of scope. */
+  unreconciled: number;
+};
+
 export async function discoverAndIngestArtist(
   artistMbid: string,
   admin: Admin = createAdminClient(),
-): Promise<{ discovered: number; inDepth: number; created: number; alreadyPresent: number }> {
+): Promise<ArtistIngestOutcome> {
   const { groups } = await browseAllReleaseGroupsByArtist(artistMbid, BACKGROUND_RETRY);
 
   const inDepth = groups.filter((g) => withinCurrentDepth(g).inDepth);
   let created = 0;
   let alreadyPresent = 0;
+  let reconciled = 0;
+  let unreconciled = 0;
 
   for (const group of inDepth) {
-    const { data: existing, error } = await admin
-      .from('albums')
-      .select('mbid')
-      .eq('mbid', group.id)
-      .maybeSingle();
-    if (error) throw error;
+    const held = await findHeldAlbum(admin, group.id);
 
-    // Skipped rather than upserted. A release group may already be held by an
-    // earlier run or by another curated artist crediting the same record, and
-    // rewriting it would be pointless work. `upsertAlbum` refuses to downgrade
-    // hydration in any case, so this is a second line of defence rather than
-    // the only one.
-    if (existing) {
+    // Not created again. A release group may already be held by an earlier run
+    // or by another curated artist crediting the same record, and rewriting it
+    // would be pointless work. `upsertAlbum` refuses to downgrade hydration in
+    // any case, so this is a second line of defence rather than the only one.
+    //
+    // **But held is not the same as complete.** An interrupted run can leave an
+    // album row whose credits were never written, and the check this replaced
+    // could not see the difference — so it skipped the one album that needed
+    // the work, permanently. The browse record is already in hand here, so
+    // repairing costs nothing upstream.
+    if (held) {
       alreadyPresent += 1;
+      if (!held.hasCredits) {
+        const outcome = await reconcileCredits(admin, held.id, group.id, group);
+        if (outcome.status === 'reconciled') reconciled += 1;
+        else unreconciled += 1;
+      }
       continue;
     }
 
@@ -264,7 +291,14 @@ export async function discoverAndIngestArtist(
     await enqueueJob('fetch_artwork', group.id, { admin });
   }
 
-  return { discovered: groups.length, inDepth: inDepth.length, created, alreadyPresent };
+  return {
+    discovered: groups.length,
+    inDepth: inDepth.length,
+    created,
+    alreadyPresent,
+    reconciled,
+    unreconciled,
+  };
 }
 
 export type TrancheStatus = {

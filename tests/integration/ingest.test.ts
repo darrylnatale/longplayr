@@ -16,7 +16,11 @@ import {
   variousArtistsCompilation,
   yearOnlyAlbum,
 } from '@/services/catalogue/fixtures';
-import { ingestReleaseGroupPayload } from '@/services/catalogue/ingest';
+import {
+  findHeldAlbum,
+  ingestReleaseGroupPayload,
+  reconcileCredits,
+} from '@/services/catalogue/ingest';
 import { mapReleaseDetail } from '@/services/catalogue/map';
 
 /**
@@ -351,5 +355,211 @@ describe('tracklists', () => {
     // No releases means no representative release, so no second request is
     // spent against the rate limit.
     expect(called).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Credit reconciliation
+// ---------------------------------------------------------------------------
+
+/**
+ * Repairing an album whose row was written without its credits.
+ *
+ * **The damaged state is produced by damaging a real album, never by inventing
+ * one.** `current-state.md` §8 records the standing rule that integration tests
+ * do not manufacture catalogue records; ingesting normally and then deleting
+ * the `album_artists` rows reproduces the exact production shape — a real album
+ * row, a real stored payload, and no credits — without adding a synthetic one.
+ */
+
+async function creditsFor(mbid: string) {
+  const { data } = await admin
+    .from('albums')
+    .select('album_artists(position, artists(name))')
+    .eq('mbid', mbid)
+    .single();
+
+  return (data?.album_artists ?? [])
+    .slice()
+    .sort((a, b) => a.position - b.position)
+    .map((row) => ({ position: row.position, name: row.artists?.name }));
+}
+
+async function stripCredits(mbid: string) {
+  const held = await findHeldAlbum(admin, mbid);
+  await admin.from('album_artists').delete().eq('album_id', held!.id);
+  return held!.id;
+}
+
+describe('credit reconciliation', () => {
+  it('repairs an album that holds no credits', async () => {
+    await ingestReleaseGroupPayload(singleArtistAlbum, admin);
+    const albumId = await stripCredits(singleArtistAlbum.id);
+
+    expect(await creditsFor(singleArtistAlbum.id)).toEqual([]);
+
+    const outcome = await reconcileCredits(admin, albumId, singleArtistAlbum.id);
+
+    expect(outcome).toEqual({ status: 'reconciled', credits: 1 });
+    expect(await creditsFor(singleArtistAlbum.id)).toEqual([{ position: 0, name: 'Radiohead' }]);
+  });
+
+  it('repairs to the correct artists, not merely to some artist', async () => {
+    await ingestReleaseGroupPayload(collaborationAlbum, admin);
+    const albumId = await stripCredits(collaborationAlbum.id);
+
+    await reconcileCredits(admin, albumId, collaborationAlbum.id);
+
+    // Identity, never a count. A count-only assertion passes just as happily
+    // with the wrong artist linked, which is the failure this whole cycle is
+    // about — an album reachable from nobody, or from the wrong page.
+    expect(await creditsFor(collaborationAlbum.id)).toEqual([
+      { position: 0, name: 'JAY-Z' },
+      { position: 1, name: 'Kanye West' },
+    ]);
+  });
+
+  it('preserves credit position, rather than renumbering', async () => {
+    await ingestReleaseGroupPayload(collaborationAlbum, admin);
+    const before = await creditsFor(collaborationAlbum.id);
+    const albumId = await stripCredits(collaborationAlbum.id);
+
+    await reconcileCredits(admin, albumId, collaborationAlbum.id);
+
+    expect(await creditsFor(collaborationAlbum.id)).toEqual(before);
+  });
+
+  it('is idempotent — reconciling twice changes nothing the second time', async () => {
+    await ingestReleaseGroupPayload(collaborationAlbum, admin);
+    const albumId = await stripCredits(collaborationAlbum.id);
+
+    const first = await reconcileCredits(admin, albumId, collaborationAlbum.id);
+    const after = await creditsFor(collaborationAlbum.id);
+    const second = await reconcileCredits(admin, albumId, collaborationAlbum.id);
+
+    expect(first).toEqual(second);
+    expect(await creditsFor(collaborationAlbum.id)).toEqual(after);
+
+    const { count } = await admin
+      .from('album_artists')
+      .select('artist_id', { count: 'exact', head: true });
+    expect(count).toBe(2);
+  });
+
+  it('reports no_payload rather than throwing, and writes nothing', async () => {
+    await ingestReleaseGroupPayload(singleArtistAlbum, admin);
+    const albumId = await stripCredits(singleArtistAlbum.id);
+
+    // The structurally unreachable case, forced: a held album with no snapshot.
+    await admin
+      .from('upstream_payloads')
+      .delete()
+      .eq('source_id', singleArtistAlbum.id)
+      .eq('kind', 'release_group');
+
+    const outcome = await reconcileCredits(admin, albumId, singleArtistAlbum.id);
+
+    // Not 'reconciled'. An album that could not be repaired must never be
+    // counted among those that were.
+    expect(outcome).toEqual({ status: 'no_payload' });
+    expect(await creditsFor(singleArtistAlbum.id)).toEqual([]);
+  });
+
+  it('leaves a complete album entirely alone — no album or payload write', async () => {
+    await ingestReleaseGroupPayload(singleArtistAlbum, admin);
+
+    const stamps = async () => {
+      const { data: album } = await admin
+        .from('albums')
+        .select('updated_at')
+        .eq('mbid', singleArtistAlbum.id)
+        .single();
+      const { data: payload } = await admin
+        .from('upstream_payloads')
+        .select('fetched_at')
+        .eq('source_id', singleArtistAlbum.id)
+        .eq('kind', 'release_group')
+        .single();
+      return { album: album!.updated_at, payload: payload!.fetched_at };
+    };
+
+    const before = await stamps();
+
+    // The caller's gate, exercised exactly as the three callers apply it.
+    const held = await findHeldAlbum(admin, singleArtistAlbum.id);
+    expect(held!.hasCredits).toBe(true);
+    if (!held!.hasCredits) await reconcileCredits(admin, held!.id, singleArtistAlbum.id);
+
+    // `fetched_at` is the sharper of the two. Reusing the full ingest path to
+    // repair would re-store a payload read from disk and move this stamp,
+    // making the snapshot lie about when it was taken.
+    expect(await stamps()).toEqual(before);
+  });
+
+  it('finds a held album and reports whether it carries credits', async () => {
+    expect(await findHeldAlbum(admin, singleArtistAlbum.id)).toBeNull();
+
+    await ingestReleaseGroupPayload(singleArtistAlbum, admin);
+    expect((await findHeldAlbum(admin, singleArtistAlbum.id))?.hasCredits).toBe(true);
+
+    await stripCredits(singleArtistAlbum.id);
+    expect((await findHeldAlbum(admin, singleArtistAlbum.id))?.hasCredits).toBe(false);
+  });
+});
+
+describe('credit write ordering', () => {
+  /**
+   * A client whose `album_artists` delete fails, and whose every other call is
+   * the real thing.
+   *
+   * This exists because the ordering is invisible on the success path: both
+   * orders leave identical rows, so the only way to test it is to interrupt
+   * between the two statements. It is coupled to the exact `.delete().eq().not()`
+   * chain `replaceCredits` issues — deliberately, since pinning that ordering is
+   * the entire purpose.
+   */
+  function clientWithFailingCreditDelete() {
+    return new Proxy(admin, {
+      get(target, prop, receiver) {
+        if (prop !== 'from') return Reflect.get(target, prop, receiver);
+        return (table: string) => {
+          const builder = target.from(table as 'album_artists');
+          if (table !== 'album_artists') return builder;
+          return new Proxy(builder, {
+            get(b, p, r) {
+              if (p !== 'delete') return Reflect.get(b, p, r);
+              return () => ({
+                eq: () => ({
+                  not: async () => ({ error: new Error('simulated interruption') }),
+                }),
+              });
+            },
+          });
+        };
+      },
+    }) as typeof admin;
+  }
+
+  it('an upstream-added credit survives an interruption before the delete', async () => {
+    // Held with one credit, then upstream adds a second.
+    const reduced = {
+      ...collaborationAlbum,
+      'artist-credit': [collaborationAlbum['artist-credit']![0]],
+    };
+    await ingestReleaseGroupPayload(reduced, admin);
+    expect(await creditsFor(collaborationAlbum.id)).toEqual([{ position: 0, name: 'JAY-Z' }]);
+
+    await expect(
+      ingestReleaseGroupPayload(collaborationAlbum, clientWithFailingCreditDelete()),
+    ).rejects.toThrow('simulated interruption');
+
+    // Under upsert-then-delete the credits are already committed when the
+    // delete fails, so the album is complete. Under delete-then-upsert the
+    // throw precedes the upsert and the album keeps only JAY-Z — present,
+    // credited, and missing the artist that was just added.
+    expect(await creditsFor(collaborationAlbum.id)).toEqual([
+      { position: 0, name: 'JAY-Z' },
+      { position: 1, name: 'Kanye West' },
+    ]);
   });
 });
