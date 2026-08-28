@@ -388,10 +388,120 @@ test('a signed-out visitor can sort someone else’s collection', async ({ page,
   await expectOrder(page, [ACID, THRONE, PLEASURES, RAINBOWS]);
 });
 
+/**
+ * The same collection as `scoredCollectionOfFour`, built through the database
+ * rather than through the browser.
+ *
+ * **Why this exists.** The test below asserts that *sorting* mutates nothing.
+ * Signing up, collecting four albums and scoring two of them are preconditions
+ * for that question, not the question — and each is already asserted as a
+ * subject elsewhere: signup and onboarding in `auth.spec.ts`, adding and rating
+ * in `collection.spec.ts`, the listen date in `listened-on.spec.ts`. Driving
+ * them through the UI a second time here bought no coverage and spent about ten
+ * seconds of a thirty-second budget, which on CI is most of the headroom.
+ *
+ * **Entries are created through `ensure_collection_entry`, the same RPC the
+ * server action calls** (`src/services/collection/index.ts`). Not raw inserts:
+ * that function owns the Want to Listen clearing rule and is documented as the
+ * single path by which an entry comes to exist, so going around it would build
+ * a state the product cannot actually produce. Ratings are the same `update`
+ * the service layer performs.
+ *
+ * **The service-role key stays in this Node process.** It is never passed into
+ * `page.evaluate` or any browser context.
+ *
+ * The browser is still signed in through the real login form, so the session
+ * under test is a genuine one rather than an injected cookie.
+ */
+async function scoredCollectionOfFourViaApi(page: Page) {
+  const user = uniqueUser();
+  createdEmails.push(user.email);
+
+  const admin = adminClient();
+
+  const { data: created, error: userError } = await admin.auth.admin.createUser({
+    email: user.email,
+    password: user.password,
+    email_confirm: true,
+  });
+  if (userError) throw userError;
+  const userId = created.user.id;
+
+  const { error: profileError } = await admin
+    .from('profiles')
+    .insert({ id: userId, handle: user.handle });
+  if (profileError) throw profileError;
+
+  const { data: albums, error: albumError } = await admin
+    .from('albums')
+    .select('id, mbid')
+    .in('mbid', [IN_RAINBOWS, WATCH_THE_THRONE, UNKNOWN_PLEASURES, ACID_RAP]);
+  if (albumError) throw albumError;
+  const idFor = new Map((albums ?? []).map((a) => [a.mbid as string, a.id as string]));
+
+  // Sequential and awaited, in the order the UI added them. `added_at` defaults
+  // to now() and is the last tiebreaker the sort has, so insertion order is the
+  // default order and must not be batched.
+  const collect = async (mbid: string, listenedOn: string | null) => {
+    const { error } = await admin.rpc('ensure_collection_entry', {
+      p_user_id: userId,
+      p_album_id: idFor.get(mbid)!,
+      p_listened_on: listenedOn,
+    });
+    if (error) throw error;
+  };
+  const rate = async (mbid: string, rating: number) => {
+    const { error } = await admin
+      .from('collection_entries')
+      .update({ rating })
+      .eq('user_id', userId)
+      .eq('album_id', idFor.get(mbid)!);
+    if (error) throw error;
+  };
+
+  await collect(IN_RAINBOWS, null);
+  await collect(WATCH_THE_THRONE, '1997-05-21');
+  await collect(UNKNOWN_PLEASURES, '2026-08-19');
+  await collect(ACID_RAP, null);
+
+  await rate(IN_RAINBOWS, 9.6);
+  await rate(WATCH_THE_THRONE, 3.1);
+
+  // The precondition is asserted, and that is not ceremony. The UI helper this
+  // replaces verified itself for free — every `collect` waited on "In your
+  // collection" and every `rate` on the score appearing, so a setup that
+  // silently did nothing could not reach the test body. Writing rows through
+  // the API buys speed and loses exactly that, and a test whose fixture creates
+  // nothing still passes: `stateFor` reads empty before and empty after, and
+  // they match. Caught by a negative control that removed these writes and
+  // watched the test pass anyway.
+  const { data: seeded, error: seedError } = await admin
+    .from('collection_entries')
+    .select('rating')
+    .eq('user_id', userId)
+    // Ordered by `added_at`, which is strictly increasing because the four
+    // calls above are sequential and awaited — and which is the order the
+    // default sort reads. Ordering by `rating` looked equivalent and is not:
+    // two nulls and no tiebreaker make it non-deterministic, and it produced
+    // [9.6, 3.1] on one run and [3.1, 9.6] on the next.
+    .order('added_at', { ascending: true });
+  if (seedError) throw seedError;
+  expect(seeded).toHaveLength(4);
+  expect(seeded!.map((r) => r.rating)).toEqual([9.6, 3.1, null, null]);
+
+  await page.goto('/login');
+  await page.getByLabel('Email').fill(user.email);
+  await page.getByLabel('Password').fill(user.password);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page).toHaveURL('/', NAV);
+
+  return user;
+}
+
 test('sorting mutates no collection state', async ({ page }) => {
   // The whole surface is a read. This holds every relation the album card owns
   // and proves each one is untouched by visiting the collection under a sort.
-  const user = await scoredCollectionOfFour(page);
+  const user = await scoredCollectionOfFourViaApi(page);
 
   await page.goto(`/albums/${IN_RAINBOWS}`);
   await page.getByRole('button', { name: /^Favourited?$/ }).click();

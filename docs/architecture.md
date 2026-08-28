@@ -496,6 +496,82 @@ The integration project shares one database and its config has always said so �
 
 **The load-sensitivity finding in `docs/current-state.md` §8 stays `[OPEN]` and is not closed by any of this.** These observations belong to it as further data points, on the integration suite rather than only on Playwright.
 
+### End-to-end fixture cost, and a rejected hypothesis **[2026-08-28]**
+
+**Two of the suite's most expensive tests now build their prerequisite state through the database instead of the browser. The reasoning that led there is worth more than the change itself, because the first hypothesis was wrong and the second is narrower than it looks.**
+
+#### The dev-server hypothesis, investigated and rejected
+
+Playwright runs against `npm run dev` (`playwright.config.ts`), and CI's end-to-end job **never builds** — `next build` runs only in the other job, on another runner, with no `.next` shared. So every CI run starts from a completely cold compilation cache, and on-demand route compilation looked like an obvious cause of timeouts.
+
+**Measured, it is not.** Against a cold server:
+
+|                                               |                    |
+| --------------------------------------------- | ------------------ |
+| Server startup                                | **388ms**          |
+| Worst single route compile (`/albums/[mbid]`) | **1.42s**          |
+| Total across all ~8 route patterns            | **≈3s, paid once** |
+| Warm per-request cost                         | **39–110ms**       |
+
+And the test that prompted the investigation, `collection-sort.spec.ts:391`, took **16.9s on a warm server on an idle machine** — with no compilation at all. A production server would have saved perhaps 30–60ms per request against a 13-second gap.
+
+**So the e2e server stays on `npm run dev` and no production-server mode was implemented.** Recorded because the change was proposed, looked plausible, and would have produced a green run or two while fixing nothing.
+
+#### What the cost actually is
+
+UI-driven **prerequisite** setup. `collection-sort.spec.ts:391` spent roughly 74% of its runtime on one signup, four collects and two ratings — none of which it asserts anything about. Measured across `want-to-listen.spec.ts`, tests calling `signUp` ran 2.6–6.1s while the one signed-out test ran **511ms**.
+
+**Prerequisite state can be built faithfully rather than approximately.** `ensure_collection_entry` is a Postgres function, documented as the single path by which an entry comes to exist, and it owns the Want to Listen clearing rule. Its signature takes `p_user_id` explicitly and it contains no `auth.uid()`, so an admin client can call **the same function the server action calls**, for any user, with no session. Ratings are the same `update` the service layer performs. Compared side by side, API-created state was **byte-identical** to UI-created state — entries, order, ratings, `liked`, `relisten_count`, `listened_on`, favourites and wishes — including the implicit collection creation that rating an uncollected album performs.
+
+**The rule this follows:** a UI operation stays in the UI when the test asserts something about that operation; it moves to the API only when it is constructing a precondition another test already covers as its subject. `auth.spec.ts` and `collection.spec.ts` remain the deliberate owners of signup and collection UI flows and were not touched.
+
+**An API fixture must assert its own postconditions.** This is not ceremony, and it was learned rather than anticipated. A UI helper verifies itself for free — every `collect` waits on "In your collection" — so a setup that silently did nothing cannot reach the test body. An API fixture has no such property, and the pilot's first version was **vacuous**: with its writes removed the test still passed, comparing an empty state to an empty state. Postconditions must also order deterministically — a first attempt ordered on `rating`, which has two nulls and no tiebreaker, and returned a different sequence on consecutive runs.
+
+#### What was measured
+
+| Test                             | Before (median of 5) | After (median of 5) |
+| -------------------------------- | -------------------- | ------------------- |
+| `collection-sort.spec.ts:391`    | 14.1s (13.8–16.0)    | **6.6s**            |
+| `profile-collection.spec.ts:312` | 12.2s (11.5–17.6)    | **7.7s** (6.0–9.9)  |
+
+All original behavioural assertions were preserved **byte-for-byte** in both tests. Two negative controls per conversion: removing a fixture write fails the test at its postcondition in under 600ms, and removing the `user_id` predicate from `listCollection` fails `:312` on its cross-user isolation assertion. Production was restored byte-identically by checksum after every control.
+
+#### ⚠️ The causal claim, corrected — this is the part that matters
+
+**The model behind this cycle was "slow tests have less headroom against the 30s timeout, so they are the ones that fail." The evidence does not support it.**
+
+One local full-suite run went red on its own under sustained load: 64 of 75 passing, 13.3 minutes against 5.6, with **14 timeouts, 2 `net::ERR_ABORTED`, 2 `session closed` and 2 protocol errors**. Cross-referencing those failures against their durations in a clean run:
+
+| Clean duration                                              | Outcome under load |
+| ----------------------------------------------------------- | ------------------ |
+| **1.8s**                                                    | **failed**         |
+| 2.8s, 3.0s, 3.6s, 3.8s, 4.6s, 5.9s, 6.5s, 6.9s, 9.1s, 11.8s | all failed         |
+| **12.9s — the slowest remaining test**                      | **passed**         |
+
+The failing tests had a **median clean duration of about 4.6s**. A 1.8-second test exceeded 30 seconds while the slowest surviving test did not fail at all. **Baseline duration did not predict failure**, and inflation under load was neither uniform nor proportional to cost — the 1.62× ratio derived from suite totals holds only under moderate load and breaks down entirely in the pathological case.
+
+**Therefore:**
+
+- **It is not claimed that more headroom reduces flake probability.** That effect is **unproven**.
+- **It is not claimed that these two tests caused the observed failures.** They were the slowest; that is a different statement.
+- The conversion **is** a valid runtime and headroom improvement, verified. Its effect on the flake is **unknown**.
+
+#### Three failure signatures, and what this addressed
+
+`docs/current-state.md` §8 records three, all of which appeared in the red run: the **30s test timeout**, **`net::ERR_ABORTED`**, and **`session closed` / protocol-level browser-process failure**. **This cycle addressed the runtime of two expensive tests. It did not explain or fix any of the three signatures**, and the latter two remain entirely unexplained. They co-occurred under the same load, which is consistent with a shared cause and establishes none.
+
+#### No further conversion, and why the reason changed
+
+**No further tests should be converted on the current evidence.** The slowest remaining, `collection-sort.spec.ts:228`, has roughly 9.1s of projected headroom under the old model — but that model has now been shown not to predict failures, so converting further would be optimisation with no evidence that it addresses the mechanism. **The earlier justification for stopping — "nothing is near the budget" — was also simply wrong**, and is corrected here rather than quietly dropped.
+
+**Verification limitation.** Full-suite local verification became unreliable under sustained load: suite duration degraded 5.6m → 13.3m → 19.4m across one session as the machine saturated. A post-conversion full-suite distribution was therefore **not obtained**. That is neither evidence that the implementation is broken nor evidence that it is safe. **CI, running from a clean checkout, remains the honest verification environment.**
+
+> **⚠️ One factual correction, recorded rather than silently amended. [2026-08-28]** The plan for this cycle stated that all three browser contexts in `profile-collection.spec.ts:312` are part of the test's subject. **That was wrong.** Only `page` and `secondPage` are asserted from; **nothing is ever asserted from `thirdPage`**, which exists solely because a UI signup needs a browser to happen in. Once the third user is created through the API that context has no remaining purpose. **It is retained unchanged for this cycle** — signed in through the real login form so it still holds a genuine session — because removing it would change the shape of the test rather than its setup. Recorded so a later reader does not mistake it for a deliberate part of the subject.
+
+**Unchanged:** `playwright.config.ts`, the 30s default, `retries: CI ? 2 : 0`, `workers: 1`, the CI workflow, `package.json`, and all production code. No timeout was raised, no retry added, no assertion weakened.
+
+---
+
 ---
 
 ## 13. Observability

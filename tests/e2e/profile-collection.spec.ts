@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
 import { expect, test, type Page } from '@playwright/test';
 
@@ -309,6 +309,132 @@ test('a signed-out visitor sees the public collection', async ({ page, context }
   await expect(page.getByText('Your collection is empty.')).toBeHidden();
 });
 
+/**
+ * Admin-side setup for the cross-user isolation test below.
+ *
+ * **Why only that test.** It is the slowest in the suite — three signups across
+ * three browser contexts, plus three collection mutations, all through the UI —
+ * and none of that is what it asserts. Its subject is what each profile
+ * *renders*, and that one user's albums never appear on another's. Signup is
+ * asserted as a subject in `auth.spec.ts`; adding and rating in
+ * `collection.spec.ts`. The other eleven tests in this file are well inside
+ * their budget and are deliberately left driving the UI.
+ *
+ * **Entries go through `ensure_collection_entry`**, the same RPC the server
+ * action calls (`src/services/collection/index.ts`). That function owns the
+ * Want to Listen clearing rule and is documented as the single path by which an
+ * entry comes to exist, so raw inserts would build a state the product cannot
+ * produce. Rating an uncollected album creates the entry first, exactly as the
+ * implicit-collection rule does in the UI.
+ *
+ * **The service-role key never leaves this Node process.** It is not passed to
+ * `page.evaluate` or into any browser context.
+ */
+function adminClient(): SupabaseClient {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } },
+  );
+}
+
+type ApiUser = { email: string; password: string; handle: string; id: string };
+
+async function createUserViaApi(admin: SupabaseClient): Promise<ApiUser> {
+  const user = uniqueUser();
+  createdEmails.push(user.email);
+
+  const { data, error } = await admin.auth.admin.createUser({
+    email: user.email,
+    password: user.password,
+    email_confirm: true,
+  });
+  if (error) throw error;
+
+  const { error: profileError } = await admin
+    .from('profiles')
+    .insert({ id: data.user.id, handle: user.handle });
+  if (profileError) throw profileError;
+
+  return { ...user, id: data.user.id };
+}
+
+async function albumIdFor(admin: SupabaseClient, mbid: string): Promise<string> {
+  const { data, error } = await admin.from('albums').select('id').eq('mbid', mbid).single();
+  if (error) throw error;
+  return data.id as string;
+}
+
+async function collectViaApi(admin: SupabaseClient, userId: string, mbid: string) {
+  const { error } = await admin.rpc('ensure_collection_entry', {
+    p_user_id: userId,
+    p_album_id: await albumIdFor(admin, mbid),
+    p_listened_on: null,
+  });
+  if (error) throw error;
+}
+
+/** Rating an uncollected album collects it first, as the UI's implicit add does. */
+async function rateViaApi(admin: SupabaseClient, userId: string, mbid: string, rating: number) {
+  const albumId = await albumIdFor(admin, mbid);
+  const { error: rpcError } = await admin.rpc('ensure_collection_entry', {
+    p_user_id: userId,
+    p_album_id: albumId,
+    p_listened_on: null,
+  });
+  if (rpcError) throw rpcError;
+
+  const { error } = await admin
+    .from('collection_entries')
+    .update({ rating })
+    .eq('user_id', userId)
+    .eq('album_id', albumId);
+  if (error) throw error;
+}
+
+/**
+ * Proves the fixture actually built what the test assumes.
+ *
+ * **Not ceremony.** The UI helpers this replaces verified themselves for free —
+ * every `collect` waited on "In your collection", every `rate` on the score
+ * appearing — so a setup that silently did nothing could never reach the test
+ * body. Writing rows through the API buys speed and loses exactly that. In the
+ * `collection-sort` pilot a fixture that created nothing left the test passing,
+ * because it compared an empty state to an empty state.
+ *
+ * Ordered by `added_at`, which is strictly increasing because the writes above
+ * are sequential and awaited. Ordering by a nullable column such as `rating`
+ * has no tiebreaker and is not stable.
+ */
+async function expectEntries(
+  admin: SupabaseClient,
+  userId: string,
+  expected: { mbid: string; rating: number | null }[],
+) {
+  const { data, error } = await admin
+    .from('collection_entries')
+    .select('rating, albums(mbid)')
+    .eq('user_id', userId)
+    .order('added_at', { ascending: true });
+  if (error) throw error;
+
+  expect(
+    (data ?? []).map((row) => ({
+      mbid: (row.albums as unknown as { mbid: string }).mbid,
+      rating: row.rating,
+    })),
+  ).toEqual(expected);
+}
+
+/** Signs an existing user in through the real login form. */
+async function signIn(page: Page, user: ApiUser) {
+  await page.goto('/login');
+  await page.getByLabel('Email').fill(user.email);
+  await page.getByLabel('Password').fill(user.password);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page).toHaveURL('/', NAV);
+}
+
 test('one user’s collection never appears on another user’s profile', async ({ page, browser }) => {
   // Both users hold the *same* album, which is the case a query missing its
   // user_id filter would render identically for both. Nothing here is private
@@ -317,14 +443,23 @@ test('one user’s collection never appears on another user’s profile', async 
   //
   // Per-marker isolation is asserted in the integration suite, which can see
   // the scores this surface does not draw.
-  const first = await signUp(page);
-  await rate(page, IN_RAINBOWS, '9.6');
+  const admin = adminClient();
+
+  const first = await createUserViaApi(admin);
+  await rateViaApi(admin, first.id, IN_RAINBOWS, 9.6);
+  await expectEntries(admin, first.id, [{ mbid: IN_RAINBOWS, rating: 9.6 }]);
+  await signIn(page, first);
 
   const secondContext = await browser.newContext();
   const secondPage = await secondContext.newPage();
-  const second = await signUp(secondPage);
-  await rate(secondPage, IN_RAINBOWS, '1.2');
-  await collect(secondPage, UNKNOWN_PLEASURES);
+  const second = await createUserViaApi(admin);
+  await rateViaApi(admin, second.id, IN_RAINBOWS, 1.2);
+  await collectViaApi(admin, second.id, UNKNOWN_PLEASURES);
+  await expectEntries(admin, second.id, [
+    { mbid: IN_RAINBOWS, rating: 1.2 },
+    { mbid: UNKNOWN_PLEASURES, rating: null },
+  ]);
+  await signIn(secondPage, second);
 
   // The second user holds two albums, one of them shared with the first.
   await secondPage.goto(`/${second.handle}`);
@@ -343,7 +478,14 @@ test('one user’s collection never appears on another user’s profile', async 
   // viewing your own.
   const thirdContext = await browser.newContext();
   const thirdPage = await thirdContext.newPage();
-  const third = await signUp(thirdPage);
+  const third = await createUserViaApi(admin);
+  await expectEntries(admin, third.id, []);
+  // Signed in through the real form so this context holds a genuine session,
+  // as it did when it was created by a UI signup. Nothing is asserted from
+  // `thirdPage`: the third user exists to be *viewed* by the first, and the
+  // context is retained rather than removed because dropping it would change
+  // the shape of the test rather than its setup.
+  await signIn(thirdPage, third);
 
   await page.goto(`/${third.handle}`);
   await expect(page.getByText(`${third.handle} hasn’t added any albums yet.`)).toBeVisible();
