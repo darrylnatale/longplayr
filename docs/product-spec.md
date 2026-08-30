@@ -80,7 +80,7 @@ Revised entries supersede earlier choices made during the same session.
 
 | Decision        | Value                                                                                                                                                                                                                                                                                           |
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Follow model    | Asymmetric follow **[INFERRED — standard for this product shape; correct if you want mutual-friend semantics]**                                                                                                                                                                                 |
+| Follow model    | Asymmetric follow. **[DECIDED 2026-08-30 — confirmed and built.** Previously `[INFERRED]`. Mutual-friend semantics are explicitly not the model, and no surface derives one direction from the other]                                                                                           |
 | Feed contents   | Interactive listens (collection adds), relistens, ratings, reviews, list creation/updates, **Want to Listen additions** (§10.1). Not a closed list — it grows by phase                                                                                                                          |
 | Feed exclusions | Likes and follows do **not** generate feed events — they'd dominate by volume and crowd out reviews                                                                                                                                                                                             |
 | Silent actions  | **Historical and backfilled collection data** populates the collection without generating feed events, which is what makes onboarding backfill possible without flooding followers. **A backdated `listened_on` is not itself a request for silence** — see the amended rule in `data-model.md` |
@@ -209,7 +209,13 @@ Sorting by popularity waits for the popularity layer in Phase 5.
 
 ### Profile page
 
-Primary: identity (avatar, display name, handle, bio) and a stat cluster (albums, listened this year, following, followers). Then an overview of sections — recent listens, lists, recent reviews — with the **full collection behind its own tab** rather than dumped onto the profile.
+Primary: identity (avatar, display name, handle, bio) and a stat cluster (albums, listened this year, following, followers).
+
+**The stat cluster is built as of 2026-08-30, and carries two of those four. [DECIDED]** Following and followers.
+
+**Albums is deliberately not in the cluster.** It already has an established role in the Collection section header, where **the count is the navigation** — the 2026-08-19 decision below, which remains authoritative. Putting it in both places duplicates the same information without adding a function, and removing it from the Collection section would overturn a decided interaction pattern. Two social statistics are enough to establish the cluster. Recorded because a first implementation did carry it in both places and broke four profile tests on the duplicated string.
+
+**"Listened this year" is deliberately absent, and is not to be added as a substitute third statistic**: whether it means a calendar or a rolling year, and what an entry with no `listened_on` counts as, are undecided, and inventing an answer would settle a product question by implementing it. The following and followers counts are the navigation into their destinations — the same "count becomes the way through" pattern the collection preview uses. A follow control sits in the header for a signed-in visitor on someone else's profile; **signed out, the counts render and no control is offered**, and an anonymous visitor is never redirected to authentication merely for looking. Then an overview of sections — recent listens, lists, recent reviews — with the **full collection behind its own tab** rather than dumped onto the profile.
 
 **Tabs: Collection | Want to Listen | Favourites.** **[DECIDED 2026-08-19]** Want to Listen is public and sits on the profile as its own tab; see §10.1. This is the eventual structure — only Collection is built.
 
@@ -221,8 +227,12 @@ Primary: identity (avatar, display name, handle, bio) and a stat cluster (albums
 | `/<handle>/collection` | **Full Collection.** The whole collection, `wide` container, paginated                                                         | **Built**     |
 | `/<handle>/wishlist`   | **Want to Listen.** Reserved. The album-card control exists; this destination does not, and there is no profile tab or surface | **Not built** |
 | `/<handle>/favourites` | **Favourites.** Reserved. The profile row and the album toggle exist; this destination does not                                | **Not built** |
+| `/<handle>/followers`  | **Followers.** The people who follow this account, newest first, paginated at 50                                               | **Built**     |
+| `/<handle>/following`  | **Following.** The people this account follows, newest first, paginated at 50                                                  | **Built**     |
 
-**These are four distinct things and the distinction is load-bearing.** The overview is a summary that links onward; the other three are full sets. The overview is not "the collection page with less on it", and the Collection destination is not "the profile" — they answer different questions and take different containers.
+**The two relationship destinations are separate addresses, not one page with tabs. [DECIDED 2026-08-30]** They hold different sets, and each profile stat count links to exactly one of them — a combined `/follows` could not express which. They take the `content` container rather than `wide`: every other destination is a cover grid, and this is rows of people.
+
+**These are six distinct things and the distinction is load-bearing.** The overview is a summary that links onward; the other three are full sets. The overview is not "the collection page with less on it", and the Collection destination is not "the profile" — they answer different questions and take different containers.
 
 **The two unbuilt paths are reserved, not stubbed.** Nothing renders for them: no route, no tab, no empty section, no placeholder. **The tab bar arrives with the second destination, not before** — one tab is not a tab bar, and inert tabs are an interface for features that do not exist. Reserving a path means the naming is decided so the second destination does not force the first to be renamed; it does not mean anything is drawn.
 

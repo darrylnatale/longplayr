@@ -798,6 +798,8 @@ Confirmations of decisions made in `docs/data-model.md`, recorded here for archi
 - **Averages computed on read** from non-null ratings. No stored aggregates, so no drift, and deletion needs no cleanup.
 - **Feed is a query over the materialised `Activity` table**, filtered by the follow graph, ordered by time. **Not fan-out-on-write** — no per-follower copies are written. Fan-out becomes worth considering only when feed queries measurably degrade under real load, and that threshold is far away.
 - **Events reference live data**, so edits propagate and undone actions remove events.
+- **Follower and following counts are computed on read**, not denormalised. **[DECIDED 2026-08-30, built]** The same reasoning as averages: no stored aggregate, no drift, and account deletion needs no decrement pass. `collection_entries.relisten_count` is the one denormalised counter in the product and is not a precedent for this — it exists because the insert and the increment must be one transaction for the counter to be trustworthy at all, which is not true of a count anyone can recompute exactly from an indexed column. Two `head: true` counts per profile render, each served by its own index.
+- **A count and the list it links to must apply the same filter.** Both follow counts exclude suspended and banned accounts, because the count is the navigation into the list and a count of five above a list of four is a discrepancy the reader cannot explain. Recorded because the tempting implementation counts rows and filters only the list.
 
 ---
 
@@ -888,6 +890,8 @@ This is not new — §4 already decided it, and §5 already records that extract
 What is new is the reason it matters. §4 justified it for testability; the possibility of iOS and Android clients makes it structural. **Currently honoured** — no component imports the Supabase client.
 
 **This is not a licence to build a generic REST API now.** There is one client, and §5's reasoning that a separate API service costs real money for currently zero benefit is unchanged.
+
+**First application to new work, 2026-08-30.** The follows slice needed a `?page=` parser and a path builder for the two relationship destinations. Both went to `src/app/[handle]/pagination.ts` rather than into `src/services/social/`, because a native client has no query string — the test doing its job on exactly the case where copying `collectionPath` would have been the path of least resistance. `FOLLOW_PAGE_SIZE` did go to the service layer: how many rows a page requests is a data-access concern any client would need, where the page number comes from is not.
 
 ### 19.4 The collection would need provenance before ingestion, not after
 

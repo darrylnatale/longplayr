@@ -5,10 +5,15 @@ import { Avatar } from '@/components/Avatar';
 import { CollectionGrid } from '@/components/CollectionGrid';
 import { Container } from '@/components/Container';
 import { FavouriteRow } from '@/components/FavouriteRow';
+import { FollowButton } from '@/components/FollowButton';
+import { ProfileStats } from '@/components/ProfileStats';
 import { SectionHeader } from '@/components/SectionHeader';
 import { COLLECTION_PREVIEW_LIMIT, listCollection } from '@/services/collection';
 import { listProfileFavourites } from '@/services/collection/favourites';
-import { getCurrentUser, getProfileByHandle } from '@/services/profiles';
+import { getCurrentProfile, getCurrentUser, getProfileByHandle } from '@/services/profiles';
+import { getFollowCounts, getMyFollow } from '@/services/social';
+
+import { followAction, unfollowAction } from './actions';
 
 export async function generateMetadata({ params }: PageProps<'/[handle]'>) {
   const { handle } = await params;
@@ -38,12 +43,21 @@ export async function generateMetadata({ params }: PageProps<'/[handle]'>) {
  * cover by. The identity block keeps its own reading measure, so widening the
  * page moves the grid and the rules, not the text.
  *
- * **Two things are deliberately not drawn here.**
+ * **The stat cluster now renders, because the condition it was waiting on has
+ * been met.** This comment previously recorded that the only statistic in
+ * existence was the album count, and that padding a cluster of one with "0
+ * following · 0 followers" would imply surfaces that were Phase 3 — so it would
+ * arrive "when it has companions". The follows slice is those companions.
  *
- * The **stat cluster**: the only statistic that exists is the album count, and
- * it already appears as the section header's count. Printing it twice to make a
- * cluster of one, or padding it with "0 following · 0 followers", would imply
- * surfaces that are Phase 3. It arrives when it has companions.
+ * **It carries following and followers, and deliberately not the album count.**
+ * The warning this comment used to make — that the album count "already appears
+ * as the section header's count" and printing it twice is the failure — turned
+ * out to survive the cluster's arrival. A first implementation put it in both
+ * places and broke four tests on a duplicated string. The count stays in the
+ * Collection header, where **the count is the navigation** (decided
+ * 2026-08-19), and **"listened this year" is not added as a substitute third**:
+ * `product-spec.md` §6 names it, but whether it means a calendar or a rolling
+ * year, and what an entry with no `listened_on` counts as, are undecided.
  *
  * **Favourites** now render, above the collection preview, and **the section
  * disappears entirely when there are none.** No heading, no panel, no "0
@@ -100,12 +114,24 @@ export default async function ProfilePage({ params }: PageProps<'/[handle]'>) {
   const viewer = await getCurrentUser();
   const isOwnProfile = viewer?.id === profile.id;
 
-  // Two independent reads: a favourite is not a collection entry and neither
-  // constrains the other, so nothing is derived from the pair.
-  const [{ items: preview, total }, favourites] = await Promise.all([
+  // Independent reads: a favourite is not a collection entry, and a follow is
+  // neither, so nothing is derived from any pair.
+  //
+  // `getMyFollow` is only asked when there is somebody to ask about and it is
+  // not the viewer themselves — the control does not render in either case, so
+  // the query would be answering a question nobody put.
+  const [{ items: preview, total }, favourites, counts, myFollow] = await Promise.all([
     listCollection(profile.id, { limit: COLLECTION_PREVIEW_LIMIT }),
     listProfileFavourites(profile.id),
+    getFollowCounts(profile.id),
+    viewer && !isOwnProfile ? getMyFollow(profile.id) : Promise.resolve(null),
   ]);
+
+  // A signed-in visitor who has not chosen a handle has no profile row, so
+  // there is nothing for a follow to be authored by. The control is withheld
+  // rather than rendered into a guaranteed `onboarding_required`.
+  const viewerProfile = viewer && !isOwnProfile ? await getCurrentProfile() : null;
+  const canFollow = Boolean(viewerProfile);
 
   // The handle is the h1 when there is no display name, so repeating it
   // underneath would just print the same string twice.
@@ -132,9 +158,23 @@ export default async function ProfilePage({ params }: PageProps<'/[handle]'>) {
                   You
                 </span>
               )}
+              {canFollow && (
+                <FollowButton
+                  followeeId={profile.id}
+                  following={myFollow !== null}
+                  followAction={followAction}
+                  unfollowAction={unfollowAction}
+                />
+              )}
             </div>
 
             {hasDistinctName && <p className="mt-1 text-sm text-text-muted">@{profile.handle}</p>}
+
+            <ProfileStats
+              handle={profile.handle}
+              following={counts.following}
+              followers={counts.followers}
+            />
 
             <p className="mt-2 text-xs text-text-faint">Joined {joinedLabel(profile.created_at)}</p>
           </div>

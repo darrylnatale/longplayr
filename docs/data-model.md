@@ -190,6 +190,29 @@ Independent of the collection — **[INFERRED]** you may favourite an album you 
 
 Asymmetric. `follower_id` → `followee_id`, with `created_at`. Composite unique; self-follows rejected.
 
+**Built 2026-08-30 as Phase 3's first slice.** The asymmetry was carried as `[INFERRED]` in `product-spec.md` §4 and is now **[DECIDED]**: A following B implies nothing about B following A, and a reciprocal follow is an ordinary second row. Nothing derives one direction from the other, and an integration test asserts it rather than assuming it.
+
+| Field         | Notes                                                                |
+| ------------- | -------------------------------------------------------------------- |
+| `id`          | Surrogate uuid. See below — this is the one part that is not obvious |
+| `follower_id` | → `profiles(id)`, `on delete cascade`                                |
+| `followee_id` | → `profiles(id)`, `on delete cascade`                                |
+| `created_at`  | Orders both relationship lists, newest first. No `updated_at`        |
+
+**Why a surrogate key and not a composite primary key on the pair.** `album_artists` is the model for a pure join table and uses the composite. This one does not, because §7 gives `Notification` a nullable **`follow_id`** alongside `review_like_id` and `list_like_id`, and requires that unfollowing removes the notification by cascade. A composite key would force that table to carry two columns for one of its four subject references. The pair still carries `unique (follower_id, followee_id)`, so identity is unchanged — only its spelling.
+
+**Two indexes, because the relation is read in both directions**: `(followee_id, created_at desc)` for followers, `(follower_id, created_at desc)` for following. Neither query can use the other's leading column. The "am I following this person" lookup is served by the unique constraint's own index.
+
+**Self-follows are rejected in two places, for two different reasons** — the same division as the favourites cap. The service returns a `self_follow` `Result` for the message; `check (follower_id <> followee_id)` is the guarantee, and holds regardless of what the service does.
+
+**Duplicate follows are idempotent.** A unique violation is caught, the existing row read back, and returned as success, so a double submit produces one row rather than an error.
+
+**Counts are computed on read**, per §8 — no denormalised follower or following counter exists. Both counts apply the same active-profile filter as the lists, so a count never disagrees with the list it links to.
+
+**No `Activity` row and no `Notification` row is written.** A follow is decided to generate a notification and decided _not_ to generate a feed event (`product-spec.md` §4). Neither table exists yet.
+
+**No block interaction. [LIMITATION]** Follow creation and the relationship lists currently have no block check, because blocking is a later-phase feature (Phase 6). This is a stated gap rather than an oversight, and no abstraction was added in anticipation of it: when blocking arrives it is a service-layer precondition plus a filter on two queries, needing nothing from this schema.
+
 ### Block
 
 `blocker_id` → `blocked_id`. Per the block decision, this suppresses following, liking, feed presence and notifications **in both directions**, but does **not** restrict viewing — content stays publicly readable. The model can't enforce more than that, and the UI must say so. **[DECIDED — C2]**

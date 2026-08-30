@@ -273,15 +273,17 @@ Sequencing against `product-spec.md` §8.10 faults 1 and 2, and against the enri
 
 **Goal.** Other people become visible. The product becomes social rather than personal.
 
+**Status: slice 1 of the phase is built.** Follows only — the relation, the profile control, the stat cluster and the two relationship destinations. **Nothing else in this phase exists**: no `Activity`, no feed, no notifications, no likes on reviews. Those are later slices and none was started.
+
 **Features**
 
-- Follow and unfollow; follower and following lists
+- **Follow and unfollow; follower and following lists — complete.** Asymmetric, idempotent, self-follows refused by check constraint, counts computed on read, cascade on account deletion. `/<handle>/followers` and `/<handle>/following` are separate destinations paginated at 50 (`product-spec.md` §6). **No block interaction** — blocking is Phase 6 and does not exist, which is a stated limitation rather than an oversight
 - `Activity` writes for every event type: listened, relistened, rated, reviewed
 - **Feed eligibility rule** — interactive actions generate events; historical and backfilled collection data does not. **`listened_on` is not the discriminator** (amended 2026-08-18 — see `data-model.md`, Feed eligibility rule)
 - Following feed, reverse-chronological, with relative timestamps
 - Likes on reviews
 - **Notifications page** — new followers and likes on your reviews, with an unread count. In-app only
-- Profiles show follower and following counts
+- **Profiles show follower and following counts — complete.** Delivered as the stat cluster, which `product-spec.md` §6 had reserved until it had companions; "listened this year" is still deferred
 
 **Dependencies.** Phase 2.
 
