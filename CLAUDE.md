@@ -66,18 +66,21 @@ Every question that section lists under "ask before implementing" is unresolved 
 
 Listed in authority order. When two disagree, the higher one wins.
 
-| File                           | Contents                                                                |
-| ------------------------------ | ----------------------------------------------------------------------- |
-| `docs/product-spec.md`         | What longplayr is, MVP scope, deferrals, open product decisions         |
-| `docs/design-reference.md`     | Letterboxd analysis, what to borrow/adapt/avoid, original design needs  |
-| `docs/data-model.md`           | Conceptual entities and relationships                                   |
-| `docs/architecture.md`         | Technical decisions with alternatives and reasoning                     |
-| `docs/development-plan.md`     | Phased implementation sequence                                          |
-| `docs/deployment.md`           | Steps requiring accounts: GitHub, Supabase, Vercel, MusicBrainz contact |
-| `docs/current-state.md`        | **Where we are right now.** Read this first when resuming work          |
-| `docs/claude-code-playbook.md` | How to work in this repo with Claude Code                               |
+| File                           | Contents                                                                     |
+| ------------------------------ | ---------------------------------------------------------------------------- |
+| `docs/product-spec.md`         | What longplayr is, MVP scope, deferrals, open product decisions              |
+| `docs/design-reference.md`     | Letterboxd analysis, what to borrow/adapt/avoid, original design needs       |
+| `docs/data-model.md`           | Conceptual entities and relationships                                        |
+| `docs/architecture.md`         | Technical decisions with alternatives and reasoning                          |
+| `docs/development-plan.md`     | Phased implementation sequence                                               |
+| `docs/deployment.md`           | Steps requiring accounts: GitHub, Supabase, Vercel, MusicBrainz contact      |
+| `docs/current-state.md`        | **Where we are right now.** Read this first when resuming work               |
+| `docs/claude-code-playbook.md` | How to work in this repo with Claude Code                                    |
+| `docs/product-feedback.md`     | **No authority.** Raw product-feedback inbox — observations, never decisions |
 
 `docs/current-state.md` is the lowest authority and goes stale fastest — it describes progress, never decisions. Anything it says that contradicts this file or the specs is wrong.
+
+`docs/product-feedback.md` sits **outside** the authority order rather than at the bottom of it. It holds unevaluated observations from using the product and never overrides, amends or reopens anything above it — see [Product feedback](#product-feedback).
 
 `transcript.md` and the three `claude-*` docs are reference material. Do not modify them.
 
@@ -136,37 +139,107 @@ Bundled docs live in `node_modules/next/dist/docs/` — read them before assumin
 
 ## Development cycle
 
-Every coherent feature change or product slice follows these steps, in this order, with these exact names. Do not rename, merge, skip or invent steps.
+Every coherent feature change or product slice follows these steps, in this order, with these exact names. Do not rename, merge, skip or invent steps. At the end of each step, provide a concise summary of what was done, what was learned or decided, and whether the step is complete, blocked or ready for the next step. Do not proceed to the next step without asking the user.
 
-| Step  | Name                | Responsibility                                                                                                                                  |
-| ----- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| **A** | Discover / Reassess | Investigate current behaviour; identify defects, dependencies, scope risks and unanswered questions. No code changes                            |
-| **B** | Decide              | Resolve product and scope decisions explicitly. No implementation                                                                               |
-| **C** | Document            | Record those decisions in the authoritative documentation. No implementation                                                                    |
-| **D** | Plan / Review       | Produce the implementation plan and independently review the boundary before coding. No implementation                                          |
-| **E** | Implement           | Implement exactly the approved plan                                                                                                             |
-| **F** | Verify              | Run the required verification and establish the actual test state                                                                               |
-| **G** | Review              | Independently review the implementation against the approved decision, boundary, tests and repository state. **No modifications during review** |
-| **H** | Commit              | Commit only after STEP G returns READY TO COMMIT                                                                                                |
-| **I** | Push                | Push only the reviewed commit                                                                                                                   |
-| **J** | CI                  | Verify CI to a terminal state where possible. **Never claim CI success without evidence of a completed successful run**                         |
-| **K** | Checkpoint          | Reconcile `docs/current-state.md` with the actual repository, remote and CI state                                                               |
-
-**The full cycle is not required for every tiny bug fix** — use judgment based on scope. But any **feature, schema change, migration, auth-adjacent change or product decision** goes through all of it unless explicitly directed otherwise.
-
-**Every cycle ends with a CYCLE HANDOFF**, written for the maintainer rather than for a developer, and understandable without reading the STEP A–K reports. Exactly five headings, each concise:
-
-| Heading                    | Contents                                                                                                                                   |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| **What changed**           | Plain-language summary of what the cycle accomplished                                                                                      |
-| **How to test it**         | Manual steps **only if there is something meaningful to test**. For a documentation or direction cycle, say plainly that there is nothing  |
-| **What I should tell you** | Only where the maintainer's judgement, observation or decision would **materially affect the next work**. **Do not manufacture questions** |
-| **Still open**             | The important unresolved items carried forward                                                                                             |
-| **Next cycle**             | The recommendation and why, in one or two sentences                                                                                        |
+| Step  | Name                | Responsibility                                                                                                                                                                                                        |
+| ----- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A** | Discover / Reassess | Rank candidate work from the current project state and any triaged product feedback, then investigate the leading candidate's behaviour, defects, dependencies, scope risks and unanswered questions. No code changes |
+| **B** | Decide              | Resolve the product, scope and tradeoff decisions the selected slice requires. No implementation                                                                                                                      |
+| **C** | Document            | Record those decisions, their rationale, evidence and boundaries in the authoritative documentation. No implementation                                                                                                |
+| **D** | Plan / Review       | Produce the implementation and verification plan, then independently challenge its boundary, tests, risks and assumptions before coding. No implementation                                                            |
+| **E** | Implement           | Implement exactly the approved plan and nothing outside its boundary                                                                                                                                                  |
+| **F** | Verify              | Run the required local verification and establish the actual test state of the implementation                                                                                                                         |
+| **G** | Review              | Independently review the implementation against the approved decision, boundary, tests, evidence and repository state. **No modifications during review**                                                             |
+| **H** | Commit              | Commit only the reviewed implementation, after STEP G returns **READY TO COMMIT**. Keep unrelated work and other cycles' documentation out of the commit                                                              |
+| **I** | Push                | Push only the reviewed commit. A push may be deliberately deferred, provided the local commit and repository state are recorded clearly                                                                               |
+| **J** | CI                  | Verify CI against the exact pushed SHA to a terminal state where possible. **Never claim CI success without evidence of a completed successful run**                                                                  |
+| **K** | Checkpoint          | Reconcile `docs/current-state.md` with the actual repository, remote and CI state. Record what the completed cycle changed, what was verified, what remains open and any evidence limitations                         |
 
 **When reporting progress, lead with the current step and the cycle name**, on two lines — `STEP D: Plan / Review` then `Cycle: Search reachability` — before anything else.
 
 **Do not collapse Decide, Document, Plan / Review, Implement, Verify and Review into one turn merely because the implementation looks straightforward.** The separation exists for two reasons: it stops implementation assumptions becoming product decisions by default, and it provides an independent review before anything is committed. A slice that seems obvious is exactly the one where an unexamined assumption travels furthest.
+
+### Choosing the next slice
+
+STEP A owns **discovery, ranking and recommendation of the next slice**, not the final product decision.
+
+At the beginning of STEP A: review the current project state and any **triaged** product feedback, identify the possible next pieces of work, weigh their dependencies, risks and evidence, rank them, and recommend the strongest candidate with the reason it should be next. Rank on user impact, correctness risk, dependencies, product readiness, technical leverage and unresolved decisions. **STEP B then decides** whether that candidate and its scope are accepted, or picks another.
+
+**Raw feedback is not cycle scope.** An observation becomes a candidate only after deliberate triage, and a candidate becomes scope only at STEP B.
+
+**Do not create a separate "slice selection" or "pre-development" step.** Slice selection is the first responsibility of STEP A.
+
+### Product feedback
+
+`docs/product-feedback.md` is the persistent, **non-authoritative** inbox for observations from manual testing and ordinary product use — bugs, UX observations, feature ideas, questions, design thoughts and larger future ideas, captured raw. The path from an observation to code is deliberate and has no shortcut:
+
+**manual testing / brain dump → `docs/product-feedback.md` → deliberate triage → STEP A ranks it against the other candidates → STEP B decides → A–K cycle**
+
+- **Raw feedback is an observation, not an implementation instruction.** Nothing is built from that file directly.
+- **Capturing feedback never interrupts the active cycle** and never changes its approved boundary. Do not silently add feedback to the cycle in flight.
+- **Triage is a separate, deliberate pass**, run when the maintainer asks for it. It classifies and recommends; it does not decide.
+- **The file has no authority over the authoritative documents.** Decisions belong in the document that owns them; implementation belongs in an A–K cycle.
+- **Feedback found after STEP D normally waits for a later cycle** — by then the boundary is closed to new input.
+- **One exception, raised out loud rather than filed quietly**: suspected data integrity, security, authentication, destructive behaviour or a serious production regression. Flag it immediately; **the decision to interrupt the current cycle is the maintainer's**, and the current cycle's commit, verification and CI state is recorded before anything is set down.
+
+**In the dedicated product-feedback session, ordinary product observations are entries, not requests.** Record them in `docs/product-feedback.md` rather than treating them as work to implement.
+
+### CI and cycle continuity
+
+**CI is a verification mechanism, not necessarily a development blocker.**
+
+When a cycle has reached STEP H and the implementation commit has passed the required local verification, the next development cycle may begin **without waiting for a long CI run**, provided:
+
+- the implementation commit is complete and identified;
+- the working tree is clean apart from explicitly pre-existing or intentionally deferred files;
+- the exact commits that are pushed or still local are recorded;
+- no new cycle silently modifies, amends, rebases or depends on an unverified implementation;
+- CI results from the previous cycle remain explicitly marked as **pending** until STEP J completes;
+- STEP K is completed or explicitly deferred only with the outstanding CI state clearly recorded.
+
+**For documentation-only changes, do not trigger a separate CI wait merely to validate documentation.** Documentation may be committed locally and pushed together with the next implementation push when appropriate.
+
+**When multiple local commits are waiting to be pushed, preserve their separation and review history.** Do not squash, amend or combine them merely to reduce CI runs unless explicitly approved.
+
+A new implementation cycle may therefore begin while the previous cycle's CI is pending, but its starting state must identify the pending commit(s), the expected CI target SHA and any unresolved verification state.
+
+**Once STEP J has verified CI for a pushed commit, that verified state is the next cycle's starting point.** Do not rerun CI merely to re-establish the previous cycle's baseline, and do not wait on the previous cycle's checkpoint before beginning STEP A — the CYCLE HANDOFF carries the state a new session needs. CI takes roughly 13 minutes; nothing is gained by spending it twice on the same tree.
+
+**A green run verifies only the commit it ran on.** It establishes the completed previous cycle's state and says nothing about a new cycle's changes, which run their own A–K verification.
+
+### Cycle scope
+
+**The full cycle is not required for every tiny bug fix** — use judgment based on scope. However, any **feature, schema change, migration, auth-adjacent change or product decision** goes through all of A–K unless explicitly directed otherwise.
+
+**Do not use the cycle process to manufacture work.** If STEP A establishes that an existing finding is not worth fixing, closing or deferring it with evidence is a valid outcome.
+
+### Historical integrity
+
+**Preserve historical cycle records accurately.** Do not rewrite an earlier decision merely because later evidence changed the conclusion. Mark superseded or refuted decisions explicitly and record the new evidence and decision separately.
+
+**Do not claim that a later green CI run proves an earlier commit was independently tested when both commits were included in a single push.** Distinguish direct verification from transitive coverage.
+
+### CYCLE HANDOFF
+
+Every cycle ends with a **CYCLE HANDOFF**, written for the maintainer rather than for a developer. It must be understandable without reading the STEP A–K reports.
+
+Use exactly these five headings:
+
+| Heading               | Contents                                                                                                                            |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| **What changed**      | The concrete product, code, schema or documentation changes completed in the cycle                                                  |
+| **Why**               | The problem addressed, the decision made and the key rationale                                                                      |
+| **Evidence**          | The important verification results, including tests, CI, measurements and any evidence limitations                                  |
+| **What remains open** | Unresolved defects, decisions, risks, follow-ups and intentionally deferred work                                                    |
+| **Next cycle**        | The recommended next slice or investigation, with a concise reason. If CI or checkpoint work remains pending, state that explicitly |
+
+**It must carry enough state for a new session to begin STEP A immediately** — without waiting for another CI run and without reconstructing the repository state from the previous session:
+
+- under **Evidence** — the implementation commit SHA; the CI run number, the exact SHA it verified, its conclusion and the relevant test totals; any retries, flakes or failures; and the local `HEAD` / `origin/main` relationship;
+- under **What remains open** — known uncommitted files and which cycle each belongs to, documentation intentionally left uncommitted, and outstanding findings and evidence limitations;
+- under **Next cycle** — the recommended candidate if one is already identified, plus any already-settled decisions relevant to it.
+
+State, not narrative. The detail lives in `docs/current-state.md`; the handoff points at it.
 
 ---
 
