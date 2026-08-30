@@ -445,6 +445,188 @@ _Why Postgres._ No additional service, no index-sync failure mode, and it's adeq
 
 _Behind the service layer_, so replacement is contained if search quality becomes a limiting factor.
 
+### ~~Precision: article-leading queries and the credit fuzzy tier~~ **[SUPERSEDED 2026-08-28 — REFUTED BY MEASUREMENT; see _Article normalisation in the fuzzy operands_ below]**
+
+> **⚠️ This decision was made, then refuted before any code was written. It is left standing rather than deleted.**
+>
+> **Both halves failed, for different reasons, and the sequence matters:**
+>
+> 1. **STEP A** identified an apparent article-leading FTS fault and a fuzzy-credit flood.
+> 2. **STEP B** proposed `display_credit > 0.5` plus stripping a leading article from the tsquery — chosen from a **four-artist sample**.
+> 3. **STEP D** ran an **883-query corpus-wide sweep** across all 317 artists and **refuted the threshold**: at `> 0.5` only **55%** of legitimate partial-prefix queries survive.
+> 4. Direct measurement then showed **tsquery article-stripping changes none of the demonstrated results**, and that the apparent FTS fault was **misattributed** — see the correction below.
+> 5. **STEP B was reopened.**
+> 6. The replacement is leading-article normalisation **inside the fuzzy similarity operands**, threshold unchanged at `> 0.3`.
+> 7. **That replacement was validated against the full 883-query corpus _before_ being selected** — which is the discipline this block did not have.
+>
+> **The lesson is not that the number was wrong; it is that it was chosen from four artists and defended by a regression case (`radioh`, 0.545) that would have _passed_ at `> 0.5`.** A test designed as the safety net would have shipped green over the defect.
+
+**Decision: raise the fuzzy threshold on `display_credit` to `> 0.5`, leave the `title` threshold at `> 0.3`, and strip a leading `the`/`a`/`an` from the query used to build the FTS `tsquery` only. `search_vector` is unchanged.**
+
+**Not yet implemented.** This section records a decision; the migration does not exist, and nothing below describes shipped behaviour.
+
+#### The two defects, measured at 707 albums
+
+`product-spec.md` §8.10 recorded two faults at roughly 362 albums. Both reproduce at the current size, and one was **attributed to the wrong predicate** in the original record.
+
+**Fault 1 — stopwords disable the full-text tier.** `websearch_to_tsquery('simple','the warning')` yields `'the' & 'warning'`, requiring both lexemes. Measured across every article-leading query tried, **tier 3 returned 0 rows**.
+
+**Fault 2 — the fuzzy tier floods, and it is the _credit_ predicate, not the title one.** The original record named `similarity(title, query)`. Attribution for `the warning` at 707 albums: **11 albums admitted via `display_credit`, 2 via `title`, 1 via full-text.** The mechanism is `similarity('The Wake','the warning') = 0.400` — every album by an artist whose name begins with an article is admitted. **30 of 317 artists and 88 of 707 albums (12.4%) carry a leading article**, so the affected population scales with the catalogue.
+
+**The clearest single observation:** `warning` returns **1** clean result; `the warning` returns **13**, of which 12 are noise.
+
+#### Why the thresholds are asymmetric
+
+Title and credit have opposite noise profiles, so one number cannot serve both.
+
+|                                     | Measured                        |
+| ----------------------------------- | ------------------------------- |
+| Credit noise (article collisions)   | **0.300 – 0.417**               |
+| Legitimate partial-credit recall    | **0.545 – 0.750**               |
+| Title fuzzy admissions per query    | 2 – 4 rows                      |
+| Mean title similarity to `the wall` | 0.010 – 0.066, all length bands |
+
+**Raising the title threshold too was rejected**: title fuzzy is not the noise source, and raising it would threaten typo recall (`thriler` → `Thriller` is 0.700) for no measured gain.
+
+**Removing the credit fuzzy predicate was rejected, on evidence that reversed the intuition.** It looks redundant because tier 2 already matches credit exactly — but **tier 2 has no credit _prefix_ predicate**, only equality. Partial artist names therefore reach albums _only_ through fuzzy credit: `radioh` 0.545, `radiohe` 0.636, `pink fl` 0.583, `hot chi` 0.700, and **0.000 against every unrelated artist**. Removing it would mean typing `radioh` returned no albums at all.
+
+**`> 0.5` is chosen because `similarity('The Wake','the wall') = 0.500`**, so a strict comparison excludes the demonstrated collision while retaining the lowest measured legitimate value, 0.545.
+
+> **⚠️ The margin is narrow and the threshold is not corpus-validated.** 0.500 against 0.545 is a gap of 0.045, established across **four artists**. STEP A did **not** establish a corpus-wide separation. A larger sample could contain a legitimate partial name below 0.545 or an article collision above 0.5. **This value is supported by the current evidence, not proven universally**, and the regression case for `radioh` exists to catch it.
+
+#### Why leading-article stripping rather than `english`
+
+The article is removed from the query used for the `tsquery` **only**. `n.q` is untouched, so **exact title, exact credit and title-prefix behaviour are all unchanged** — only the FTS tier sees the stripped form.
+
+**This is deliberately narrower than general stopword handling.** It addresses leading articles, which is the measured fault, and leaves a query whose _interior_ stopwords are absent from the target title still failing tier 3. That case was not observed and is not fixed here.
+
+**`english` was rejected for this cycle, and not because it is worse.** It is the more general fix and remains available. It was declined because:
+
+- `search_vector` is `GENERATED ALWAYS AS … STORED` on **both** `albums` and `artists`, so changing the configuration means **dropping and re-adding both generated columns and rebuilding both GIN indexes** — a full-table rewrite for a precision defect.
+- It introduces **stemming**, with measured examples `warning → warn`, `Volume → volum`, `Dry → dri`, `Supreme → suprem`. That trades a measured false-positive class for an **unmeasured** one.
+- The measured defect can be addressed without touching schema at all.
+- **CJK gave no reason to prefer it**: `恍惚の世界` tokenises identically under both configurations.
+
+#### Boundary
+
+**One migration replacing `search_albums` and `search_artists` via `create or replace function`, plus additive regression tests in `tests/integration/search.test.ts`. Nothing else.**
+
+Explicitly excluded: generated columns, GIN indexes, any schema change, the service layer, the UI, any production application code, upstream MusicBrainz artist matching, upstream "show more", and any broader relevance redesign.
+
+#### Regression contract
+
+Nine cases, all deterministic at the database-function level: `the warning`; `the wall`; `the wake` (guarding **over**-correction — the artist's own albums must still return); `thriler` typo recall; **`radioh` partial-credit recall**; credit-side article noise absent; exact/prefix precedence; artist article noise; and the existing ordering and limit contracts. **Every existing behaviour is preserved except the two demonstrated defects.**
+
+#### Success criteria — for STEP E/F to be judged against, not guarantees
+
+Article-leading queries fall from the observed 13–15 rows to **no more than 4** in the demonstrated cases, with the intended result ranked first; `radioh`, `thriler`, `radiohead`, `in rainbows` and `warning` return **exactly what they return today**; tier 1–3 ordering is unchanged; existing tests are added to rather than rewritten.
+
+A STEP B simulation against the live 707-album corpus projected `the warning` 13 → 2, `the wall` 15 → 4, with `radioh`, `thriler` and `radiohead` unchanged. **That is a simulation of the proposed predicate, not a measurement of shipped code.**
+
+#### Deferred, and not resolved here
+
+Whether upstream search should match artists; upstream "show more"; broader relevance policy; general stopword semantics; and the `english` migration. All remain `[OPEN]` in `product-spec.md` §8.10.
+
+---
+
+### Article normalisation in the fuzzy operands **[DECIDED 2026-08-28 — replaces the superseded block above]**
+
+**Decision: strip a leading `the`/`a`/`an` from _both operands_ of the fuzzy similarity comparison, and change nothing else. The `> 0.3` threshold is unchanged.**
+
+**Implemented and CI-verified.** Migration `20260828120000_refine_search_precision.sql`, commit `52de586`, **CI run #62 green on that exact SHA** — attempt 1, both jobs, 266 unit and component, **447 integration**, 1 seed, 75 end-to-end, zero retries and zero flaky. The migration applies cleanly on a **fresh** CI database, so this is not a local-only result.
+
+> **⚠️ What CI verified, and what it did not.** CI runs against a clean fixture database. **The 707-album corpus effect was never observed post-change on staging** — the migration has not been deployed there, and the figures below remain the **read-only simulation** performed before implementation. The same applies to the 5-point recall trade. CI establishes that the implementation is correct and its regression contract holds; it says nothing about how the change behaves across the real catalogue, and nothing about future catalogue data.
+
+#### What changes
+
+| Function         | Current                                   | Decided                                                 |
+| ---------------- | ----------------------------------------- | ------------------------------------------------------- |
+| `search_albums`  | `similarity(a.display_credit, n.q) > 0.3` | same, with a leading article removed from **each side** |
+| `search_artists` | `similarity(ar.name, n.q) > 0.3`          | same, with a leading article removed from **each side** |
+
+**The normalisation applies to the fuzzy comparison only. `n.q` itself is untouched.** Therefore exact title matching, exact credit matching, title-prefix matching, `search_vector` / FTS behaviour and tier ordering are **all unchanged**, and there is **no generated-column, GIN-index or schema change** — the migration replaces the two functions and alters only the two similarity expressions.
+
+**`search_artists` is included on its own evidence, not for symmetry.** It has no credit predicate, but `search_artists('the wall')` returns The Wake, The Weeknd, The Who and The xx — all tier 4, none relevant — through the identical article-inflation mechanism on `name`.
+
+#### Why: the mechanism
+
+A shared leading article inflates trigram overlap between otherwise unrelated strings. Removing it from both sides removes the shared trigrams and leaves the discriminating content:
+
+| Case                                     | Current | Normalised |
+| ---------------------------------------- | ------- | ---------- |
+| The Wake / `the warning` — noise         | 0.400   | **0.182**  |
+| The Who / `the wall` — noise             | 0.417   | **0.125**  |
+| The Offspring / `the warning` — noise    | 0.300   | **0.125**  |
+| The Wake / `the wake` — legitimate       | 1.000   | **1.000**  |
+| Arctic Monkeys / `arctic m` — legitimate | 0.500   | **0.500**  |
+| The Weeknd / `the week` — legitimate     | 0.667   | **0.500**  |
+
+All three demonstrated collisions fall below the **existing** threshold; all three legitimate cases stay above it.
+
+#### Corpus-wide evidence — 883 queries, all 317 artists
+
+Prefixes of length 6–9 from every artist name of ≥8 characters, at **unchanged `> 0.3`**:
+
+|                                  | Current             | Normalised          |
+| -------------------------------- | ------------------- | ------------------- |
+| Legitimate self-matches retained | 858 / 883 (**97%**) | 812 / 883 (**92%**) |
+| False positives admitted         | 189 / 883 (**21%**) | 109 / 883 (**12%**) |
+
+**This is a tradeoff, not a free precision improvement:** roughly **42% fewer false-positive admissions** for roughly **5 percentage points** of legitimate partial-prefix recall. The loss concentrates on short prefixes of article-leading artist names (`the wa` → `wa` against `wake`), and is partially compensated because `search_artists` retains its `lower(name) like q||'%'` prefix predicate, so the artist stays discoverable even when its albums drop out.
+
+**It is not proof the mechanism is universally optimal.** It removes the _article_ collision class specifically; the remaining 109 false positives are collisions between genuinely similar names, which this does not address and does not attempt to.
+
+#### The accepted cost, stated as a product decision
+
+> **The product accepts a 5 percentage point reduction in legitimate partial-prefix album recall in exchange for materially reducing article-driven fuzzy-credit noise.**
+
+**Context that bears on how severe this defect actually is:** in every measured article-leading example the **intended result still ranked first** — `the warning` returns _The Warning_ at tier 1 with the noise strictly below it; `michael ` returns Michael Jackson at tier 3; `arctic m` returns Arctic Monkeys with no noise at all. **The defect being addressed is clutter beneath a correct top result, not an incorrect top result.** Accepting the status quo was a defensible alternative and is recorded as such.
+
+#### Why `> 0.5` was rejected — preserved so it is not re-proposed
+
+The same 883-query sweep:
+
+|                                |           |
+| ------------------------------ | --------- |
+| Legitimate self-match minimum  | **0.231** |
+| 5th percentile legitimate      | 0.318     |
+| 95th percentile false positive | 0.429     |
+| Maximum false positive         | **0.667** |
+
+The distributions **materially overlap**, so no global threshold separates them. At `> 0.5` only **55%** of legitimate partial-prefix queries survive, and these ordinary queries score exactly **0.500** and are therefore excluded:
+
+`michael ` → Michael Jackson · `arctic m` → Arctic Monkeys · `olivia r` → Olivia Rodrigo · `imagine ` → Imagine Dragons · `nine inc` → Nine Inch Nails
+
+**The proposed `radioh` regression case scores 0.545 and would have survived `> 0.5`** — it was insufficient protection, and any future decision touching partial-artist matching must test the first-word prefixes above instead.
+
+#### The article-leading FTS fault: measured, and not reproducible
+
+**Do not ship tsquery article stripping.** The original finding does not hold as a current user-visible defect:
+
+- `websearch_to_tsquery('simple','the wake')` **already matches** the relevant 8 albums — `The Wake` contributes both `the` and `wake` lexemes at credit weight B.
+- Its apparent absence from tier 3 was **tier precedence**, not suppression: those rows received tier 1 or 2 from exact title or exact credit matching, which the `CASE` evaluates first.
+- Stripping the leading article from the tsquery produced **identical results** on every demonstrated query — 13, 15, 15 and 3 rows before and after.
+
+**This is not broadened into general stopword handling**, and `english` remains rejected for the reasons in the superseded block.
+
+> **The word "article" appears in both decisions and they are not the same thing.** The rejected change stripped articles from the **tsquery**, altering which rows the _full-text_ tier matched — and altered nothing. The adopted change strips them from the **similarity operands**, altering which rows the _fuzzy_ tier admits — which is where the mechanism actually operates.
+
+#### Regression contract for STEP E
+
+**Album search:** `michael `, `arctic m`, `olivia r`, `imagine `, `nine inc` each return that artist's albums; `radioh` retains existing recall; `the wake` retains The Wake's own albums; `the warning` ranks _The Warning_ first **and** excludes the measured article-noise albums; `the wall` shows the corresponding precision behaviour; the existing `thriler` typo test is unmodified; exact/prefix precedence and tier 1–3 ordering unchanged; ordering and limit contracts unchanged; and **one explicit accepted-loss case** — a short article-leading prefix that no longer returns an album, asserting the artist remains discoverable through `search_artists`.
+
+**Artist search:** `search_artists('the wall')` no longer returns the unrelated `The …` artists, with its prefix and ordering behaviour preserved.
+
+**Assertions must be on identity and rank, never counts alone.**
+
+#### Boundary
+
+**Allowed:** one migration using `create or replace function`; additive coverage in `tests/integration/search.test.ts`.
+
+**Not allowed:** changing the threshold; changing tsquery construction; `search_vector`; generated columns; GIN indexes; schema changes; service layer; UI; upstream MusicBrainz search; "show more"; broader ranking redesign. **The migration alters only the two fuzzy similarity expressions.**
+
+---
+
 ---
 
 ## 11. Environments and deployment
