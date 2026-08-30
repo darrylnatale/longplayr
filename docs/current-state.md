@@ -12,7 +12,7 @@
 | 4. What gets built and when                  | `docs/development-plan.md`                   |
 | 5. Where we are right now                    | this file                                    |
 
-Verified against the staging database on **2026-08-28 after the credit repair ran** (§33), against the repository and remote at `1848268`, and against CI run **33184671807** (#61) on `1848268` — `completed/success`, attempt 1, zero retries (§34). **No staging activity belongs to §34.**
+Verified against the staging database on **2026-08-28 after the credit repair ran** (§33), against the repository and remote at `52de586`, and against CI run **33192232683** (#62) on `52de586` — `completed/success`, attempt 1, zero retries (§35). **No staging activity belongs to §34 or §35** — the search migration has not been deployed to staging.
 
 > **⚠️ Two files are uncommitted, and only one of them is this cycle's.** `docs/current-state.md` is this checkpoint. **`CLAUDE.md` is not** — it carries a development-cycle rule change ("provide a summary at the end of each step; do not proceed without asking") which the **Cron drain batch sizing** cycle left behind when it committed, and which **three subsequent cycles have now deliberately left alone**. Its blob has been `8ed5b67` throughout. **Do not fold it into this checkpoint's commit.**
 
@@ -149,7 +149,9 @@ Measured **2026-08-28**; `found` and `failed` moved by one on the 2026-08-26 cro
 
 ### Git state
 
-**`HEAD` and `origin/main` are both `1848268`**, verified identical after an explicit fetch, ahead/behind 0/0. Four commits have landed on `93f4920` as normal fast-forwards: `775b749`, `de700fa`, then `9bcb9dc` and `1848268` in one push.
+**`HEAD` and `origin/main` are both `52de586`**, verified identical after an explicit fetch, ahead/behind 0/0. Six commits have landed on `93f4920` as normal fast-forwards: `775b749`, `de700fa`, `9bcb9dc` and `1848268`, then `80a207a` and `52de586` in one push.
+
+**`52de586` is the Search precision cycle** (§35) — one migration and one integration test file. **`80a207a` before it is the §34 checkpoint.** They were pushed together, so **only `52de586` has a CI run**; `80a207a` is covered transitively as its ancestor and has none of its own.
 
 **`9bcb9dc` is the Ingestion link integrity checkpoint** (§33) and **`1848268` is the End-to-end fixture cost cycle** (§34) — documentation, plus two Playwright specs. They were separated deliberately at commit time because both had edited the same §8 table row; **`1848268` carries no §33 content and `9bcb9dc` carries none of §34's.** Because they were pushed together, **only `1848268` has a CI run.**
 
@@ -576,7 +578,7 @@ See `docs/product-spec.md` §8 and `docs/data-model.md` §9 for the authoritativ
 - **Edition selection needs a migration before it can start.** `data-model.md` §—collection entry specifies `release_id` as "the edition, if the user cared to specify one", and **the column does not exist** on `collection_entries`. Not a contradiction — the data model describes the intended model — but a prerequisite, alongside undecided lazy-fetch and edition-display behaviour
 - **Favourites reordering needs an interaction model.** The schema is ready — `favourite_albums_position_unique` is already `deferrable` so a reorder can move several rows in one transaction — but no service function exists and the interaction was deferred rather than designed
 - ~~**Catalogue composition — curated seed versus external popularity.**~~ **RESOLVED IN PRINCIPLE 2026-08-23** in `product-spec.md` §8.9, which was retitled **Catalogue breadth, depth and popularity** because the original question was the wrong one. **Breadth** is initially curated and eventually open-ended; **depth** is completion-oriented for included artists; **popularity** is a separate signal that never determines membership. See §28. **What remains open is listed there**, and the curated starting set is the blocking one
-- **Upstream search: breadth and artist matching** (`product-spec.md` §8.10, raised 2026-08-21). ~~**The unreachability half**~~ **RESOLVED AND BUILT** — decided and shipped 2026-08-22 in `f2e0aab` (§25): the MusicBrainz fallback is available for every signed-in query regardless of local result count, and local results no longer wait for it. What remains open is unchanged: "show more", the trigram threshold, the `simple` text configuration, and artist matching
+- **Upstream search: breadth and artist matching** (`product-spec.md` §8.10, raised 2026-08-21). ~~**The unreachability half**~~ **RESOLVED AND BUILT** — decided and shipped 2026-08-22 in `f2e0aab` (§25): the MusicBrainz fallback is available for every signed-in query regardless of local result count, and local results no longer wait for it. What remains open is unchanged: "show more", the trigram threshold, the `simple` text configuration, and artist matching **Reassessed 2026-08-28; the first decision was refuted before implementation, and the replacement is now shipped.** The four sub-questions: **fuzzy-credit article inflation — IMPLEMENTED** in `52de586`, CI #62 green (leading-article normalisation inside the similarity operands, threshold unchanged at `> 0.3`; `architecture.md` §10 and §35 below); **article-leading FTS / stopword fault — measured and not reproducible at 707 albums, no fix shipped or planned**; **upstream artist matching — still `[OPEN]`**; **"show more" — still `[OPEN]`**. An earlier proposal of `display_credit > 0.5` plus tsquery article-stripping was **refuted by an 883-query corpus sweep** and is preserved as superseded rather than deleted.
 - **Whether depth applies to pseudo-artists — `Various Artists` above all. [OPEN — raised 2026-08-23, and it must not be answered implicitly]** `Various Artists` sits in the catalogue under the canonical MusicBrainz MBID `89ad4ac3-39f7-470e-963a-56509c546377`, disambiguated upstream as _"add compilations to this artist"_. It is MusicBrainz's catch-all for every compilation in the database, not an artist. **Under a completion-oriented depth rule, treating it as an ordinary artist causes uncontrolled expansion.** Related and equally unresolved: whether `[unknown]` and `[no artist]` are the same class, and whether the rule is "pseudo-artists are excluded from depth" or something narrower. **This is not yet recorded in `product-spec.md` §8.9** — it was found after that section was written, and by decision it lands in the next cycle's STEP C rather than being back-filled now.
   - **One pre-existing statement makes this sharper.** `data-model.md` §2 says _"'Various Artists' is a real MusicBrainz artist and **arrives as an ordinary row**. **[INFERRED]** It gets an artist page like any other."_ That was harmless under a bounded seed and is now the exact assumption that would produce the runaway. **It is deliberately untouched**, and by the repo's own convention `[INFERRED]` means "flagged for correction"
 - **Whether the curated starting set is a list of _artists_ or a list of _albums_. [OPEN — raised 2026-08-23]** Not cosmetic. The ListenBrainz seed is an **album** list and it produced 163 one-album artists, because artists entered incidentally. **A curated album list would reproduce that sparsity by the same mechanism**; a curated artist list composes naturally with depth. Cheap to decide deliberately, expensive to discover later. **Must not be inferred from the existing chart seed**
@@ -1886,6 +1888,79 @@ That is the whole of it. Everything below exists to stop that claim being read a
 ### What this does not change
 
 No production code, no migration, no schema, no Playwright configuration, no CI configuration, no timeout, no retry, no assertion, no staging row. **Nothing in the ingestion, queue, artwork or hydration findings is closed or reopened by this cycle.**
+
+---
+
+## 35. Search precision — implemented, verified, committed, pushed and CI-green
+
+**Commit `52de586`, CI run `33192232683` (#62), `completed/success` on that exact SHA**, attempt 1, both jobs, **266 unit and component, 447 integration, 1 seed, 75 end-to-end**, **zero retries, zero flaky, zero failures**.
+
+**The design record is `architecture.md` §10 — both the superseded block and the decision that replaced it. This section records where things stand.**
+
+### What shipped
+
+Migration `20260828120000_refine_search_precision.sql`: two `create or replace function` statements and **no DDL at all**. Both `search_albums` and `search_artists` strip one leading `the`/`a`/`an` from **each side** of their fuzzy similarity comparison.
+
+**Unchanged, and each verified rather than assumed:** the `> 0.3` threshold, the tsquery, `search_vector`, both generated columns, both GIN indexes, every exact and prefix predicate, title fuzzy matching, tier numbering and ordering, limits, signatures, return types, volatility and all six execute grants.
+
+**The migration applies cleanly on a fresh CI database** — the log shows it running in sequence during `supabase start`, so this is not a local-only result. Integration went **434 → 447**, the 13 new search tests, confirming they executed remotely rather than being skipped.
+
+### The cycle changed its mind twice, and that is the useful part
+
+**This cycle produced three mechanisms and shipped the third.** The record matters more than the outcome:
+
+1. **The dev-server hypothesis** never applied here — that was the previous cycle.
+2. **`display_credit > 0.5` plus tsquery article-stripping** was decided, documented, and then **refuted at STEP D before any code existed**. An 883-query corpus sweep across all 317 artists showed the legitimate and false-positive distributions **materially overlap** — legitimate self-matches down to 0.231, false positives up to 0.667 — and at `> 0.5` only **55%** of ordinary partial-name queries survived. `michael `, `arctic m`, `olivia r`, `imagine ` and `nine inc` all score exactly **0.500**.
+3. **Article normalisation inside the similarity operands**, validated corpus-wide **before** selection, is what shipped.
+
+**Two of STEP A's own findings were wrong and are corrected rather than buried.** The fuzzy fault was attributed to `similarity(title, …)`; measurement showed **11 of 13** noise rows for "the warning" entered through **`display_credit`**, 2 through title. And the article-leading FTS fault **does not exist**: `websearch_to_tsquery('simple','the wake')` already matches the relevant rows, and the apparent tier-3 emptiness was **tier precedence**, not suppression. Tsquery stripping was measured to change nothing and was **withdrawn**.
+
+**The lesson worth carrying:** the refuted threshold was chosen from a **four-artist sample** and guarded by a `radioh` regression case scoring 0.545 — which would have **passed** at `> 0.5`. A test designed as the safety net would have shipped green over the defect.
+
+### The accepted trade, stated as a trade
+
+> **The product accepts a 5 percentage point reduction in legitimate partial-prefix album recall in exchange for materially reducing article-driven fuzzy-credit noise.**
+
+Across 883 queries at unchanged `> 0.3`: legitimate recall **97% → 92%**, false-positive admission **21% → 12%**. A test encodes the loss deliberately — `the we` no longer reaches The Weeknd's albums through fuzzy credit — and asserts the artist stays reachable through `search_artists`, which is what makes the exchange acceptable.
+
+**Severity context, preserved because it bears on how much this mattered:** in every measured article-leading example the **intended result already ranked first**. The defect addressed is **clutter beneath a correct top result**, not an incorrect one. Accepting the status quo was a defensible alternative.
+
+### ⚠️ Evidence boundary — what CI did and did not establish
+
+**CI verifies the implementation against a clean fixture database.** It does **not** establish the 707-album corpus result: **the migration has never been deployed to staging**, and the before/after figures throughout this section and `architecture.md` §10 remain the **read-only simulation** performed during STEP B/D. The 5-point trade rests on that simulation, not on a post-deployment measurement.
+
+**Nothing here claims the implementation is optimal for future catalogue data.** It removes the _article_ collision class; the remaining 109 of 883 false positives are collisions between genuinely similar names, untouched and unaddressed.
+
+**`80a207a` was covered transitively, not independently.** Both commits went in one push, so CI #62 verified the tip only. It must not be described as having its own run.
+
+### `[OPEN]` — a test-sensitivity limitation, carried forward
+
+**The regression suite cannot distinguish the shipped two-sided normalisation from a one-sided variant.** Measured:
+
+| Case                                 | Two-sided | One-sided |
+| ------------------------------------ | --------- | --------- |
+| `The Wake` / `the wake` — legitimate | **1.000** | 0.556     |
+| `The Wake` / `the warning` — noise   | 0.182     | 0.133     |
+
+Both land the same side of 0.3 in every tested case, so all 27 tests would pass against a one-sided implementation. The shipped two-sided version is **strictly better** — it scores 1.000 where one-sided scores 0.556, so one-sided would systematically depress legitimate scores and push borderline matches under the threshold.
+
+**This is a test-sensitivity limitation, not an implementation defect, and not a reason to reopen the decision.** It means a future edit could regress here silently.
+
+**A second, milder one:** of the six mandatory partial-artist recall cases, **`michael ` and `imagine ` match via FTS rather than fuzzy** and pass under every mutation. The real guards are `arctic m`, `olivia r`, `nine inc` and `radioh`. Six green tests are four guards.
+
+### Coverage that did not exist before
+
+`search_artists` had **no real coverage**: the suite seeded **zero** artists and its only assertion was `expect(Array.isArray(data)).toBe(true)`, which passes against an empty table. Artists are now seeded and the test asserts Radiohead ranks first.
+
+### Verification history
+
+Four mutation controls, each restored byte-identically by checksum: removing album normalisation (3 failures), removing artist normalisation (1), the rejected `> 0.5` (4 — `arctic m`, `olivia r`, `nine inc`), and removing the credit predicate outright (5). Controls 3 and 4 separate the two failure modes: `radioh` at 0.545 survives the threshold mutation but not predicate removal, which is exactly why it was insufficient alone.
+
+Local `verify:full` exit 0 before commit; CI #62 green after.
+
+### What this does not change
+
+No production application code, no service layer, no UI, no schema, no index, no generated column, no configuration, no CI workflow, no staging row. **The end-to-end flake is untouched and remains `[OPEN]` in §8** — this cycle neither investigated nor affected it, and E2E ran 8.9m against 8.8m and 8.6m on the two prior runs. Nothing in the ingestion, queue, artwork or hydration findings is closed or reopened.
 
 ---
 
