@@ -2,7 +2,7 @@
 
 A social music platform: users record the albums they've listened to, rate and review them, build lists, follow each other, and discover music through that activity.
 
-**Current state: Phase 2 complete to its definition of done. Phase 3 in progress — slice 1, Follows, is built and pushed; `main` is currently RED on CI for a reason outside that slice.** See `docs/current-state.md` for exactly where things stand and what to do next. `docs/development-plan.md` defines what belongs to which phase — do not build ahead of the current phase without saying so.
+**Current state: Phase 2 complete to its definition of done. Phase 3 in progress — slice 1, Follows, is built, pushed and CI-green; `main` is green at `7359fc7`.** See `docs/current-state.md` for exactly where things stand and what to do next. `docs/development-plan.md` defines what belongs to which phase — do not build ahead of the current phase without saying so.
 
 ---
 

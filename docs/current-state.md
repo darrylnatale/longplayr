@@ -12,11 +12,13 @@
 | 4. What gets built and when                  | `docs/development-plan.md`                   |
 | 5. Where we are right now                    | this file                                    |
 
-Verified against the repository and remote at **`398bf4b`** (`HEAD` and `origin/main` identical, ahead/behind 0/0) and against CI run **33326347307** (#63) on `398bf4b` — **`completed/failure` on both attempt 1 and attempt 2** (§36). **No staging activity belongs to this cycle**, and staging is now **two migrations behind**: `20260828120000_refine_search_precision` and `20260830120000_create_follows`, neither deployed.
+Verified against the repository and remote at **`7359fc7`** (`main` and `origin/main` identical) and against CI run **33383724024** (#69) on `7359fc7` — **`completed/success`, attempt 1, zero retries** (§38). **No staging activity belongs to this cycle or the last**, and staging is now **three migrations behind**: `20260828120000_refine_search_precision`, `20260830120000_create_follows` and `20260831120000_enforce_claim_batch_size`, none deployed. Sixteen migrations exist locally; thirteen are applied to staging.
 
-> ## ⚠️ `main` IS RED
+> ## ✅ `main` is green — the red state recorded here is resolved
 >
-> **CI #63 failed on `398bf4b`, twice, deterministically.** All 8 failures are in `tests/integration/curated-recovery.test.ts`, a file this cycle does not touch. **This must not be represented as a green release state**, and the Follows cycle must not be described as CI-green in full — its end-to-end stage never executed. Full account in §36; the open engineering issue is §37.
+> **This banner previously read "`main` IS RED", and it is corrected rather than deleted.** CI #63 did fail on `398bf4b`, twice, deterministically, with all 8 failures in `tests/integration/curated-recovery.test.ts`. **The cause was a production defect in the job queue, not in the Follows slice and not in that test** — `claim_ingestion_jobs` returned more rows than its `batch_size` and `drainJobs` silently discarded the surplus. It was fixed and landed; **CI #69 is green on `7359fc7`**, attempt 1, no retries consumed, seed and end-to-end included. Full account in §38.
+>
+> **The Follows slice is now CI-green in full**, including the end-to-end stage that never executed under §36's red runs.
 
 > **⚠️ One file is uncommitted and it is not this cycle's.** `docs/product-feedback.md` carries the maintainer's own in-progress feedback entries, written in parallel with this cycle. **It was deliberately excluded from `398bf4b` and must not be folded into any checkpoint commit.** The `CLAUDE.md` rule change that previously stood in this warning was committed as part of `565cc74` and is no longer outstanding.
 
@@ -76,7 +78,7 @@ Verified against the repository and remote at **`398bf4b`** (`HEAD` and `origin/
 |                  |                                                       |
 | ---------------- | ----------------------------------------------------- |
 | Unit + component | **266**                                               |
-| Integration      | **434** (need a local database)                       |
+| Integration      | **474** (need a local database)                       |
 | Seed             | **1**                                                 |
 | End-to-end       | **75** (Playwright)                                   |
 | Repository       | <https://github.com/darrylnatale/longplayr> (private) |
@@ -151,11 +153,17 @@ Measured **2026-08-28**; `found` and `failed` moved by one on the 2026-08-26 cro
 >
 > **Historical, retained deliberately.** The 2026-08-24 measurement read 288 `fetch_artwork` pending, 12 stuck in `running`, 4 terminally `failed` and 4 `discover_curated_artist` stuck in `running`. The 2026-08-23 measurement before that read 314 pending, 6 stuck, 21 `fetch_tracklist` pending, of which **312 targeted albums that already had `artwork_status = 'found'`** — redundant work enqueued when the payload backfill re-ingested every album. That redundancy had already cleared before the recovery; the 288 outstanding at the end targeted albums genuinely lacking artwork.
 
+**Sixteen migrations exist locally; thirteen are applied to staging, so staging is three behind.** **[CORRECTED 2026-08-31]** This line previously read _"Eleven migrations applied; local and staging are in sync"_, which was true when written and is now wrong in both halves. Undeployed: `20260828120000_refine_search_precision`, `20260830120000_create_follows` and `20260831120000_enforce_claim_batch_size`. **None is scheduled for deployment**, and the claim-batch-size fix in particular has never run against staging data. The original note follows.
+
 **Eleven migrations applied; local and staging are in sync**, confirmed with `npx supabase migration list --linked` on 2026-08-22 after `20260821120000_create_upstream_payloads` was pushed to staging ahead of the code that needs it, confirmed with `npx supabase migration list --linked` on 2026-08-19. Two were pushed to staging that day: `20260818120000_create_collection`, and `20260819100000_clear_wishlist_on_create_only` correcting the clearing rule (§15). Staging can be queried read-only with `npx supabase db query --linked "<sql>"`, which is how these numbers were checked.
 
 ### Git state
 
-**`HEAD` and `origin/main` are both `398bf4b`**, verified identical after an explicit fetch, ahead/behind 0/0. `398bf4b` is the Follows slice (§36). It was pushed together with three ancestors — `565cc74`, `ce32d65`, `f85bcfb` — in one fast-forward from `52de586`.
+**`main` and `origin/main` are both `7359fc7`**, verified identical after an explicit fetch. Nothing is unpushed. `7359fc7` is the merge that landed the job-queue fix (§38) together with the Follows checkpoint `422232c`, which had been held back while `main` was red.
+
+**The earlier note below describes the state at `398bf4b` and is left as written.**
+
+**`HEAD` and `origin/main` were both `398bf4b`**, verified identical after an explicit fetch, ahead/behind 0/0. `398bf4b` is the Follows slice (§36). It was pushed together with three ancestors — `565cc74`, `ce32d65`, `f85bcfb` — in one fast-forward from `52de586`.
 
 **CI ancestry, stated precisely.** `398bf4b` has **CI #63, failed**. The temporary experiment commit `575d610` had **CI #64, passed**, and no longer exists as a branch. **`565cc74`, `ce32d65` and `f85bcfb` have no independent CI runs**; they were pushed as ancestors of `398bf4b` and are covered transitively only. **These four commits must not be described as having four separate CI verifications.**
 
@@ -2055,7 +2063,13 @@ No staging row, no staging migration, no Browse or search change, no service-rol
 
 ---
 
-## 37. `[OPEN]` — Integration test isolation
+## 37. ~~`[OPEN]` — Integration test isolation~~ **RESOLVED 2026-08-31 by §38, and the framing was wrong**
+
+> **Closed in place rather than deleted, because what this section got wrong is the useful part.** It was filed as a test-isolation problem between two integration files. It was not one. The interaction was real, but it was **exposing a production defect in the job queue** — `claim_ingestion_jobs` returning more rows than requested — and the fix belongs to `jobs.ts` and the claim function, not to either test. `curated-recovery.test.ts` was never modified. See §38.
+>
+> **What remains genuinely unresolved is narrower than this section assumed**: why the real Follows integration test was required to reproduce the over-return. That is carried forward in §38 as unexplained.
+
+**The original text follows, as filed.**
 
 **A separate future cycle. Not created, not scheduled, and explicitly not part of the Follows cycle.**
 
@@ -2080,6 +2094,50 @@ No staging row, no staging migration, no Browse or search change, no service-rol
 2. **`curated-recovery.test.ts`'s cleanup should fail loudly.** Its `clear()` helper checks no error on any of its three deletes, so a failed or partial delete is silent. It should check errors and assert its own postcondition. Had it done so, this would have surfaced as one clear failure rather than eight misleading assertion errors.
 
 **`main` cannot be treated as green until this is resolved.**
+
+---
+
+## 38. Job-queue correctness — the defect §37 was actually describing
+
+**Landed as merge `7359fc7`. CI #69 (`33383724024`) on that exact SHA — `completed/success`, attempt 1, both jobs, 272 unit and component, 474 integration, 1 seed, 82 end-to-end, zero retries, zero flaky.**
+
+**The design record is `architecture.md` §7, _The claim boundary has a cardinality contract_. This section records where things stand.**
+
+### The defect, demonstrated rather than reasoned about
+
+`claim_ingestion_jobs` selected rows with `where id in (select … for update skip locked limit batch_size)`. CI logged it called with **`batch_size := 1` returning three rows, ten times in one run** (#66). `drainJobs` consumed `data[0]` and discarded the rest, so two jobs stayed `running` with their attempt already spent — **invisible to the retry path, absent from every failure metric, and unrecoverable until the 90-minute stale reclaim.** That is `architecture.md` §17's "work that stops silently", and in production it reached the cron drain and both `after()` drains equally.
+
+### What shipped, on both sides
+
+**Database** (`20260831120000_enforce_claim_batch_size.sql`, a new migration; the historical one is untouched). The row-selecting query became a `materialized` CTE joined to the update by primary key, so the limit binds. Verified against a reset database, not just read: predicates, priority ordering with the `id` tie-break, `for update skip locked`, the attempt increment, `updated_at`, return shape, volatility, `security definer`, `search_path` and grants (`service_role` only) all preserved. Concurrency re-checked directly — a second session did not block and claimed a different row.
+
+**Caller.** On more than one row, `drainJobs` releases **every** returned row to `pending` and throws. All of them, not just the surplus: it throws without running anything, so the first row is no more settled than the rest. The release is fenced on `(id, status = 'running', attempts)`, which identifies one claim execution — verified directly that a `succeeded` row and a row at `attempts = 2` are both left untouched.
+
+### The correction the review caught, and it mattered
+
+The first implementation of that release **threw on the first failed update**, abandoning the rows behind it — reproducing the exact stranding the guard exists to prevent, from inside the cleanup meant to prevent it. It now attempts every row, accumulates failures and names them in one error. **Mutation-controlled**: reinstating the old behaviour fails the new test on both the state assertion and the message, and the file was restored byte-identically.
+
+### CI ancestry, stated precisely
+
+**Three independent runs, none transitive**: **#67** (`33370952575`) on `b10b12d`, **#68** (`33382196335`) on `fb3fe35`, **#69** (`33383724024`) on the merge commit `7359fc7`. All green on attempt 1. Diagnostic runs **#64** (inert-file control, green), **#65** and **#66** (instrumented, red by design) are evidence, not implementation.
+
+### ⚠️ The first merge commit in this repository's history
+
+Every prior landing was a fast-forward. `7359fc7` is a merge commit, because GitHub offers no fast-forward method and the alternatives would have rewritten `fb3fe35` or collapsed the reviewed commits. **It introduced nothing of its own** — `git diff fb3fe35 7359fc7` is empty.
+
+### `[OPEN]` — why the Follows test was required to reproduce it
+
+An inert file of **identical byte size at the identical sort position** did not reproduce the failure (#64, green), so ordering alone was insufficient and the real test's behaviour was required. **Why has never been established**, and the fix removed the only known reproduction. Recorded as unexplained. **It is not a defect in the Follows implementation**, which was never implicated by any observed failure.
+
+**One harness property worth carrying**: CI's cold-cache Vitest sequencer orders integration files **by byte size, largest first**. Any file added or grown anywhere silently reorders the suite — and it constrained this very investigation, since instrumenting `curated-recovery.test.ts` moved it away from the neighbour that reproduced the failure.
+
+### Deferred, recorded rather than fixed
+
+`claim_ingestion_jobs` has **no guard against a null `batch_size`** — `limit null` is unbounded. Unreachable today (every caller passes the constant) and **identical in the previous implementation, so not a regression.** There is **no concurrency test above `batch_size = 1`**. Whether a claim that never executed should return its attempt is open **for `reclaimStaleJobs` too**, which behaves the same way. The partial-failure error names only the failures, not the rows that did release. The guard test distinguishes release updates by payload shape rather than an explicit seam.
+
+### What this does not change
+
+No Follows product behaviour, no `follows.test.ts`, no `curated-recovery.test.ts` — that file is byte-identical to when it was failing, which is what makes the fix a fix rather than a weakened test. No staging row, no staging migration, no Browse or search change, no service-role-key action. **The end-to-end flake is untouched and remains `[OPEN]` in §8**; #67, #68 and #69 each consumed zero retries, which is evidence about its intermittency and not a resolution.
 
 ---
 
