@@ -76,7 +76,9 @@ async function clear() {
     .neq('target_mbid', '00000000-0000-0000-0000-000000000000');
 }
 
-beforeEach(async () => {
+beforeEach(async (ctx) => {
+  // DIAGNOSTIC ONLY — temporary branch; never merge.
+  console.log(`[TEST] ${JSON.stringify({ t: Date.now(), name: ctx.task.name })}`);
   await clear();
   browse.failFor = new Set();
   browse.calls = [];

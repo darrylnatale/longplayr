@@ -578,6 +578,17 @@ export async function drainJobs(
     }
 
     const { data, error } = await admin.rpc('claim_ingestion_jobs', { batch_size: 1 });
+    // DIAGNOSTIC ONLY — branch `ci-experiment/claim-boundary`. Never merge.
+    // Observes what one claim returns, to separate over-claiming from work
+    // crossing a test boundary. Reads only; changes nothing.
+    console.log(
+      `[CLAIM] ${JSON.stringify({
+        n: data?.length,
+        ids: data?.map((j) => j.id),
+        maxJobs,
+        claimedSoFar: summary.claimed,
+      })}`,
+    );
     if (error) throw error;
 
     const job = data?.[0];
