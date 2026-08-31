@@ -12,11 +12,17 @@
 | 4. What gets built and when                  | `docs/development-plan.md`                   |
 | 5. Where we are right now                    | this file                                    |
 
-Verified against the staging database on **2026-08-28 after the credit repair ran** (§33), against the repository and remote at `52de586`, and against CI run **33192232683** (#62) on `52de586` — `completed/success`, attempt 1, zero retries (§35). **No staging activity belongs to §34 or §35** — the search migration has not been deployed to staging.
+Verified against the repository and remote at **`398bf4b`** (`HEAD` and `origin/main` identical, ahead/behind 0/0) and against CI run **33326347307** (#63) on `398bf4b` — **`completed/failure` on both attempt 1 and attempt 2** (§36). **No staging activity belongs to this cycle**, and staging is now **two migrations behind**: `20260828120000_refine_search_precision` and `20260830120000_create_follows`, neither deployed.
 
-> **⚠️ Two files are uncommitted, and only one of them is this cycle's.** `docs/current-state.md` is this checkpoint. **`CLAUDE.md` is not** — it carries a development-cycle rule change ("provide a summary at the end of each step; do not proceed without asking") which the **Cron drain batch sizing** cycle left behind when it committed, and which **three subsequent cycles have now deliberately left alone**. Its blob has been `8ed5b67` throughout. **Do not fold it into this checkpoint's commit.**
+> ## ⚠️ `main` IS RED
+>
+> **CI #63 failed on `398bf4b`, twice, deterministically.** All 8 failures are in `tests/integration/curated-recovery.test.ts`, a file this cycle does not touch. **This must not be represented as a green release state**, and the Follows cycle must not be described as CI-green in full — its end-to-end stage never executed. Full account in §36; the open engineering issue is §37.
 
-**Phase 1 implementation is complete.** **The design foundation is complete.** **Phase 2 is in progress:**
+> **⚠️ One file is uncommitted and it is not this cycle's.** `docs/product-feedback.md` carries the maintainer's own in-progress feedback entries, written in parallel with this cycle. **It was deliberately excluded from `398bf4b` and must not be folded into any checkpoint commit.** The `CLAUDE.md` rule change that previously stood in this warning was committed as part of `565cc74` and is no longer outstanding.
+
+**Phase 1 implementation is complete.** **The design foundation is complete.** **Phase 2 is complete to its definition of done** (§1 below records what remains beyond that line). **Phase 3 has begun: slice 1, Follows, is implemented, reviewed, committed and pushed** (§36).
+
+**Phase 2 slices:**
 
 | Slice                                    | State                                            |
 | ---------------------------------------- | ------------------------------------------------ |
@@ -34,7 +40,7 @@ Verified against the staging database on **2026-08-28 after the credit repair ra
 | Artist page date sorting                 | **complete and committed** (`e1daffc`) — see §22 |
 | Collection sorting                       | **complete and committed** (`2fe8b00`) — see §23 |
 
-Lists, follows, activity, feed, notifications, messaging, taste overlap and profile photo/city do not exist, in schema or in code. **Favourites are built** — a row on the profile overview and a toggle on the album card — but **no favourites destination and no reordering interface exist**. **Want to Listen now has an album-card toggle** and nothing else: **no profile surface, no route, no tab, no heading, no placeholder**. Both destinations are named in `product-spec.md` §6 so the paths are decided; naming a path is not scheduling the surface, and neither has been built.
+**Follows now exist** — schema, service, profile control, stat cluster and two relationship destinations, shipped as Phase 3 slice 1 (§36). Lists, activity, feed, notifications, messaging, taste overlap and profile photo/city still do not exist, in schema or in code. **Favourites are built** — a row on the profile overview and a toggle on the album card — but **no favourites destination and no reordering interface exist**. **Want to Listen now has an album-card toggle** and nothing else: **no profile surface, no route, no tab, no heading, no placeholder**. Both destinations are named in `product-spec.md` §6 so the paths are decided; naming a path is not scheduling the surface, and neither has been built.
 
 **Three Phase 2 features remain, each verified absent in code rather than assumed from the plan:**
 
@@ -149,7 +155,15 @@ Measured **2026-08-28**; `found` and `failed` moved by one on the 2026-08-26 cro
 
 ### Git state
 
-**`HEAD` and `origin/main` are both `52de586`**, verified identical after an explicit fetch, ahead/behind 0/0. Six commits have landed on `93f4920` as normal fast-forwards: `775b749`, `de700fa`, `9bcb9dc` and `1848268`, then `80a207a` and `52de586` in one push.
+**`HEAD` and `origin/main` are both `398bf4b`**, verified identical after an explicit fetch, ahead/behind 0/0. `398bf4b` is the Follows slice (§36). It was pushed together with three ancestors — `565cc74`, `ce32d65`, `f85bcfb` — in one fast-forward from `52de586`.
+
+**CI ancestry, stated precisely.** `398bf4b` has **CI #63, failed**. The temporary experiment commit `575d610` had **CI #64, passed**, and no longer exists as a branch. **`565cc74`, `ce32d65` and `f85bcfb` have no independent CI runs**; they were pushed as ancestors of `398bf4b` and are covered transitively only. **These four commits must not be described as having four separate CI verifications.**
+
+**No temporary branch remains.** `ci-experiment/inert-ordering` was deleted locally and remotely; **draft PR #1 is closed and unmerged** (`mergedAt=null`). `git branch -a` shows only `main` and `origin/main`.
+
+**The earlier note below describes the state at `52de586` and is left as written.**
+
+**`HEAD` and `origin/main` were both `52de586`**, verified identical after an explicit fetch, ahead/behind 0/0. Six commits have landed on `93f4920` as normal fast-forwards: `775b749`, `de700fa`, `9bcb9dc` and `1848268`, then `80a207a` and `52de586` in one push.
 
 **`52de586` is the Search precision cycle** (§35) — one migration and one integration test file. **`80a207a` before it is the §34 checkpoint.** They were pushed together, so **only `52de586` has a CI run**; `80a207a` is covered transitively as its ancestor and has none of its own.
 
@@ -1961,6 +1975,111 @@ Local `verify:full` exit 0 before commit; CI #62 green after.
 ### What this does not change
 
 No production application code, no service layer, no UI, no schema, no index, no generated column, no configuration, no CI workflow, no staging row. **The end-to-end flake is untouched and remains `[OPEN]` in §8** — this cycle neither investigated nor affected it, and E2E ran 8.9m against 8.8m and 8.6m on the two prior runs. Nothing in the ingestion, queue, artwork or hydration findings is closed or reopened.
+
+---
+
+## 36. Follows — Phase 3 slice 1: implemented, reviewed, committed, pushed, and **CI-RED for reasons outside it**
+
+**Commit `398bf4b`. CI run `33326347307` (#63) on that exact SHA — `failure` on attempt 1 and again on attempt 2.** The failures are not in this slice; see the verification boundary below and §37.
+
+### What shipped
+
+One migration, one service module, two destinations. **Follows are asymmetric** — A following B implies nothing about B following A, nothing derives one direction from the other, and an integration test asserts it rather than assuming it. `product-spec.md` §4 carried this as `[INFERRED]` and it is now decided.
+
+|                               |                                                                                                           |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------- |
+| **Follow / unfollow**         | Through the service layer only; no component touches a client                                             |
+| **Idempotent both ways**      | Following twice returns the original row; unfollowing what you do not follow is a clean no-op             |
+| **Self-follow refused twice** | Service returns a `self_follow` `Result` for the message; `follows_no_self_follow` check is the guarantee |
+| **Counts computed on read**   | No denormalised counter, no trigger. Both counts apply the same active-profile filter as their lists      |
+| **RLS and grants**            | Public read; write keyed `auth.uid() = follower_id` in `USING` and `WITH CHECK`; no `update` grant at all |
+| **Cascading deletion**        | Both FKs → `profiles(id)` `on delete cascade`; a deleted account leaves the graph in both directions      |
+| **Destinations**              | `/<handle>/followers` and `/<handle>/following`, separate addresses, **50 per page**                      |
+| **Profile stat cluster**      | **following · followers**                                                                                 |
+| **Collection album count**    | **Unchanged**, retaining its existing count-as-navigation role in the Collection section header           |
+
+**Deliberately not built, and none of it is a gap:** no blocking, no `Activity`, no feed, no notifications, no likes on reviews, no messaging, no taste overlap, no other later-phase social functionality.
+
+**The surrogate key is the one non-obvious choice.** `album_artists` is the model for a pure join table and uses a composite primary key; this does not, because `data-model.md` §7 gives `Notification` a nullable `follow_id` and requires unfollowing to remove the notification by cascade. The pair still carries `unique (follower_id, followee_id)`, so identity is unchanged — only its spelling.
+
+**The stat cluster's composition was got wrong once and corrected.** A first implementation carried the album count in both the cluster and the Collection header, which printed the same number twice and broke four pre-existing profile tests on a strict-mode violation — the exact duplication the profile page's own comment had warned about before the cluster existed. Recorded because the mistake is easy to repeat.
+
+### ⚠️ The verification boundary — what is and is not CI-verified
+
+|                               |                                                               |
+| ----------------------------- | ------------------------------------------------------------- |
+| Local full verification       | **green** — `VERIFY_EXIT=0`, 272 / 466 / 1 / **82**           |
+| Follows **unit** tests        | **CI-green**                                                  |
+| Follows **integration** tests | **CI-green** — `follows.test.ts` ✓ 19/19 on **both** attempts |
+| Follows **end-to-end** tests  | **locally green (82/82); NOT executed on the main CI run**    |
+| `main` CI                     | **RED** — `curated-recovery.test.ts`                          |
+
+**The Follows cycle must not be called CI-green.** Its end-to-end stage never ran, because the integration step failed first and skipped it.
+
+### The CI failure, stated exactly
+
+**Run #63, `398bf4b`. Attempt 1: failure. Attempt 2: failure — the same eight tests with the same assertion values.**
+
+- **8 failed / 458 passed of 466 integration tests**, all 8 in `tests/integration/curated-recovery.test.ts`
+- The **format / lint / types / unit / build job passed** on both attempts
+- **`tests/integration/follows.test.ts` passed 19/19 on both attempts**
+- **Seed and end-to-end did not execute** — skipped after the integration failure
+
+`curated-recovery.test.ts` **is not modified by `398bf4b`**. It was last changed by `de700fa`, which was **independently CI-verified green as run #60**, and passed again on #61 and #62.
+
+### The controlled experiment — evidence, not implementation
+
+A temporary branch `ci-experiment/inert-ordering`, commit **`575d610`**, based on `398bf4b`. **The only changed file was `tests/integration/follows.test.ts`**, replaced by an **inert file of exactly the same byte size** (16,347) — no Supabase client, no auth users, no catalogue rows, no jobs.
+
+Byte size matters because **Vitest's cold-cache sequencer orders files largest-first**, so the replacement held the identical position: position 8, with `curated-recovery.test.ts` at 9 — **confirmed in CI's own log**, matching the failing run.
+
+**CI #64 on `575d610` passed completely**, including `curated-recovery.test.ts` (✓ 14 tests) and the seed and end-to-end stages. **PR #1 was closed unmerged and the branch deleted**; the commit and CI run are the record.
+
+> **Conclusion: file position alone is ruled out.** The **behaviour and content of the real Follows integration test** are implicated as the trigger, while **the Follows production implementation is not implicated**. `curated-recovery.test.ts` remains the likely isolation defect.
+>
+> **The exact trigger has NOT been established.** The inert file avoided database access _and_ ran in milliseconds where the real file takes ~8.5s, so the experiment did not separate those properties.
+
+### Deferred, not blocking
+
+Three STEP D review recommendations, all **deferred by decision** and none a blocker:
+
+- **mid-onboarding automated coverage** — the `canFollow` gate is correct but untested; a regression would show a button that then explains itself, not an exception
+- **`pageFrom` / `relationshipPath` tests** — exported pure functions, currently untested
+- **removal of the vacuous `FOLLOW_PAGE_SIZE` test** — asserts a constant against itself and proves no behaviour
+
+Also **future cleanup only**: the duplicate `getCurrentProfile()` lookup on a signed-in visitor's view of another profile — one inside `getMyFollow`, one for `canFollow`, the second sequential after the `Promise.all`. Independently confirmed as performance and cleanliness, **not correctness**.
+
+### What this does not change
+
+No staging row, no staging migration, no Browse or search change, no service-role-key action, no change to the end-to-end flake, no change to `curated-recovery.test.ts`.
+
+---
+
+## 37. `[OPEN]` — Integration test isolation
+
+**A separate future cycle. Not created, not scheduled, and explicitly not part of the Follows cycle.**
+
+**It must own both sides of the interaction:**
+
+- `tests/integration/follows.test.ts`
+- `tests/integration/curated-recovery.test.ts`
+
+**The question it must answer:** which property of the Follows integration test lifecycle triggers the failure —
+
+1. the **44 auth-user creations and deletions**,
+2. **cascading deletion** activity,
+3. **database connection or resource contention**,
+4. the **~8.5s runtime**,
+5. or another lifecycle property.
+
+**Established:** file position alone is not sufficient (§36). **Not established:** which of the above is required. Do not assume.
+
+**Two harness observations, carried forward and deliberately unfixed:**
+
+1. **CI's cold-cache Vitest ordering is file-size descending.** `BaseSequencer.sort()` falls back to `statsB.size - statsA.size` when it has no cached results, and every CI run is a fresh checkout. **Any file added or grown anywhere can silently reorder the whole integration suite.** This is an undocumented suite-level coupling and it is written down nowhere else.
+2. **`curated-recovery.test.ts`'s cleanup should fail loudly.** Its `clear()` helper checks no error on any of its three deletes, so a failed or partial delete is silent. It should check errors and assert its own postcondition. Had it done so, this would have surfaced as one clear failure rather than eight misleading assertion errors.
+
+**`main` cannot be treated as green until this is resolved.**
 
 ---
 

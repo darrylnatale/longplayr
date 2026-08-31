@@ -96,6 +96,213 @@ describe('enqueueJob', () => {
   });
 });
 
+/**
+ * The claim function's cardinality, against the real database.
+ *
+ * **These exist because the contract was violated in production conditions.**
+ * CI observed `claim_ingestion_jobs` called with `batch_size := 1` returning
+ * three rows, ten times in one run, which left two jobs `running` with their
+ * attempt spent and nothing scheduled to recover them for ninety minutes
+ * (`20260831120000_enforce_claim_batch_size.sql`).
+ *
+ * The first case is the regression test for that defect. It needs **three**
+ * eligible jobs: `self-service.test.ts` already asserted a single-row claim,
+ * but with only two pending rows, and it passed throughout — the old
+ * implementation over-returned only under conditions two rows did not reach.
+ */
+describe('claim_ingestion_jobs cardinality', () => {
+  async function claim(batchSize: number) {
+    const { data, error } = await admin.rpc('claim_ingestion_jobs', { batch_size: batchSize });
+    if (error) throw error;
+    return data ?? [];
+  }
+
+  it('returns exactly one of three eligible jobs for batch_size 1', async () => {
+    for (let i = 0; i < 3; i++) {
+      await enqueueJob('fetch_artwork', `0b0e4f1e-1111-4000-8000-00000000d0${i}0`, { admin });
+    }
+
+    const claimed = await claim(1);
+
+    expect(claimed).toHaveLength(1);
+    expect(await queueDepth(admin)).toMatchObject({ pending: 2, running: 1 });
+  });
+
+  it('returns exactly two of five eligible jobs for batch_size 2', async () => {
+    for (let i = 0; i < 5; i++) {
+      await enqueueJob('fetch_artwork', `0b0e4f1e-1111-4000-8000-00000000d1${i}0`, { admin });
+    }
+
+    const claimed = await claim(2);
+
+    expect(claimed).toHaveLength(2);
+    expect(await queueDepth(admin)).toMatchObject({ pending: 3, running: 2 });
+  });
+
+  it('still claims the lowest priority value first', async () => {
+    await enqueueJob('fetch_artwork', MBID_A, { admin, priority: 200 });
+    await enqueueJob('fetch_artwork', MBID_B, { admin, priority: 10 });
+
+    const claimed = await claim(1);
+
+    expect(claimed).toHaveLength(1);
+    expect(claimed[0].target_mbid).toBe(MBID_B);
+  });
+
+  it('marks every row it returns, and only those', async () => {
+    for (let i = 0; i < 4; i++) {
+      await enqueueJob('fetch_artwork', `0b0e4f1e-1111-4000-8000-00000000d2${i}0`, { admin });
+    }
+
+    const claimed = await claim(2);
+    const ids = claimed.map((row) => row.id).sort();
+
+    const { data: running } = await admin
+      .from('ingestion_jobs')
+      .select('id')
+      .eq('status', 'running');
+
+    expect(running!.map((row) => row.id).sort()).toEqual(ids);
+    expect(claimed.every((row) => row.attempts === 1)).toBe(true);
+  });
+});
+
+/**
+ * The drain's defence against a claim boundary that breaks its contract.
+ *
+ * The database now enforces the cardinality, so this can no longer be reached
+ * through the real function. It is reached the way the suite reaches every
+ * other boundary — through the `admin` client the caller already accepts,
+ * delegating everything except the one call under test. No production seam was
+ * added to make this testable.
+ *
+ * What matters is the invariant rather than the exception: **a row the drain
+ * caused to enter `running` must never be left there silently.**
+ */
+describe('drainJobs guards the claim contract', () => {
+  /** The real client, with one over-returning claim spliced in. */
+  function overReturningAdmin(rows: number) {
+    return new Proxy(admin, {
+      get(target, prop, receiver) {
+        if (prop !== 'rpc') return Reflect.get(target, prop, receiver);
+        return async (fn: string, args: { batch_size: number }) => {
+          if (fn !== 'claim_ingestion_jobs') return admin.rpc(fn as never, args as never);
+          return admin.rpc('claim_ingestion_jobs', { batch_size: rows });
+        };
+      },
+    }) as typeof admin;
+  }
+
+  it('releases every claimed row and reports the violation', async () => {
+    stubIngestSuccess();
+    for (let i = 0; i < 3; i++) {
+      await enqueueJob('fetch_artwork', `0b0e4f1e-1111-4000-8000-00000000d3${i}0`, { admin });
+    }
+
+    await expect(drainJobs(10, overReturningAdmin(3))).rejects.toThrow(
+      /returned 3 rows for batch_size 1/,
+    );
+
+    // The whole point: nothing is left stranded in `running`.
+    expect(await queueDepth(admin)).toMatchObject({ pending: 3, running: 0, succeeded: 0 });
+  });
+
+  it('keeps the attempt that the claim spent', async () => {
+    stubIngestSuccess();
+    for (let i = 0; i < 2; i++) {
+      await enqueueJob('fetch_artwork', `0b0e4f1e-1111-4000-8000-00000000d4${i}0`, { admin });
+    }
+
+    await expect(drainJobs(10, overReturningAdmin(2))).rejects.toThrow();
+
+    const { data } = await admin.from('ingestion_jobs').select('status, attempts');
+
+    // Released, not rewritten: the attempt really was spent, and hiding it
+    // would make the retry budget lie.
+    expect(data!.every((row) => row.status === 'pending' && row.attempts === 1)).toBe(true);
+  });
+
+  /**
+   * A client whose Nth *release* update fails.
+   *
+   * `reclaimStaleJobs` also updates this table at the top of every drain, so
+   * releases are identified by their payload — `{ status }` alone, where the
+   * reclaim sends `last_error` too — rather than by call order, which would
+   * make the test depend on how many updates happen to precede it.
+   */
+  function releaseFailingAdmin(rows: number, failOnNthRelease: number) {
+    let releases = 0;
+    const failed = {
+      eq: () => failed,
+      then: (resolve: (value: unknown) => unknown) =>
+        Promise.resolve({ data: null, error: { message: 'injected release failure' } }).then(
+          resolve,
+        ),
+    };
+
+    return new Proxy(admin, {
+      get(target, prop, receiver) {
+        if (prop === 'rpc') {
+          return async (fn: string, args: { batch_size: number }) =>
+            fn === 'claim_ingestion_jobs'
+              ? admin.rpc('claim_ingestion_jobs', { batch_size: rows })
+              : admin.rpc(fn as never, args as never);
+        }
+        if (prop !== 'from') return Reflect.get(target, prop, receiver);
+
+        return (table: string) => {
+          const real = admin.from(table as never);
+          if (table !== 'ingestion_jobs') return real;
+
+          return new Proxy(real, {
+            get(t, p, r) {
+              if (p !== 'update') return Reflect.get(t, p, r);
+              return (values: Record<string, unknown>) => {
+                const isRelease = Object.keys(values).length === 1 && 'status' in values;
+                if (!isRelease) return (real as { update: (v: unknown) => unknown }).update(values);
+                releases += 1;
+                if (releases === failOnNthRelease) return failed;
+                return (real as { update: (v: unknown) => unknown }).update(values);
+              };
+            },
+          });
+        };
+      },
+    }) as typeof admin;
+  }
+
+  it('attempts every release even when one fails, and says which failed', async () => {
+    stubIngestSuccess();
+    for (let i = 0; i < 3; i++) {
+      await enqueueJob('fetch_artwork', `0b0e4f1e-1111-4000-8000-00000000d6${i}0`, { admin });
+    }
+
+    // The first release fails. The two after it must still be attempted — a
+    // loop that threw immediately would leave them `running`, which is the
+    // exact silent stranding this guard exists to prevent.
+    await expect(drainJobs(10, releaseFailingAdmin(3, 1))).rejects.toThrow(
+      /could not release .*injected release failure/,
+    );
+
+    const depth = await queueDepth(admin);
+
+    // Two released, one left running because its release genuinely failed —
+    // and the error above named it rather than hiding the partial cleanup.
+    expect(depth).toMatchObject({ pending: 2, running: 1, succeeded: 0 });
+  });
+
+  it('processes no surplus work', async () => {
+    const spy = vi.spyOn(artwork, 'fetchAndStoreArtwork');
+    for (let i = 0; i < 3; i++) {
+      await enqueueJob('fetch_artwork', `0b0e4f1e-1111-4000-8000-00000000d5${i}0`, { admin });
+    }
+
+    await expect(drainJobs(10, overReturningAdmin(3))).rejects.toThrow();
+
+    expect(spy).not.toHaveBeenCalled();
+  });
+});
+
 describe('drainJobs', () => {
   it('runs a queued job and marks it succeeded', async () => {
     stubIngestSuccess();
