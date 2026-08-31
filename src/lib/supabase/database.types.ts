@@ -34,6 +34,65 @@ export type Database = {
   }
   public: {
     Tables: {
+      activity: {
+        Row: {
+          actor_id: string
+          collection_entry_id: string | null
+          created_at: string
+          id: string
+          relisten_event_id: string | null
+          review_id: string | null
+          type: Database["public"]["Enums"]["activity_type"]
+        }
+        Insert: {
+          actor_id: string
+          collection_entry_id?: string | null
+          created_at?: string
+          id?: string
+          relisten_event_id?: string | null
+          review_id?: string | null
+          type: Database["public"]["Enums"]["activity_type"]
+        }
+        Update: {
+          actor_id?: string
+          collection_entry_id?: string | null
+          created_at?: string
+          id?: string
+          relisten_event_id?: string | null
+          review_id?: string | null
+          type?: Database["public"]["Enums"]["activity_type"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_collection_entry_id_fkey"
+            columns: ["collection_entry_id"]
+            isOneToOne: false
+            referencedRelation: "collection_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_relisten_event_id_fkey"
+            columns: ["relisten_event_id"]
+            isOneToOne: true
+            referencedRelation: "relisten_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_review_id_fkey"
+            columns: ["review_id"]
+            isOneToOne: true
+            referencedRelation: "reviews"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       album_artists: {
         Row: {
           album_id: string
@@ -712,6 +771,7 @@ export type Database = {
       show_trgm: { Args: { "": string }; Returns: string[] }
     }
     Enums: {
+      activity_type: "listened" | "relistened" | "rated" | "reviewed"
       album_secondary_type:
         | "compilation"
         | "soundtrack"
@@ -867,6 +927,7 @@ export const Constants = {
   },
   public: {
     Enums: {
+      activity_type: ["listened", "relistened", "rated", "reviewed"],
       album_secondary_type: [
         "compilation",
         "soundtrack",

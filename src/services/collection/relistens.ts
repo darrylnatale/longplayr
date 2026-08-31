@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 
 import { err, ok, type Result } from '../result';
 
+import { recordRelistened } from '../social/activity';
 import { ensureEntry, type CollectionEntry } from './index';
 
 /**
@@ -31,11 +32,17 @@ export async function markRelisten(
   if (!entry.ok) return entry;
 
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data: relisten, error } = await supabase
     .from('relisten_events')
-    .insert({ collection_entry_id: entry.data.id });
+    .insert({ collection_entry_id: entry.data.id })
+    .select('id')
+    .single();
 
   if (error) throw error;
+
+  // One event per relisten, deliberately: three relistens are three feed items,
+  // which is why these are discrete rows rather than a counter.
+  await recordRelistened(entry.data.user_id, relisten.id);
 
   // Re-read rather than incrementing locally: the trigger owns the counter, so
   // the database is the only thing that knows its value.

@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getCurrentProfile } from '../profiles';
 import { err, ok, type Result } from '../result';
 
+import { recordReviewed } from '../social/activity';
 import { ensureEntry, type Review } from './index';
 
 /**
@@ -63,6 +64,11 @@ export async function saveReview(
     .single();
 
   if (error) throw error;
+
+  // One per review. Editing changes what the existing event displays rather
+  // than announcing the review again.
+  await recordReviewed(entry.data.user_id, data.id);
+
   return ok(data);
 }
 

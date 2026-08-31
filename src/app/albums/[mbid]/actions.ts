@@ -15,9 +15,12 @@ import { addWantToListen, removeWantToListen } from '@/services/collection/want-
  * rule all live in the service layer, and the entry itself is only ever created
  * through `ensure_collection_entry`. Nothing here talks to Supabase directly.
  *
- * **No activity event is written.** Adding to a collection is decided to
- * generate one, but events do not exist until the social phase, and inventing
- * one here would be building ahead.
+ * **Activity events are written by the service layer, not here.** An explicit
+ * add produces a `listened` event because `addToCollection` is the interactive
+ * path; the implicit adds behind rating, liking, relistening and reviewing go
+ * through `ensureEntry`, which stays silent. That split is the feed eligibility
+ * rule, and it lives in `services/collection` and `services/social/activity.ts`
+ * rather than in these actions.
  */
 
 export type CollectionActionState = { error?: string };
@@ -119,8 +122,11 @@ export async function removeAlbumAction(
  * user never gave and drag the album's average down with it.
  *
  * Rating an album the user does not hold adds it, through the same canonical
- * path as everything else — so the wishlist is cleared and no activity event is
- * written.
+ * path as everything else — so the wishlist is cleared, and the implicit add
+ * itself stays silent. The `rated` event `rateAlbum` writes belongs to the
+ * rating: one per entry, so re-rating edits what the feed already shows.
+ * **Clearing the rating removes that event**, since the entry survives and no
+ * cascade would.
  */
 export async function rateAlbumAction(
   albumId: string,
@@ -190,8 +196,9 @@ export async function toggleLikeAction(
  * by a database trigger rather than incremented here.
  *
  * Relistening an album the user does not hold adds it, through the same
- * canonical path as everything else, so Want to Listen is cleared and no
- * activity event is written.
+ * canonical path as everything else, so Want to Listen is cleared. The implicit
+ * add itself is silent; the `relistened` event `markRelisten` writes belongs to
+ * the relisten, not to the add.
  */
 export async function markRelistenAction(
   albumId: string,
@@ -209,9 +216,10 @@ export async function markRelistenAction(
  * Creates or replaces the caller's review.
  *
  * Writing about an album implicitly adds it, through the same canonical path as
- * everything else, so the wishlist is cleared and no activity event is written.
- * A `reviewed` event is decided direction, but Activity does not exist yet and
- * inventing one here would be building ahead.
+ * everything else, so the wishlist is cleared. The implicit add is silent and
+ * the `reviewed` event `saveReview` writes belongs to the review — one per
+ * review, so editing changes what the feed shows rather than announcing it
+ * again.
  *
  * Whitespace-only bodies are rejected and the stored body is trimmed. The limit
  * is enforced three times over — `maxLength` on the field, this check, and a
@@ -311,9 +319,11 @@ export async function toggleFavouriteAction(
  * cannot toggle twice from one click. Adding is idempotent in the service, so
  * submitting `wanted=true` twice leaves one row rather than erroring.
  *
- * **No activity event.** Want to Listen additions are decided to generate one,
- * but Activity does not exist until the social phase and inventing it here
- * would be building ahead.
+ * **Still no activity event, and the reason has changed.** Activity exists now,
+ * but Want to Listen is deliberately not among its types: whether *removing*
+ * generates an event is `[OPEN]` (`product-spec.md` §10.1), and writing the
+ * addition while that is unanswered would settle half a question by
+ * implementing it.
  */
 export async function toggleWantToListenAction(
   albumId: string,

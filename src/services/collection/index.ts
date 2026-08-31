@@ -3,6 +3,7 @@ import type { Database } from '@/lib/supabase/database.types';
 
 import { getCurrentProfile } from '../profiles';
 import { err, ok, type Result } from '../result';
+import { recordListened, recordRated, removeRated } from '../social/activity';
 import { collectionOrder, DEFAULT_COLLECTION_SORT, type CollectionSort } from './sort';
 
 export {
@@ -369,9 +370,25 @@ export function toCollectionListItem(row: {
   ];
 }
 
-/** Explicit add. The date is optional and freely backdated. */
+/**
+ * Explicit add. The date is optional and freely backdated.
+ *
+ * **This is the interactive seam, and it is the whole of the eligibility rule.**
+ * `ensureEntry` creates the entry and stays silent; this function is what a user
+ * saying "add this album" reaches, so it is where the `listened` event is
+ * written. A bulk or imported write calls `ensureEntry` directly and generates
+ * nothing — silent by construction rather than by remembering to be.
+ *
+ * **A backdated `listened_on` still produces an event.** The date is a claim
+ * about the past, not a request for silence; the write path is the
+ * discriminator (CLAUDE.md, `data-model.md` feed eligibility rule).
+ */
 export async function addToCollection(albumId: string, listenedOn?: string | null) {
-  return ensureEntry(albumId, listenedOn);
+  const entry = await ensureEntry(albumId, listenedOn);
+  if (!entry.ok) return entry;
+
+  await recordListened(entry.data.user_id, entry.data.id);
+  return entry;
 }
 
 /**
@@ -420,7 +437,17 @@ export async function rateAlbum(
   if (!isValidRating(rating)) {
     return err('invalid_rating', 'Ratings run from 0.0 to 10.0, to one decimal place.');
   }
-  return updateEntry(albumId, { rating });
+
+  const result = await updateEntry(albumId, { rating });
+  if (!result.ok) return result;
+
+  // Clearing a rating undoes the action, so the event goes with it. Every other
+  // undo is covered by a cascade; this is the one case where the referenced row
+  // survives, so it needs saying explicitly.
+  if (rating === null) await removeRated(result.data.user_id, result.data.id);
+  else await recordRated(result.data.user_id, result.data.id);
+
+  return result;
 }
 
 /** Sets or clears the like. Implicitly adds the album. */

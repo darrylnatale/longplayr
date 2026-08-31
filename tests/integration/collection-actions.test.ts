@@ -178,17 +178,25 @@ describe('adding to a collection', () => {
     expect(data![0].album_id).toBe(albumB);
   });
 
-  it('creates no activity, because activity does not exist yet', async () => {
-    // A guard against a later slice quietly writing events from this path.
-    const { data: tables } = await admin.rpc('ensure_collection_entry', {
-      p_user_id: (await createProfiledUser()).id,
+  it('creates no activity — the creation path is the silent one', async () => {
+    // A guard against a later slice quietly writing events from this path, and
+    // it now guards something real. The `activity` table exists as of Phase 3
+    // slice 2, so the assertion moved from "the table is absent" to "this path
+    // writes no rows" — which is what the anti-flood rule actually requires.
+    //
+    // `ensure_collection_entry` is reached by both the interactive add and
+    // every implicit one, so it must stay silent; `addToCollection` is where a
+    // `listened` event is written. An import calling this directly generates
+    // nothing, which is the whole discriminator.
+    const user = await createProfiledUser();
+    const { data: entry } = await admin.rpc('ensure_collection_entry', {
+      p_user_id: user.id,
       p_album_id: albumA,
     });
-    expect(tables).toBeTruthy();
+    expect(entry).toBeTruthy();
 
-    const { error } = await admin.from('activity' as never).select('id');
-    // The table genuinely does not exist; that is the assertion.
-    expect(error).not.toBeNull();
+    const { data } = await admin.from('activity').select('id').eq('actor_id', user.id);
+    expect(data).toEqual([]);
   });
 });
 

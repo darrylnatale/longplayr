@@ -197,11 +197,16 @@ describe('liking', () => {
     expect((await entryOf(user.id, albumA))!.liked).toBe(true);
   });
 
-  it('writes no activity, because activity does not exist yet', async () => {
+  it('writes no activity, and that is permanent rather than pending', async () => {
+    // This assertion used to be that the `activity` table did not exist. It
+    // does now, so the guard is expressed against rows instead — which is
+    // stronger, and which stays true for good: likes are excluded from the feed
+    // by decision, because they would dominate by volume and crowd out reviews.
     const user = await createUser();
     await setLike(await clientFor(user.email), user.id, albumA, true);
-    const { error } = await admin.from('activity' as never).select('id');
-    expect(error).not.toBeNull();
+
+    const { data } = await admin.from('activity').select('id').eq('actor_id', user.id);
+    expect(data).toEqual([]);
   });
 });
 

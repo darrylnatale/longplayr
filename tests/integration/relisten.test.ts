@@ -237,11 +237,15 @@ describe('counting', () => {
     expect((await stateOf(user.id, albumB))!.relisten_count).toBe(1);
   });
 
-  it('writes no activity, because activity does not exist yet', async () => {
+  it('writes no activity from the relisten insert itself', async () => {
+    // As in the sibling suites: this replicates the SQL, and `markRelisten` is
+    // what writes the `relistened` event alongside it. `activity.test.ts` owns
+    // that behaviour, including that three relistens produce three events.
     const user = await createUser();
     await relisten(await clientFor(user.email), user.id, albumA);
-    const { error } = await admin.from('activity' as never).select('id');
-    expect(error).not.toBeNull();
+
+    const { data } = await admin.from('activity').select('id').eq('actor_id', user.id);
+    expect(data).toEqual([]);
   });
 });
 

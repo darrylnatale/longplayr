@@ -274,12 +274,18 @@ describe('rating creates and changes entries', () => {
     expect(await average(albumA)).toEqual({ average: 10, count: 1 });
   });
 
-  it('writes no activity, because activity does not exist yet', async () => {
+  it('writes no activity from the entry-and-update path itself', async () => {
+    // These tests replicate the SQL the service issues, not the service. The
+    // shared entry-then-update tail is silent, and `rateAlbum` is what adds the
+    // `rated` event on top of it — so this asserts the tail, not the feature.
+    // `activity.test.ts` owns the event behaviour, including that re-rating
+    // leaves one event and clearing removes it.
     const user = await createProfiledUser();
     const client = await clientFor(user.email);
     await rate(client, user.id, albumA, 7);
-    const { error } = await admin.from('activity' as never).select('id');
-    expect(error).not.toBeNull();
+
+    const { data } = await admin.from('activity').select('id').eq('actor_id', user.id);
+    expect(data).toEqual([]);
   });
 });
 
