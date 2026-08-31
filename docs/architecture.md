@@ -293,6 +293,22 @@ Also required: the deadline check precedes the claim, and moving it after must f
 
 **Provider integration is untouched.** Nothing here reads, writes or contemplates a Spotify identifier; §19.1 is unaffected.
 
+### The claim boundary has a cardinality contract, and the drain enforces it **[DECIDED 2026-08-31 — after a demonstrated defect]**
+
+**Contract: `claim_ingestion_jobs(batch_size)` marks and returns at most `batch_size` rows, and `drainJobs` settles every row it causes to enter `running`.**
+
+**This was written because both halves were broken at once, in production code.** The claim function selected rows with `where id in (select … for update skip locked limit batch_size)` — the unsafe spelling. `IN (subquery)` may be planned as a semi-join and the subquery re-evaluated, and a `language sql` body can be inlined into the caller's plan, so `limit` bounds each evaluation rather than the total. The row-selecting query is now a **`materialized` CTE**, evaluated once, which is what makes the limit bind. Nothing else about the claim changed: the `pending` predicate, `run_after`, priority ordering with the `id` tie-break, `for update skip locked`, the attempt increment and the return shape are as they were, and concurrent claimers still skip locked rows.
+
+**Observed rather than reasoned about.** CI logged the function called with `batch_size := 1` returning **three** rows, ten times in a single run. `drainJobs` consumed only the first, so two jobs stayed `running` with their attempt already spent — no retry path sees them, no failure metric counts them, and nothing recovers them for ninety minutes. That is §17's "work that stops silently", and it reached the cron drain and both `after()` drains equally.
+
+**The caller does not trust the contract.** If a claim returns more than one row, `drainJobs` releases **every** returned row back to `pending` and throws. All of them, not only the surplus: it throws without running anything, so the first row is no more settled than the rest. The release is fenced on `(id, status = 'running', attempts = <the value the claim returned>)`, which identifies one specific claim execution — a row re-enters `running` only through another claim, and claiming increments `attempts` — so a job another worker has legitimately advanced is left alone. The attempt increment is kept, because it really was spent.
+
+**It throws rather than absorbing.** A database function violating its own cardinality is not an outcome the interface renders; it is the unexpected failure exceptions exist for. Processing the extras instead would breach `maxJobs`, which the cron's 60-second ceiling depends on.
+
+**What exposed it is not the same as what caused it, and only one is understood.** The condition reproduced on CI only when one particular integration test file preceded the affected suite; an inert file of identical byte size in the same position did not reproduce it. **Why that neighbour changes PostgreSQL's behaviour is unresolved and is not claimed here.** The cardinality defect is demonstrated independently of it.
+
+---
+
 ### Credit reconciliation and the completeness test **[DECIDED 2026-08-25]**
 
 **Decision: an album counts as already held only if its row exists _and_ it carries at least one `album_artists` credit. An album that fails that test is reconciled from its stored upstream payload.**

@@ -431,6 +431,38 @@ export async function reclaimStaleJobs(admin: Admin = createAdminClient()): Prom
  * execution — and in the `markFailed` case return an already `succeeded` job to
  * `pending` with a backoff, resurrecting finished work.
  */
+/**
+ * Returns rows to `pending` that were claimed but will not be run.
+ *
+ * **Fenced exactly as `markSucceeded` is, and for a stronger reason.** The
+ * fence is `(id, status = 'running', attempts = <the value the claim
+ * returned>)`, and that triple identifies one specific claim execution: a row
+ * can only re-enter `running` through another claim, and claiming increments
+ * `attempts`. So if another worker has advanced this row at all, the predicate
+ * matches nothing and its work is left alone. A bare update on `id` could
+ * revert a job someone else had legitimately taken.
+ *
+ * **The attempt increment is kept.** The claim really did spend an attempt, and
+ * rewriting history to hide that would make the retry budget lie. `run_after`
+ * is left where it is, so a job that was never tried is immediately claimable
+ * again rather than serving a backoff it did not earn.
+ *
+ * Rows are released one statement each: the fence is per-row, since each row
+ * carries its own `attempts`.
+ */
+async function releaseClaims(jobs: Job[], admin: Admin): Promise<void> {
+  for (const job of jobs) {
+    const { error } = await admin
+      .from('ingestion_jobs')
+      .update({ status: 'pending' })
+      .eq('id', job.id)
+      .eq('status', 'running')
+      .eq('attempts', job.attempts);
+
+    if (error) throw error;
+  }
+}
+
 async function markSucceeded(job: Job, admin: Admin): Promise<'settled' | 'superseded'> {
   const { data, error } = await admin
     .from('ingestion_jobs')
@@ -579,6 +611,30 @@ export async function drainJobs(
 
     const { data, error } = await admin.rpc('claim_ingestion_jobs', { batch_size: 1 });
     if (error) throw error;
+
+    // The claim asked for one row. If it hands back more, every extra row is
+    // already `running` with its attempt spent, and taking only the first is
+    // how they become invisible: no retry path sees them, no failure metric
+    // counts them, and nothing recovers them until the 90-minute stale reclaim.
+    // That is exactly the defect this guard exists because of — see
+    // `20260831120000_enforce_claim_batch_size.sql`.
+    //
+    // **All of them are released, not just the surplus.** This throws without
+    // running anything, so the first row is no more settled than the rest, and
+    // leaving it `running` would strand a job just as silently.
+    //
+    // **Then it throws**, because a database function violating its own
+    // cardinality is not an outcome the interface renders — it is the
+    // unexpected failure CLAUDE.md keeps exceptions for. Processing the extras
+    // instead would breach `maxJobs`, which the cron's 60-second ceiling
+    // depends on.
+    if (data && data.length > 1) {
+      await releaseClaims(data, admin);
+      throw new Error(
+        `claim_ingestion_jobs returned ${data.length} rows for batch_size 1; ` +
+          `released ${data.map((row) => row.id).join(', ')} back to pending`,
+      );
+    }
 
     const job = data?.[0];
     if (!job) {
