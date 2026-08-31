@@ -35,8 +35,19 @@ vi.mock('@/services/catalogue/musicbrainz', async (importOriginal) => {
   };
 });
 
-const { curatedTrancheStatus, discoverAndIngestArtist, enqueueCuratedTranche } =
-  await import('@/services/catalogue/curated-tranche');
+const {
+  curatedTrancheStatus,
+  discoverAndIngestArtist,
+  enqueueCuratedTranche: enq,
+} = await import('@/services/catalogue/curated-tranche');
+
+/** DIAGNOSTIC ONLY. Temporary branch; never merge. */
+const D = (t: string, v: unknown) => console.log(`[DIAG] ${t} ${JSON.stringify(v)}`);
+const enqueueCuratedTranche: typeof enq = async (o) => {
+  const r = await enq(o);
+  D('enqueue', r);
+  return r;
+};
 const { drainJobs } = await import('@/services/catalogue/jobs');
 
 const admin: SupabaseClient<Database> = createClient<Database>(
@@ -67,13 +78,18 @@ const album = (id: string, artistMbid: string, title: string): MbReleaseGroup =>
     ],
   }) as MbReleaseGroup;
 
+const NIL = '00000000-0000-0000-0000-000000000000';
+
 async function clear() {
-  await admin.from('albums').delete().neq('mbid', '00000000-0000-0000-0000-000000000000');
-  await admin.from('artists').delete().neq('mbid', '00000000-0000-0000-0000-000000000000');
-  await admin
-    .from('ingestion_jobs')
-    .delete()
-    .neq('target_mbid', '00000000-0000-0000-0000-000000000000');
+  const al = await admin.from('albums').delete().neq('mbid', NIL);
+  const ar = await admin.from('artists').delete().neq('mbid', NIL);
+  const jb = await admin.from('ingestion_jobs').delete().neq('target_mbid', NIL);
+  const n = async (t: 'albums' | 'artists' | 'ingestion_jobs') =>
+    (await admin.from(t).select('*', { count: 'exact', head: true })).count;
+  D('clear', {
+    err: [al.error?.message, ar.error?.message, jb.error?.message],
+    left: [await n('albums'), await n('artists'), await n('ingestion_jobs')],
+  });
 }
 
 beforeEach(async () => {
@@ -105,7 +121,14 @@ async function advanceQueue() {
 async function drainAll(max = 12) {
   for (let i = 0; i < max; i++) {
     const summary = await drainJobs(10, admin);
-    if (summary.claimed === 0) return;
+    D('drain', summary);
+    if (summary.claimed === 0) {
+      const { data } = await admin
+        .from('ingestion_jobs')
+        .select('target_mbid, status, attempts, last_error');
+      D('jobs', data);
+      return;
+    }
   }
 }
 
