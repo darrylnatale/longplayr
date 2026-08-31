@@ -20,11 +20,18 @@
 -- the "work that stops silently" failure class `architecture.md` §17 names, and
 -- in production it would apply to the cron drain and both `after()` drains.
 --
--- **The fix is to make the selected set explicit.** The row-selecting query
--- becomes a `materialized` CTE, which is evaluated exactly once, so `limit`
--- bounds the whole statement. PostgreSQL already declines to inline a CTE
--- containing `for update`, but saying `materialized` states the requirement
--- rather than depending on the planner continuing to infer it.
+-- **The fix is to abandon the `id in (subquery)` shape.** What is established
+-- is this: replacing it with a row-selecting CTE joined to the update by
+-- primary key yields a single, bounded claim set — the CTE produces at most
+-- `batch_size` ids, and the join is 1:1 on the key, so no row can be updated
+-- that the CTE did not select.
+--
+-- **`materialized` is belt and braces, not the proven load-bearing part.**
+-- PostgreSQL already declines to inline a CTE containing `for update`, so the
+-- keyword is very likely redundant here; it is written so the requirement is
+-- stated rather than inferred from a behaviour the planner is not obliged to
+-- keep. Which of the two changes was strictly necessary has not been isolated,
+-- and this comment does not claim otherwise.
 --
 -- **Everything else is unchanged and deliberately so**: the `pending` predicate,
 -- `run_after <= now()`, priority ordering with the deterministic `id` tie-break,

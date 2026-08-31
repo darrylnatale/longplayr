@@ -222,6 +222,75 @@ describe('drainJobs guards the claim contract', () => {
     expect(data!.every((row) => row.status === 'pending' && row.attempts === 1)).toBe(true);
   });
 
+  /**
+   * A client whose Nth *release* update fails.
+   *
+   * `reclaimStaleJobs` also updates this table at the top of every drain, so
+   * releases are identified by their payload — `{ status }` alone, where the
+   * reclaim sends `last_error` too — rather than by call order, which would
+   * make the test depend on how many updates happen to precede it.
+   */
+  function releaseFailingAdmin(rows: number, failOnNthRelease: number) {
+    let releases = 0;
+    const failed = {
+      eq: () => failed,
+      then: (resolve: (value: unknown) => unknown) =>
+        Promise.resolve({ data: null, error: { message: 'injected release failure' } }).then(
+          resolve,
+        ),
+    };
+
+    return new Proxy(admin, {
+      get(target, prop, receiver) {
+        if (prop === 'rpc') {
+          return async (fn: string, args: { batch_size: number }) =>
+            fn === 'claim_ingestion_jobs'
+              ? admin.rpc('claim_ingestion_jobs', { batch_size: rows })
+              : admin.rpc(fn as never, args as never);
+        }
+        if (prop !== 'from') return Reflect.get(target, prop, receiver);
+
+        return (table: string) => {
+          const real = admin.from(table as never);
+          if (table !== 'ingestion_jobs') return real;
+
+          return new Proxy(real, {
+            get(t, p, r) {
+              if (p !== 'update') return Reflect.get(t, p, r);
+              return (values: Record<string, unknown>) => {
+                const isRelease = Object.keys(values).length === 1 && 'status' in values;
+                if (!isRelease) return (real as { update: (v: unknown) => unknown }).update(values);
+                releases += 1;
+                if (releases === failOnNthRelease) return failed;
+                return (real as { update: (v: unknown) => unknown }).update(values);
+              };
+            },
+          });
+        };
+      },
+    }) as typeof admin;
+  }
+
+  it('attempts every release even when one fails, and says which failed', async () => {
+    stubIngestSuccess();
+    for (let i = 0; i < 3; i++) {
+      await enqueueJob('fetch_artwork', `0b0e4f1e-1111-4000-8000-00000000d6${i}0`, { admin });
+    }
+
+    // The first release fails. The two after it must still be attempted — a
+    // loop that threw immediately would leave them `running`, which is the
+    // exact silent stranding this guard exists to prevent.
+    await expect(drainJobs(10, releaseFailingAdmin(3, 1))).rejects.toThrow(
+      /could not release .*injected release failure/,
+    );
+
+    const depth = await queueDepth(admin);
+
+    // Two released, one left running because its release genuinely failed —
+    // and the error above named it rather than hiding the partial cleanup.
+    expect(depth).toMatchObject({ pending: 2, running: 1, succeeded: 0 });
+  });
+
   it('processes no surplus work', async () => {
     const spy = vi.spyOn(artwork, 'fetchAndStoreArtwork');
     for (let i = 0; i < 3; i++) {

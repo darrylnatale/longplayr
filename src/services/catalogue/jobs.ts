@@ -97,6 +97,16 @@ export type DrainSummary = {
   stoppedBecause: 'drained' | 'budget' | 'max_jobs';
 };
 
+/**
+ * Rows a single claim asks for.
+ *
+ * One, deliberately: `drainJobs` claims immediately before executing, so an
+ * interrupted drain strands at most one job (architecture.md §7). It is a named
+ * constant because the drain both requests this number and refuses anything
+ * larger — two places that must never drift apart.
+ */
+const CLAIM_BATCH_SIZE = 1;
+
 /** Artwork states that warrant another attempt. `found` and `absent` are settled. */
 const ARTWORK_RETRYABLE: Database['public']['Enums']['artwork_status'][] = ['pending', 'failed'];
 
@@ -431,38 +441,6 @@ export async function reclaimStaleJobs(admin: Admin = createAdminClient()): Prom
  * execution — and in the `markFailed` case return an already `succeeded` job to
  * `pending` with a backoff, resurrecting finished work.
  */
-/**
- * Returns rows to `pending` that were claimed but will not be run.
- *
- * **Fenced exactly as `markSucceeded` is, and for a stronger reason.** The
- * fence is `(id, status = 'running', attempts = <the value the claim
- * returned>)`, and that triple identifies one specific claim execution: a row
- * can only re-enter `running` through another claim, and claiming increments
- * `attempts`. So if another worker has advanced this row at all, the predicate
- * matches nothing and its work is left alone. A bare update on `id` could
- * revert a job someone else had legitimately taken.
- *
- * **The attempt increment is kept.** The claim really did spend an attempt, and
- * rewriting history to hide that would make the retry budget lie. `run_after`
- * is left where it is, so a job that was never tried is immediately claimable
- * again rather than serving a backoff it did not earn.
- *
- * Rows are released one statement each: the fence is per-row, since each row
- * carries its own `attempts`.
- */
-async function releaseClaims(jobs: Job[], admin: Admin): Promise<void> {
-  for (const job of jobs) {
-    const { error } = await admin
-      .from('ingestion_jobs')
-      .update({ status: 'pending' })
-      .eq('id', job.id)
-      .eq('status', 'running')
-      .eq('attempts', job.attempts);
-
-    if (error) throw error;
-  }
-}
-
 async function markSucceeded(job: Job, admin: Admin): Promise<'settled' | 'superseded'> {
   const { data, error } = await admin
     .from('ingestion_jobs')
@@ -519,6 +497,53 @@ async function markFailed(
 
   if (updateError) throw updateError;
   return (data?.length ?? 0) > 0 ? 'retry' : 'superseded';
+}
+
+/**
+ * Returns rows to `pending` that were claimed but will not be run.
+ *
+ * **Fenced exactly as `markSucceeded` is, and for a stronger reason.** The
+ * fence is `(id, status = 'running', attempts = <the value the claim
+ * returned>)`, and that triple identifies one specific claim execution: a row
+ * can only re-enter `running` through another claim, and claiming increments
+ * `attempts`. So if another worker has advanced this row at all, the predicate
+ * matches nothing and its work is left alone. A bare update on `id` could
+ * revert a job someone else had legitimately taken.
+ *
+ * **Status, attempts and `run_after` are handled exactly as `reclaimStaleJobs`
+ * handles them** — status moves to `pending`, the other two are untouched. A
+ * reclaimed job may also never have executed, so "a claim spent an attempt
+ * without an execution" is existing queue semantics rather than something this
+ * path invents. Whether that is the right rule is a question for both paths at
+ * once, not one to answer here.
+ *
+ * **Every row is attempted, and failures are returned rather than thrown.** A
+ * loop that threw on the first failed release would abandon the rows after it —
+ * leaving exactly the silently stranded `running` row this whole guard exists
+ * to prevent, produced by the cleanup meant to prevent it. The caller reports
+ * what could not be released.
+ *
+ * One statement per row: the fence is per-row, since each row carries its own
+ * `attempts`.
+ */
+async function releaseClaims(
+  jobs: Job[],
+  admin: Admin,
+): Promise<{ id: number; message: string }[]> {
+  const unreleased: { id: number; message: string }[] = [];
+
+  for (const job of jobs) {
+    const { error } = await admin
+      .from('ingestion_jobs')
+      .update({ status: 'pending' })
+      .eq('id', job.id)
+      .eq('status', 'running')
+      .eq('attempts', job.attempts);
+
+    if (error) unreleased.push({ id: job.id, message: error.message });
+  }
+
+  return unreleased;
 }
 
 /**
@@ -609,7 +634,9 @@ export async function drainJobs(
       break;
     }
 
-    const { data, error } = await admin.rpc('claim_ingestion_jobs', { batch_size: 1 });
+    const { data, error } = await admin.rpc('claim_ingestion_jobs', {
+      batch_size: CLAIM_BATCH_SIZE,
+    });
     if (error) throw error;
 
     // The claim asked for one row. If it hands back more, every extra row is
@@ -628,11 +655,15 @@ export async function drainJobs(
     // unexpected failure CLAUDE.md keeps exceptions for. Processing the extras
     // instead would breach `maxJobs`, which the cron's 60-second ceiling
     // depends on.
-    if (data && data.length > 1) {
-      await releaseClaims(data, admin);
+    if (data && data.length > CLAIM_BATCH_SIZE) {
+      const unreleased = await releaseClaims(data, admin);
       throw new Error(
-        `claim_ingestion_jobs returned ${data.length} rows for batch_size 1; ` +
-          `released ${data.map((row) => row.id).join(', ')} back to pending`,
+        `claim_ingestion_jobs returned ${data.length} rows for batch_size ${CLAIM_BATCH_SIZE}; ` +
+          (unreleased.length === 0
+            ? `released ${data.map((row) => row.id).join(', ')} back to pending`
+            : `could not release ${unreleased
+                .map((row) => `${row.id} (${row.message})`)
+                .join('; ')}`),
       );
     }
 
