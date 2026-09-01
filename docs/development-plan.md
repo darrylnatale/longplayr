@@ -273,7 +273,29 @@ Sequencing against `product-spec.md` §8.10 faults 1 and 2, and against the enri
 
 **Goal.** Other people become visible. The product becomes social rather than personal.
 
-**Status: slice 1 of the phase is built.** Follows only — the relation, the profile control, the stat cluster and the two relationship destinations. **Nothing else in this phase exists**: no `Activity`, no feed, no notifications, no likes on reviews. Those are later slices and none was started.
+**Status: slices 1 and 2 of the phase are built. [CORRECTED 2026-09-01]** Slice 1 is Follows — the relation, the profile control, the stat cluster and the two relationship destinations. **Slice 2 is the `Activity` table and its four write points**, `listened` / `relistened` / `rated` / `reviewed`, with no feed query and no feed surface. **Still absent from this phase**: the feed, notifications, likes on reviews, and Want to Listen activity.
+
+> **What that paragraph said before, corrected rather than deleted.** It read _"Status: slice 1 of the phase is built… **Nothing else in this phase exists**: no `Activity`, no feed, no notifications, no likes on reviews."_ The `Activity` half stopped being true when slice 2 landed, and the slice-3 boundary below depends on `Activity` existing, so leaving it would make this section contradict itself.
+
+**Slice 3 — the following feed. Scope approved 2026-09-01; nothing is built.** Decisions are recorded in `product-spec.md` §6 (surface, pagination, tiers, empty states, routing), `architecture.md` §16.1 (query boundary) and `data-model.md` §7 (filter semantics).
+
+**In scope:** the `/feed` route and its navigation entries; the feed query boundary as a `security invoker` RPC; forward-only keyset pagination; the two feed item tiers; the two empty states; and the integration and end-to-end coverage the phase's test list already requires.
+
+**Explicitly out of scope**, each excluded for its own reason rather than by omission:
+
+| Excluded                                                                                        | Why                                                                                        |
+| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| **Want to Listen activity**                                                                     | Two unresolved product questions and a schema change; see `product-spec.md` §4 and §10.1   |
+| **Grouping a burst of adds**                                                                    | Deliberately deferred at read time; `data-model.md` §11.9 carries the trigger              |
+| **Own activity, and any `YOU` view**                                                            | Decided out of this feed; a separate surface if it ever exists                             |
+| Notifications; likes on reviews                                                                 | Later slices of this phase                                                                 |
+| Any `Activity` schema change, new event type, or the `activity_subject_matches_type` `ELSE` gap | Slice 2's boundary, and the `ELSE` gap belongs to whichever slice first adds an event type |
+| Activity write-pair atomicity                                                                   | `[OPEN]`, tolerated by the feed's read filters, not fixed by them                          |
+| The `collection.spec.ts` race; the end-to-end flake                                             | Pre-existing and unrelated                                                                 |
+| Staging migration deployment; the service-role key                                              | Operational, and neither is this cycle's                                                   |
+| Browse and search; Follows implementation                                                       | Built or belonging elsewhere                                                               |
+| The job-queue investigation                                                                     | Historical context only                                                                    |
+| **The Phase 5 home page**                                                                       | `/` is untouched, and the signed-in home stays Phase 5's to decide                         |
 
 **Features**
 

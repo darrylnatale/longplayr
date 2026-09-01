@@ -75,6 +75,18 @@ async function SiteHeader() {
               >
                 Search
               </Link>
+              {/*
+               * Present whether or not anyone is signed in, and signed out it
+               * lands on /login — the same treatment the "You" tab already gets.
+               * A nav item that appears on sign-in changes the shape of the bar
+               * underneath the user.
+               */}
+              <Link
+                href="/feed"
+                className="text-sm text-text-muted transition-colors hover:text-text"
+              >
+                Feed
+              </Link>
             </div>
           </div>
 

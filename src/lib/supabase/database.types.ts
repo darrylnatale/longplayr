@@ -740,6 +740,28 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      feed_activity: {
+        Args: {
+          p_before?: string
+          p_before_id?: string
+          p_limit: number
+          p_viewer: string
+        }
+        Returns: {
+          actor_avatar_url: string
+          actor_display_name: string
+          actor_handle: string
+          album_artwork_status: Database["public"]["Enums"]["artwork_status"]
+          album_credit: string
+          album_mbid: string
+          album_title: string
+          created_at: string
+          id: string
+          rating: number
+          review_body: string
+          type: Database["public"]["Enums"]["activity_type"]
+        }[]
+      }
       search_albums: {
         Args: { max_results?: number; query: string }
         Returns: {

@@ -819,6 +819,41 @@ Confirmations of decisions made in `docs/data-model.md`, recorded here for archi
 - **Follower and following counts are computed on read**, not denormalised. **[DECIDED 2026-08-30, built]** The same reasoning as averages: no stored aggregate, no drift, and account deletion needs no decrement pass. `collection_entries.relisten_count` is the one denormalised counter in the product and is not a precedent for this — it exists because the insert and the increment must be one transaction for the counter to be trustworthy at all, which is not true of a count anyone can recompute exactly from an indexed column. Two `head: true` counts per profile render, each served by its own index.
 - **A count and the list it links to must apply the same filter.** Both follow counts exclude suspended and banned accounts, because the count is the navigation into the list and a count of five above a list of four is a discrepancy the reader cannot explain. Recorded because the tempting implementation counts rows and filters only the list.
 
+### 16.1 The feed query — where the follow-graph filter lives
+
+**[DECIDED 2026-09-01. Recorded before implementation; nothing below is built.]** This resolves the bullet above into a concrete shape. The bullet's decisions are unchanged: still a query over the materialised `Activity` table, still filtered by the follow graph, still ordered by time, still **not fan-out-on-write**.
+
+**`/feed` is fully dynamic, per-user and uncacheable**, which §7 already records for the feed surface and which nothing here changes.
+
+**The query is a `security invoker` Postgres function, `feed_activity`, returning the full joined feed payload in one round trip.** Its body uses the simple global-filter shape:
+
+```sql
+where a.actor_id in (select followee_id from follows where follower_id = p_viewer)
+```
+
+**Why a function rather than the PostgREST client the rest of the read path uses.** PostgREST cannot express a subquery in a filter, so the alternative is fetching the follow graph first and passing the followee ids as literal UUIDs in the URL. Measured against the local stack on 2026-08-31: that request succeeds at **207 followed accounts and returns `HTTP 414` at 209**, and the ceiling falls further as the `select` grows, because the id list and the select string share one URL budget. **That is a cliff, not a curve** — the surface simply breaks for that user, with no degraded mode and no warning as they approach it, which is unlike every other scaling limit in this system. The function keeps the filter in SQL, where no URL is involved.
+
+**`security invoker` is a correctness requirement, not a style choice.** `reviews_public_read` restricts a review with `status = 'removed'` to its author, and RLS is what makes that true. `security definer` would bypass it and leak moderation-removed reviews into every follower's feed.
+
+**What is deliberately not fixed here.** In every measured plan the database materialises all activity belonging to the followed set and then top-N sorts it, so cost scales with that set's whole history rather than with page size — `activity_actor_idx` serves the filter, not the ordering. **That curve is left alone**, consistent with §17 below, which ranks feed queries third among things that break and names fan-out-on-write as the mitigation _if measurement ever justifies it_. A per-actor `LATERAL` top-N shape measured better on synthetic data and **is not rejected** — it is simply not the shape chosen now, and because the query lives behind the function it can be swapped by `create or replace function`, with no contract change and no data migration.
+
+**Pagination is keyset on `(created_at desc, id desc)`, forward-only — a deliberate departure from the numbered `?page=` convention** used by the collection and the two relationship destinations. Three reasons:
+
+- **Drift.** A collection grows at its owner's pace; a feed grows at the top, at the pace of everyone the reader follows, while they are reading. Numbered offsets then re-show rows already passed. This appears with two active follows, so it is not a scale problem.
+- **No total.** Offset pages want `count: 'exact'` to render "page 3 of 12". For a feed that label is meaningless, and the count would scan the followed set's entire history on every request — a cost no other paginated surface pays.
+- **It preserves the optimisation path above.** `LATERAL` composes with keyset and bounds at _(following × page size)_; with offset it degrades as the reader pages deeper.
+
+The cursor parser and path builder belong in the **app layer**, not `src/services/` — §19.3's test, since a native client has no query string.
+
+**A cursor that returns zero rows is an end-of-feed state, never a 404. [DECIDED 2026-09-01]** This follows from the two properties above rather than from presentation, which is why it is recorded here as well as in `product-spec.md` §6:
+
+- **No total is computed**, so the route cannot establish that a cursor is past the end. All it observes is an empty result, which it cannot distinguish from a cursor pointing at a since-deleted row.
+- **The sequence is mutable.** Events are ordered by write time, but the _set_ is the follow graph's, and that changes: following someone new inserts their older events below a position the reader has already passed. A cursor yielding nothing today can legitimately yield rows tomorrow.
+
+Together those make "past the end" **unavailable as a permanent route fact**, so the offset destinations' `page > totalPages` → `notFound()` convention cannot be reproduced — it depends on a count this surface deliberately does not have. The behaviour is therefore an explicit end-of-feed state carrying its own route back to the first page.
+
+**This changes nothing about the query or the pagination shape.** No look-ahead is introduced: `nextCursor` is still emitted whenever a page comes back full, so an exactly-full final page still offers `Older →` and still lands on the end state. Fetching `limit + 1` to suppress that link is a possible later refinement, **not adopted here** — it would reduce how often the state is reached without changing what happens when it is, since stale, shared and hand-edited cursors reach it regardless.
+
 ---
 
 ## 17. Scalability — what breaks first, and when

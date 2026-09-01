@@ -88,6 +88,13 @@ Revised entries supersede earlier choices made during the same session.
 | Interactions    | Likes only. **No comments in v1**                                                                                                                                                                                                                                                               |
 | Notifications   | In-app page only — new followers, likes on your reviews, likes on your lists, with an unread count. No email, no push                                                                                                                                                                           |
 
+**Want to Listen additions are in that list and are not yet written. [RECORDED 2026-09-01]** §10.1's decision stands unchanged — Want to Listen generates a normal feed event — but the `Activity` write path does not yet carry that event type, so the first following feed ships without it. **This is a sequencing boundary, not a reversal or a new product decision**: the Feed-contents row above says plainly "Not a closed list — it grows by phase", and this is one of the entries that has not arrived yet. Two questions block it, and both must be asked rather than inferred:
+
+1. Does **removing** an album from Want to Listen generate an event? (§10.1, still `[OPEN]` — "Expected no — still ask".)
+2. **Newly identified 2026-09-01:** should **collecting** an album erase a Want to Listen event it had already generated? Any action that creates a collection entry clears the Want to Listen row, so a cascade would take the event with it — silently unsaying "I want to hear this" at the moment the wish is granted. Whether that is correct undoing or the destruction of something that genuinely happened is unresolved.
+
+A later Phase 3 slice owns both, together with the schema change that adds the event type. **Nothing here changes what §10.1 decided**, and the absence must not be read as a reversal of it.
+
 ### Lists
 
 | Decision   | Value                                                       |
@@ -290,6 +297,43 @@ No dates are displayed, by decision — the date only orders the grid.
 ### Feed
 
 Reverse-chronological. Each item: who, what they did, the album (with artwork), their score if given, relative time. Review events include an excerpt. List events include a few covers.
+
+**`/feed` is the feed's address, and the home page is not it. [DECIDED 2026-09-01]** Its own top-level destination, reachable from the navigation at every width. `/` is unchanged and stays the orientation surface that makes no catalogue queries — **the signed-in home page belongs to Phase 5**, along with the cold-start and no-follows states, and claiming it here would settle that phase's work by implementing it.
+
+| Destination | Holds                                                                              | State         |
+| ----------- | ---------------------------------------------------------------------------------- | ------------- |
+| `/feed`     | **Following feed.** The events of the people you follow, newest first, 20 per page | **Not built** |
+
+**The navigation entry is present regardless of session state. [DECIDED 2026-09-01]** A nav item that appears on sign-in changes the shape of the bar underneath the user, which the mobile tab bar's own rationale rejects. `You` already resolves to `/login` when signed out, so a nav entry leading to authentication is the established pattern rather than a new one.
+
+**Two item weights, split by event type. [DECIDED 2026-09-01]** This is `design-reference.md` §4's borrowed two-tier feed, resolved onto the event types that exist:
+
+| Weight      | Types                             | Carries                                                                    |
+| ----------- | --------------------------------- | -------------------------------------------------------------------------- |
+| **Full**    | `reviewed`                        | Cover, actor, album title and credit, their score if given, review excerpt |
+| **Compact** | `listened`, `rated`, `relistened` | Avatar, one sentence, relative time, on a quieter row                      |
+
+`design-reference.md` §5.5 asks whether two tiers still earn their complexity, given that we exclude the like and follow events that populate Letterboxd's second tier. They do, and the concern inverts here: the compact tier carries adds, ratings and relistens and will hold most of the volume, while the **full** tier is the thin one. The excerpt is required either way, so a single tier would mean rendering prose inside a one-line row.
+
+**20 per page. [DECIDED 2026-09-01]** Smaller than the collection's 60 and the relationship lists' 50, deliberately: the full review item is the heaviest repeating unit in the product, and the page size has to be safe when a page happens to be all of them. It is a presentation number, not a performance one — pagination bounds the query either way.
+
+**Paginated forward-only by keyset on `(created_at desc, id desc)`, not by numbered pages. [DECIDED 2026-09-01]** One control, `Older →`, with the bare `/feed` as the way back to the top. This is a deliberate departure from the `?page=` convention every other paginated surface uses, and the reasoning is recorded in `architecture.md` §16.1: a feed grows at the top while it is being read, so numbered offsets re-show rows the reader has already passed. No total is computed — "page 3 of 47" is not a fact about a feed worth the scan it would cost.
+
+**Your own activity is not in your feed. [DECIDED 2026-09-01]** The feed holds the events of people you follow and nothing else. Your own actions already have a home in your collection, and because every hand-added album writes its own event (`data-model.md` §11.9), a user backfilling two hundred albums would bury their own feed before anyone else's. A separate `YOU` view is a possible later surface; merging it into this one is not the same thing.
+
+**An event whose subject no longer supports it disappears rather than degrading. [DECIDED 2026-09-01]** Three cases, one behaviour: a `reviewed` event whose review is no longer publicly readable, a `rated` event on an entry whose rating has since been cleared, and any event by a suspended or banned account. `data-model.md` §7 requires that the feed never display a claim that has stopped being true, and a tombstone would advertise a removal to people who never saw the original. **The disappearance costs the reader nothing — a full page is still a full page.** [CORRECTED 2026-09-01] These are conditions of the query rather than a filter applied to its results, so a disqualified event is never counted against the page: 20 items come back whenever 20 qualifying events exist. This sentence previously read _"A page therefore sometimes renders fewer than 20 items"_, which was wrong and is corrected rather than deleted.
+
+**Grouping a burst of adds is deferred, deliberately. [DECIDED 2026-09-01]** Every qualifying event renders as its own item. `data-model.md` §11.9 routed grouping to read time rather than to the write path, and deciding its shape before a feed exists to look at would repeat the error that resolution avoided. Revisit when a real account produces a burst large enough to fill a page — twenty consecutive events from one actor.
+
+**Two empty states, and they say different things. [DECIDED 2026-09-01]** Following nobody is not the same as following people who have done nothing, and one shared message would tell the second reader that they had made a mistake. Neither renders a panel, a heading or a zeroed counter — the rule this spec already applies to absent favourites. The follows-nobody state points at album pages, where other people are currently visible through their reviews; suggested accounts would be §10.2's taste overlap and charts are Phase 5, and neither is to be improvised here.
+
+**Reaching the end of the feed is a third state, and it is not one of the two above. [DECIDED 2026-09-01]** A cursor that returns no rows renders **"You've reached the end of your feed."** with a **Back to top** link. **It is not a 404, and it does not silently redirect or clamp to `/feed`.**
+
+**The decision above is unchanged and still governs an empty feed.** It answers _"why is your feed empty?"_ — a question about contents. This one answers _"why is this page empty?"_ — a question about position in a feed that is not empty at all. They are different questions, and the earlier decision was not wrong for having answered only the first: this case was identified later, during implementation review, and is recorded separately rather than folded backwards into it.
+
+**Why not a 404, when the three profile destinations do exactly that.** Their convention depends on knowing `page > totalPages` — an offset page count makes "this page never existed" a computed fact. **The feed has no total, by the decision above, and its sequence is mutable**: following someone new inserts their older events _below_ a cursor the reader has already passed, so a cursor returning nothing today can legitimately return rows tomorrow. A 404 would assert permanent non-existence about an address that is conditional, which is the same untruth that convention exists to prevent — so honouring its reasoning here means not copying its behaviour. A silent redirect is rejected for the other half of the same convention: it is the clamp, and it throws away the reader's place with no explanation.
+
+**Signed out, `/feed` redirects to `/login`; signed in without a profile, to `/onboarding`. [DECIDED 2026-09-01]** The same treatment `/onboarding` already gives an anonymous visitor. This is not an exception to the all-public model: that rule governs user-generated content, and a feed is not content — it is a per-viewer query whose only input is the viewer's own follow graph, so there is nothing in it to make public. A user without a profile cannot follow anyone, by foreign key, so an empty feed would be an accurate answer to a question they cannot yet ask.
 
 ### Notifications
 
@@ -570,6 +614,8 @@ This is a deliberate departure from the volume argument in §4 that keeps likes 
 Under that wording Want to Listen needs no special case. Adding to a wishlist is an interaction, it happens at the moment the user acts, and it generates an event. There was never a date to backdate.
 
 **Deferred, and deliberately not to be designed now:** a per-user setting to hide Want to Listen activity from the feed. It is anticipated, it is not being specified, and no schema should be shaped in advance to accommodate it.
+
+**The decision above is unchanged and unbuilt, and the first feed ships without it. [RECORDED 2026-09-01]** `Activity` carries four event types — `listened`, `relistened`, `rated`, `reviewed` — and none of them is Want to Listen. That was the Activity slice's recorded boundary, not an oversight in the feed slice: the feed is a query over `Activity` and renders the types that exist. **Do not read the omission as a reversal of this section.** Two questions block writing the event, and neither is answered here — whether _removing_ generates an event, which is the `[OPEN]` question above, and whether **collecting** an album should erase a Want to Listen event it had already generated, since the clearing rule deletes the underlying row and a cascade would take the event with it. The second is newly identified and is recorded alongside the first in §4. A later Phase 3 slice owns both, plus the schema change adding the type.
 
 #### Resolved 2026-08-18
 

@@ -42,6 +42,23 @@ function BrowseIcon() {
   );
 }
 
+function FeedIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden
+      className={ICON}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+    >
+      <path d="M4 6h16" strokeLinecap="round" />
+      <path d="M4 12h16" strokeLinecap="round" />
+      <path d="M4 18h10" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function SearchIcon() {
   return (
     <svg
@@ -91,6 +108,12 @@ export function MobileTabBar({ youHref }: Props) {
       match: (p: string) => p.startsWith('/search'),
     },
     {
+      href: '/feed',
+      label: 'Feed',
+      Icon: FeedIcon,
+      match: (p: string) => p.startsWith('/feed'),
+    },
+    {
       href: youHref,
       label: 'You',
       Icon: YouIcon,
@@ -109,7 +132,7 @@ export function MobileTabBar({ youHref }: Props) {
       className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface/95 backdrop-blur md:hidden"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
-      <ul className="grid grid-cols-3">
+      <ul className="grid grid-cols-4">
         {tabs.map(({ href, label, Icon, match }) => {
           const active = match(pathname);
           return (
