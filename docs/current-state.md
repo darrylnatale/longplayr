@@ -12,7 +12,15 @@
 | 4. What gets built and when                  | `docs/development-plan.md`                   |
 | 5. Where we are right now                    | this file                                    |
 
-Verified against the repository and remote at **`7359fc7`** (`main` and `origin/main` identical) and against CI run **33383724024** (#69) on `7359fc7` — **`completed/success`, attempt 1, zero retries** (§38). **No staging activity belongs to this cycle or the last**, and staging is now **three migrations behind**: `20260828120000_refine_search_precision`, `20260830120000_create_follows` and `20260831120000_enforce_claim_batch_size`, none deployed. Sixteen migrations exist locally; thirteen are applied to staging.
+Verified against the repository and remote at **`f783bba`** (`main` and `origin/main` identical, ahead/behind 0/0) and against CI run **33689533039** (#72) on `f783bba` — **`completed/success`, attempt 1, both jobs, zero failures, zero retries and zero flaky tests** (§41). **The final local `verify:full` also passed, exit 0** — no verification exception was used or needed for this slice.
+
+**The previous entry, left as written.** Verified at **`0b73851`** against CI run **33518622113** (#71) — `completed/success`, attempt 1, both jobs, zero retries and zero flakes (§40). **That slice landed under an explicit one-time exception because local `verify:full` never passed for it**; the exception was historical and applies to nothing since.
+
+> **⚠️ Local `verify:full` never passed for this cycle, and it must not be described as green.** It failed twice, both times outside the slice, and the commit landed under an **explicit evidence-based exception** that made CI the authoritative gate. CI then passed cleanly on the exact pushed SHA. **Both halves of that sentence are load-bearing and are recorded in full in §40.**
+
+**No staging activity belongs to this cycle or the last four**, and staging is now **five migrations behind**: `20260828120000_refine_search_precision`, `20260830120000_create_follows`, `20260831120000_enforce_claim_batch_size`, `20260831140000_create_activity` and `20260901120000_create_feed_activity`, none deployed. Eighteen migrations exist locally; thirteen are applied to staging.
+
+**The previous entry, left as written.** Verified at **`3cc8a8d`** against CI run **33435123321** (#70) — `completed/success`, attempt 1 (§39). That run's end-to-end suite completed **81 passed with one retry-recovered known flake**, not 82/82; the flake was §8's `collection.spec.ts:277` race.
 
 > ## ✅ `main` is green — the red state recorded here is resolved
 >
@@ -22,7 +30,11 @@ Verified against the repository and remote at **`7359fc7`** (`main` and `origin/
 
 > **⚠️ One file is uncommitted and it is not this cycle's.** `docs/product-feedback.md` carries the maintainer's own in-progress feedback entries, written in parallel with this cycle. **It was deliberately excluded from `398bf4b` and must not be folded into any checkpoint commit.** The `CLAUDE.md` rule change that previously stood in this warning was committed as part of `565cc74` and is no longer outstanding.
 
-**Phase 1 implementation is complete.** **The design foundation is complete.** **Phase 2 is complete to its definition of done** (§1 below records what remains beyond that line). **Phase 3 has begun: slice 1, Follows, is implemented, reviewed, committed and pushed** (§36).
+**Phase 1 implementation is complete.** **The design foundation is complete.** **Phase 2 is complete to its definition of done** (§1 below records what remains beyond that line). **Phase 3 has four of its slices built: 1 Follows (§36), 2 Activity writes (§39), 3 the following feed (§40) and 4 review likes (§41)** — each implemented, reviewed, committed, pushed and CI-verified.
+
+**Following someone now shows you something, and you can act on what you find.** Slice 3 made the feed; slice 4 added the first interaction with another person's writing.
+
+**Notifications is the next Phase 3 slice and does not exist** — no table, no page, no unread count, nothing. **A review like is therefore visible to nobody but the person who gave it**, which is the expected intermediate state rather than a defect: the notifications surface is the only thing that makes a like legible to its recipient. **What the phase still lacks**: notifications and Want to Listen activity.
 
 **Phase 2 slices:**
 
@@ -77,14 +89,16 @@ Verified against the repository and remote at **`7359fc7`** (`main` and `origin/
 
 |                  |                                                       |
 | ---------------- | ----------------------------------------------------- |
-| Unit + component | **266**                                               |
-| Integration      | **474** (need a local database)                       |
+| Unit + component | **287**                                               |
+| Integration      | **528** (need a local database)                       |
 | Seed             | **1**                                                 |
-| End-to-end       | **75** (Playwright)                                   |
+| End-to-end       | **89** (Playwright)                                   |
 | Repository       | <https://github.com/darrylnatale/longplayr> (private) |
 | **Staging app**  | <https://longplayr.vercel.app>                        |
 | **Staging DB**   | `oexuqjpvyeijmlirxtal.supabase.co`                    |
 | Production       | does not exist                                        |
+
+**[CORRECTED 2026-09-01]** Three of those four counts had drifted and are now taken from CI #71's own output rather than carried forward. This table read **266 unit, 495 integration, 75 end-to-end** — but §39, written in the same edit, already recorded **272 / 495 / 82**, and only the integration row had been updated. **A checkpoint that disagrees with itself one section later is worse than one that is merely out of date**, which is why the drift is named here rather than quietly overwritten. The current figures are `287 / 509 / 1 / 85`, each a CI-reported total.
 
 ### Staging catalogue
 
@@ -153,13 +167,33 @@ Measured **2026-08-28**; `found` and `failed` moved by one on the 2026-08-26 cro
 >
 > **Historical, retained deliberately.** The 2026-08-24 measurement read 288 `fetch_artwork` pending, 12 stuck in `running`, 4 terminally `failed` and 4 `discover_curated_artist` stuck in `running`. The 2026-08-23 measurement before that read 314 pending, 6 stuck, 21 `fetch_tracklist` pending, of which **312 targeted albums that already had `artwork_status = 'found'`** — redundant work enqueued when the payload backfill re-ingested every album. That redundancy had already cleared before the recovery; the 288 outstanding at the end targeted albums genuinely lacking artwork.
 
+**Nineteen migrations exist locally; thirteen are applied to staging, so staging is six behind.** **[CORRECTED 2026-09-03]** This line previously read _"Sixteen migrations exist locally; thirteen are applied to staging, so staging is three behind"_, which was true when written and had drifted by two cycles since — and it disagreed with §41, which already said six. **A checkpoint that contradicts itself later in the same file is worse than one that is merely out of date**, which is the same reason the unit and integration counts were corrected in place on 2026-09-01 rather than quietly overwritten. Undeployed: `20260828120000_refine_search_precision`, `20260830120000_create_follows`, `20260831120000_enforce_claim_batch_size`, `20260831140000_create_activity`, `20260901120000_create_feed_activity` and `20260902120000_create_review_likes`. **All six were approved for deployment as one ordered batch on 2026-09-03 — see §42**, which records the verified consequences of their absence and the evidence the decision rested on. **Nothing had been deployed at the time this line was written.** The two corrections this line already carried follow, in the order they were made.
+
 **Sixteen migrations exist locally; thirteen are applied to staging, so staging is three behind.** **[CORRECTED 2026-08-31]** This line previously read _"Eleven migrations applied; local and staging are in sync"_, which was true when written and is now wrong in both halves. Undeployed: `20260828120000_refine_search_precision`, `20260830120000_create_follows` and `20260831120000_enforce_claim_batch_size`. **None is scheduled for deployment**, and the claim-batch-size fix in particular has never run against staging data. The original note follows.
 
 **Eleven migrations applied; local and staging are in sync**, confirmed with `npx supabase migration list --linked` on 2026-08-22 after `20260821120000_create_upstream_payloads` was pushed to staging ahead of the code that needs it, confirmed with `npx supabase migration list --linked` on 2026-08-19. Two were pushed to staging that day: `20260818120000_create_collection`, and `20260819100000_clear_wishlist_on_create_only` correcting the clearing rule (§15). Staging can be queried read-only with `npx supabase db query --linked "<sql>"`, which is how these numbers were checked.
 
 ### Git state
 
-**`main` and `origin/main` are both `7359fc7`**, verified identical after an explicit fetch. Nothing is unpushed. `7359fc7` is the merge that landed the job-queue fix (§38) together with the Follows checkpoint `422232c`, which had been held back while `main` was red.
+**`main` and `origin/main` are both `f783bba`**, verified identical after an explicit fetch and against `git ls-remote`, ahead/behind 0/0. Nothing is unpushed. **`f783bba` is the review likes slice (§41), pushed alone** as a normal fast-forward from `0b73851` — one commit, one push, so **CI #72 verifies exactly this slice and nothing rides along with it**.
+
+**Three files remain uncommitted, and the working tree is not clean.** `docs/current-state.md` carries this checkpoint and is the only file this step touched; **`CLAUDE.md`** carries a status-line edit from the Activity cycle that was never committed; **`docs/product-feedback.md`** carries the maintainer's inbox, now including **F-015** on end-to-end load sensitivity. **All three were deliberately excluded from `f783bba` and must not be folded into a checkpoint commit.** Nothing was staged before this step, and no implementation, test, migration or other documentation file is dirty.
+
+**The earlier note below describes the state at `0b73851` and is left as written.**
+
+**`main` and `origin/main` were both `0b73851`**, verified identical after an explicit fetch, ahead/behind 0/0. Nothing was unpushed. **`0b73851` is the following feed slice (§40), pushed alone** as a normal fast-forward from `3cc8a8d` — one commit, one push, so **CI #71 verifies exactly this slice and nothing rides along with it**.
+
+**Three files remain uncommitted, and none belongs to this cycle.** `docs/current-state.md` carries this checkpoint; `CLAUDE.md` carries a status-line edit from the Activity cycle that was never committed; `docs/product-feedback.md` is the maintainer's own in-progress inbox and **must not be folded into any checkpoint commit**.
+
+**The earlier note below describes the state at `3cc8a8d` and is left as written.**
+
+**`main` and `origin/main` were both `3cc8a8d`**, verified identical after an explicit fetch, ahead/behind 0/0. Nothing was unpushed. `3cc8a8d` is the Activity writes slice (§39); it was pushed together with `19851c3`, the job-queue checkpoint, in one fast-forward from `7359fc7`.
+
+**`19851c3` has no CI run of its own** and is covered **transitively as the parent of the pushed tip**. That is unchanged from when it was written, and it must not be described as independently verified.
+
+**The earlier note below describes the state at `7359fc7` and is left as written.**
+
+**`main` and `origin/main` were both `7359fc7`**, verified identical after an explicit fetch. Nothing was unpushed. `7359fc7` is the merge that landed the job-queue fix (§38) together with the Follows checkpoint `422232c`, which had been held back while `main` was red.
 
 **The earlier note below describes the state at `398bf4b` and is left as written.**
 
@@ -529,6 +563,7 @@ None of these reopen Phase 1.
 | **`unreconciled` carries no reason**                             | **[OPEN] — new 2026-08-28 (§33).** Callers collapse `no_payload` and `out_of_scope` into one count, and self-service discards the outcome entirely, so an operator cannot tell a missing payload from a scope change. **Nothing unrepairable is ever counted as repaired** — an observability limitation, not a correctness one                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | **Browse is very tall at phone width**                           | **[OPEN]** — 8,122px at 390px. `relaxed` is 2-up on a phone, so Popular's 24 captioned albums run 12 rows before Recently added begins. Observation, not a defect: consistency with the migrated artist page was the stronger constraint, and the alternatives were changing the query limit or inventing a per-breakpoint density. Revisit when the real charts arrive and a "show more" boundary has to be decided anyway                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | **`AlbumGrid` passes no `priority`**                             | **[OPEN]** — Next flags the first Popular cover as LCP and asks for eager loading. Pre-existing and identical on the artist page. Deliberately not fixed during a presentation-only migration: choosing how many leading cells get `priority` is its own decision and it affects every grid surface at once                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **A `head: true` count reports zero instead of failing**         | **[OPEN] — new 2026-09-03 (§42). Confirmed defect, deliberately not fixed, and separately scoped.** `PostgrestBuilder.ts` rewrites a **404 carrying an empty body** into `status = 204` and leaves `error` as `null`. A `head: true` request has an empty body by definition and a missing relation answers 404, so the two combine into a success-shaped response with `count: null` — which `getFollowCounts` turns into **`0`** through `?? 0`. **Observed rather than reasoned about:** with `follows` absent from staging, `/darryl` returned **200 rendering "0 followers"** while `/darryl/followers` returned **500** from the same missing table, the difference being that the latter selects rows and so receives a JSON error body. **This is a property of the counting idiom, not of `follows`** — any `head: true` count that 404s reports a confident zero. **CI structurally cannot expose it**, because the table is always present there. **Deploying `create_follows` will remove the 404 and therefore conceal it**, which is why this was written down before that deployment rather than after. No fix, no idiom redesign and no tests were undertaken in §42's cycle                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 ---
 
@@ -604,6 +639,7 @@ See `docs/product-spec.md` §8 and `docs/data-model.md` §9 for the authoritativ
 - **Whether depth applies to pseudo-artists — `Various Artists` above all. [OPEN — raised 2026-08-23, and it must not be answered implicitly]** `Various Artists` sits in the catalogue under the canonical MusicBrainz MBID `89ad4ac3-39f7-470e-963a-56509c546377`, disambiguated upstream as _"add compilations to this artist"_. It is MusicBrainz's catch-all for every compilation in the database, not an artist. **Under a completion-oriented depth rule, treating it as an ordinary artist causes uncontrolled expansion.** Related and equally unresolved: whether `[unknown]` and `[no artist]` are the same class, and whether the rule is "pseudo-artists are excluded from depth" or something narrower. **This is not yet recorded in `product-spec.md` §8.9** — it was found after that section was written, and by decision it lands in the next cycle's STEP C rather than being back-filled now.
   - **One pre-existing statement makes this sharper.** `data-model.md` §2 says _"'Various Artists' is a real MusicBrainz artist and **arrives as an ordinary row**. **[INFERRED]** It gets an artist page like any other."_ That was harmless under a bounded seed and is now the exact assumption that would produce the runaway. **It is deliberately untouched**, and by the repo's own convention `[INFERRED]` means "flagged for correction"
 - **Whether the curated starting set is a list of _artists_ or a list of _albums_. [OPEN — raised 2026-08-23]** Not cosmetic. The ListenBrainz seed is an **album** list and it produced 163 one-album artists, because artists entered incidentally. **A curated album list would reproduce that sparsity by the same mechanism**; a curated artist list composes naturally with depth. Cheap to decide deliberately, expensive to discover later. **Must not be inferred from the existing chart seed**
+- **Whether `refine_search_precision` actually improves search over the real corpus. [OPEN — raised 2026-09-03 (§42)]** §35 already recorded the boundary and it is unchanged: CI verified the implementation against a **clean fixture database** and **never established the 707-album corpus result**, because the migration had not reached staging. §42's deployment, once it happens, will make it **live and executable** over 707 albums and will **establish nothing whatever about result quality** — search evaluation was explicitly excluded from that cycle's acceptance criteria so that deployment could not be mistaken for a subjective quality review. Answering it needs representative queries run against the real corpus and human judgement of the output. **It is the one question CI structurally cannot answer**, and it is the strongest single candidate for the cycle that follows §42
 - Report reason categories (Phase 6)
 - MBID merge handling, handle reuse after deletion
 - Genre and tag data
@@ -2138,6 +2174,309 @@ An inert file of **identical byte size at the identical sort position** did not 
 ### What this does not change
 
 No Follows product behaviour, no `follows.test.ts`, no `curated-recovery.test.ts` — that file is byte-identical to when it was failing, which is what makes the fix a fix rather than a weakened test. No staging row, no staging migration, no Browse or search change, no service-role-key action. **The end-to-end flake is untouched and remains `[OPEN]` in §8**; #67, #68 and #69 each consumed zero retries, which is evidence about its intermittency and not a resolution.
+
+---
+
+## 39. Activity writes — Phase 3 slice 2: implemented, reviewed, committed, pushed and CI-verified
+
+**Commit `3cc8a8d`. CI run `33435123321` (#70) on that exact SHA — `completed/success`, attempt 1, both jobs: 272 unit and component, 495 integration, 1 seed, 81 end-to-end passed with 1 flaky.**
+
+> **⚠️ Not 82/82, and not "no flakes".** The accurate statement is that **CI passed, Activity is fully CI-verified, and the end-to-end suite completed with 81 passed and one retry-recovered known flake.** The flake is the pre-existing `[OPEN]` race at `collection.spec.ts:277` already recorded in §8 — same file, same line, same timeout-on-click signature — in a file this slice does not touch. **One retry of two was consumed**, so the run kept margin. It is not an Activity defect and it is not fixed here.
+
+**The design record is `data-model.md` §7 and §11.9, plus `src/services/social/activity.ts`. This section records where things stand.**
+
+### What shipped
+
+The `activity` table and its four write points. **No feed query and no feed surface** — that is slice 3, and the split was the point: `development-plan.md` calls the anti-flood rule the single most important test in the phase because its failure floods every follower's feed and is not recoverable, so it was settled against a real database before anything renders it.
+
+Slice 1 shipped follows and nothing read the graph for content. This is what makes it worth having; **following still produces no visible payoff until the feed exists.**
+
+|                   |                                                                     |
+| ----------------- | ------------------------------------------------------------------- |
+| `addToCollection` | **`listened`** — the interactive seam                               |
+| `ensureEntry`     | **nothing** — shared by every implicit add and by any future import |
+| `rateAlbum`       | **`rated`**, one per entry; **cleared to null deletes it**          |
+| `setLiked`        | **nothing**, permanently — likes would dominate by volume           |
+| `markRelisten`    | **`relistened`**, one row per relisten                              |
+| `saveReview`      | **`reviewed`**, one per review                                      |
+| removals          | **nothing** — cascades do the work                                  |
+
+**The migration was exercised on a clean CI database**, its first run outside this machine, and the **21 Activity integration tests passed in CI**.
+
+### Decisions resolved, not inferred
+
+**The eligibility rule is the write path, not the date. [DECIDED]** `addToCollection` writes the event; `ensureEntry` stays silent. Verified against every caller before being relied on: `addToCollection` has exactly one production caller, and the only direct use of the underlying RPC is inside `ensureEntry` itself. **A backdated interactive add still fires**, because backdating is a claim about the past rather than a request for silence.
+
+**`data-model.md` §11.9 — bulk interactive adds. RESOLVED 2026-08-31, and marked resolved in that document.** Suppression, aggregation and rate-limiting were all rejected at the write path: two hundred hand-added albums write two hundred events, and grouping is the feed's problem at read time. An event never written cannot be recovered, and deciding presentation before a feed existed would have been deciding it blind.
+
+**Clearing a rating to null deletes its `rated` event. [DECIDED]** Every other undo is a cascade; this is the one case where the referenced row survives, and a `rated` event on an unrated entry is the claim that has stopped being true §7 forbids.
+
+### The four converted tests
+
+`like`, `rating`, `relisten` and `collection-actions` each asserted that the `activity` table **did not exist** — a schema-absence proxy this slice deliberately makes false. Each is now a **behavioural assertion that the path writes no activity rows**, which is strictly stronger. `collection-actions` in particular now guards the anti-flood invariant its own comment said it was for. Two of them replicate SQL rather than the services and say so, rather than implying that rating writes nothing.
+
+### `[OPEN]` — deferred, and not solved
+
+**The write pairs are not atomic.** Each write point commits its primary row, then writes the event in a separate statement, with no transaction spanning the two. **Clearing a rating is the sharp case**: interrupted between the update and the delete, a `rated` event survives an entry with no rating — the very state the decision above exists to prevent. The other three are the safer direction, leaving a missing event rather than a false one. **This is deferred, not fixed, and must not be represented as solved.** The shape of a fix is one Postgres function per write pair, mirroring `ensure_collection_entry`; it concerns transactional semantics and failure injection and wants its own cycle.
+
+**`activity_subject_matches_type` has no `ELSE`.** A `CASE` with no matching branch returns `NULL`, and `NULL` satisfies a Postgres `CHECK`. Correct for all four current types; **a future `list_created`/`list_updated` added without a matching `WHEN` would be silently unconstrained.** Deferred to whichever cycle adds those types.
+
+### What this does not change
+
+**§38's unresolved question stays where it is.** Why the Follows integration test was required to reproduce the claim-cardinality behaviour remains **historical evidence about the job queue** and is neither reopened here nor an Activity issue. The **`collection.spec.ts:277` race remains `[OPEN]` in §8 and untouched.** No Browse or search change, no staging deployment — staging is now **four** migrations behind, this one included. `docs/product-feedback.md` remains the maintainer's separate uncommitted work and was excluded from the commit.
+
+---
+
+## 40. Following feed — Phase 3 slice 3: implemented, reviewed, committed, pushed and CI-verified under an explicit exception
+
+**Commit `0b73851`. CI run `33518622113` (#71) on that exact SHA — `completed/success`, attempt 1, both jobs, 287 unit and component, 509 integration, 1 seed, 85 end-to-end, zero test retries and zero flaky tests.**
+
+> ## ⚠️ Local `verify:full` never passed for this slice
+>
+> **It failed twice, and this commit landed under an explicit evidence-based exception rather than through the normal gate.** Do not describe local verification as green, and do not treat this as a precedent granted in advance for anything else.
+>
+> - **First failure** — four end-to-end tests, all outside this slice: `profile-collection.spec.ts:295` and `:438`, `want-to-listen.spec.ts:205` and `:228`. Signatures were signUp/onboarding timeouts, an element that never arrived, and `Target page, context or browser has been closed`. **All four passed on a targeted re-run, 19/19**, in 3.8–8.0s against 30s+ timeouts under load.
+> - **Second failure** — `collection.test.ts > averages, computed at read time > reports nothing when no one has rated`, which **stalled ~880s against its file's own 15s budget** in an integration suite taking **~1,046s against a normal ~122s**. A stall, not an assertion: the test never evaluated anything. The end-to-end stage never ran at all, because `verify:full` is `&&`-chained.
+> - **The exception was decided deliberately**, on the reasoning that the gate's stated purpose — catching a broken query, RLS policy or page in the change — had been served by direct evidence, while the gate itself had become unobtainable for reasons this repository had already investigated once without result (§34). CI was named the authoritative gate before the push, not after it.
+>
+> **CI then passed cleanly.** Both statements are true and neither cancels the other.
+
+### What shipped
+
+The feed's query, its surface, and its navigation. **The migration adds one function and its grant — no table, column, enum value, index or data.**
+
+|                 |                                                                                 |
+| --------------- | ------------------------------------------------------------------------------- |
+| `feed_activity` | `security invoker` Postgres function, full joined payload, one round trip       |
+| `/feed`         | Its own destination. `/` untouched — the signed-in home stays Phase 5's         |
+| Navigation      | A desktop link and a fourth mobile tab, **present regardless of session state** |
+| Pagination      | Forward-only keyset on `(created_at desc, id desc)`. No offset, no total        |
+| Item tiers      | Full for `reviewed`; compact for `listened`, `rated`, `relistened`              |
+| Empty states    | Three — follows nobody, follows quiet people, and reached the end               |
+
+### Decisions taken rather than inferred
+
+**The query lives behind a function because the alternative has a cliff.** PostgREST cannot express a subquery in a filter, so the fallback passes every followee id in the URL: measured locally, that succeeds at **207 follows and returns `HTTP 414` at 209**, and the ceiling falls further as the select grows. A hard error with no degraded mode, unlike every other scaling limit here.
+
+**`security invoker` is a correctness requirement, not a style choice.** `reviews_public_read` is what hides a moderation-removed review; `definer` would leak one into every follower's feed. Proved by execution, not asserted: as `postgres` the query returns the removed review's event, as `anon` and as a non-viewer `authenticated` role it does not.
+
+**The scaling curve is deliberately not optimised.** `activity_actor_idx` serves the filter, not the ordering, so cost scales with the followed set's whole history. §17 already ranks feed queries third among things that break. A per-actor `LATERAL` shape measured better and is recorded as **not rejected, merely not chosen** — behind the function it can be swapped by `create or replace`, with no contract change.
+
+**Reaching the end of the feed is a third state, and it is not a 404.** Found by review after the slice was otherwise complete: the empty branch keyed only on `items.length === 0`, so a cursor past the end rendered _"Nobody you follow has done anything yet."_ to a reader whose feed was not empty at all. The three offset-paginated destinations 404 in the analogous case, but their convention depends on knowing `page > totalPages`; the feed computes no total, and its sequence is mutable because following someone new inserts older events below a point already passed. **Honouring that convention's reasoning meant not copying its behaviour.**
+
+### Tests — **32, not 33**
+
+**[CORRECTED 2026-09-01]** This slice was reported at 33 Feed tests across several steps. **The arithmetic was wrong**: 15 unit + 14 integration + 3 end-to-end is **32**. The per-layer counts were always right; only the sum was not.
+
+- **15 unit** — relative-time boundaries including both ends and future timestamps, excerpt truncation, and the compact copy, with one test that fails if any digit ever enters the relisten wording.
+- **14 integration** — all four types, the joined payload with a real `0.0`, ordering, stranger/own/suspended exclusion, cleared rating, **moderation-removed review proved through a genuinely signed-in `authenticated` client**, cascade, cursor non-repetition, colliding timestamps, limit, and 40 silent entries producing an empty feed.
+- **3 end-to-end** — the signed-out redirect, the two empty states proved distinct, and all four types rendering with the excerpt plus the end-of-feed regression and the silent-backfill half.
+
+### An evidence limitation, stated rather than papered over
+
+**CI's `github` reporter names only failures.** The CI log therefore contains **no per-test lines for passing end-to-end tests**. That all three Feed end-to-end tests passed — and that `collection.spec.ts:277` did not fail — is **inferred from a zero-failure 85/85**, not read from individual log lines. The total is exactly as expected (82 before this slice, plus 3), and the end-of-feed regression was appended to an existing test rather than adding one. **Sound inference, not per-test CI evidence, and it should not be cited as the latter.**
+
+### The runtime comparison, and what it does and does not establish
+
+**CI ran the same 509 integration tests in 139.81s where the local F2 run took ~1,045.63s** — roughly 7.5×, same tree, same tests. **That strongly supports the environment-load explanation for the F2 stall.** It does **not** resolve the broader local instability, which keeps its own open item below.
+
+### What stays open — none of it closed by a green CI run
+
+- **`collection.spec.ts:277` remains `[OPEN]`** (§8). It passed in CI #71 and in both local full runs, which means only that it did not reproduce. The missing `toHaveURL` wait at line 290 is still there.
+- **Local full-suite environment instability is `[OPEN]` and now has four data points** — §8's three recorded signatures plus this cycle's stall. **This belongs in front of a future cycle, not inside one**, and §34 already records one investigation that did not converge.
+- **The four unrelated end-to-end failures from the first F2 run** are historical: outside this slice, passed in isolation, not investigated further.
+- **The independent review's non-blocking findings are untouched** — among them that the desktop link and mobile tab carry no test of their own, that `cursorFrom`'s three rejection paths are untested, that `PUBLIC` holds `EXECUTE` on `feed_activity` (**conventional — every `security invoker` function here carries it; only the `security definer` `claim_ingestion_jobs` revokes it**) while the migration comment says otherwise, and that a partial final page offers no `Back to top`.
+
+### What this does not change
+
+**No staging deployment** — staging is now **five** migrations behind, this one included, and none is scheduled. No Activity write behaviour, no enum change, no `activity_subject_matches_type` `ELSE` fix, no write-pair atomicity fix, no Follows change, no Browse or search change, no job-queue work. **Want to Listen activity is still not written**, and the two questions blocking it — whether removing generates an event, and whether collecting should erase one already generated — remain recorded rather than inferred (`product-spec.md` §4 and §10.1).
+
+---
+
+## 41. Review likes — Phase 3 slice 4: implemented, reviewed, committed, pushed and CI-verified
+
+**Commit `f783bba`. CI run `33689533039` (#72) on that exact SHA — `completed/success`, attempt 1, both jobs, 287 unit and component, 528 integration, 1 seed, 89 end-to-end, zero failures, zero retries and zero flaky tests.**
+
+**The final local `verify:full` also passed, exit 0**, with the same totals. **No verification exception was used or needed.** §40's exception was explicitly one-time and applies to nothing here.
+
+### What shipped
+
+`review_likes`, its service, and a like control on the album page's existing review list.
+
+|              |                                                                                          |
+| ------------ | ---------------------------------------------------------------------------------------- |
+| Table        | Separate, surrogate `id uuid`, `user_id`, `review_id`, `created_at`                      |
+| Uniqueness   | `unique (user_id, review_id)` — **database-enforced**                                    |
+| Cascades     | `on delete cascade` on **both** foreign keys                                             |
+| Index        | `review_likes_review_idx` on `review_id`, for the cascade and the reverse direction      |
+| RLS / grants | Public `select`; `insert`/`delete` to `authenticated`; **no update grant**; RLS on       |
+| Service      | `src/services/social/review-likes.ts` — `likeReview`, `unlikeReview`, `getMyReviewLikes` |
+| Control      | A footer beneath each review, signed-in non-authors only                                 |
+| Like count   | **None in this slice**                                                                   |
+
+**The surrogate key is a downstream requirement, not style.** §7 gives Notification a nullable `review_like_id` alongside `follow_id` and `list_like_id` and requires unliking to remove the notification by cascade; a foreign key must reference one column. Identical to the argument that gave `follows` its surrogate key.
+
+### The distinction that must not be blurred
+
+> **Uniqueness is enforced by the database. Self-like refusal is not.**
+>
+> One like per user per review is a constraint. **You cannot like your own review is service-layer behaviour and nothing more** — a review's author is not a column on the like, so no `CHECK` can express it, and **no trigger was added**. Verified on the live schema: `review_likes` carries **zero triggers and zero check constraints**.
+>
+> Two tests pin both halves, and the second is the load-bearing one: **an integration test asserts that the _database_ does not refuse a self-like.** Anyone later tightening the policy into an integrity boundary breaks a test rather than quietly changing the contract.
+
+### Two invariants worth knowing
+
+**The write policy defers to `reviews_public_read` rather than restating it.** Its `exists (select 1 from reviews …)` subquery has the referenced table's own row security applied, so a review the caller may not read is not found and the insert is refused — proved by execution before it was written. A removed review and an absent one both answer `not_found`, indistinguishably and deliberately: telling a stranger that a removed review exists is itself a disclosure.
+
+**The author is never offered the control, and no code was added to achieve that.** The album page already drops the viewer's own review from the list because it has a home in the action card — a pre-existing, documented invariant, confirmed against the diff rather than assumed. A conditional would have been dead code.
+
+### Boundaries held
+
+**No Activity.** The enum keeps its four values; nothing writes an event. Two integration tests assert **zero activity rows** after a like and after an unlike, and that the author's count is unchanged. **No Notification anything** — the schema stays suitable for `review_like_id`, and unliking destroys the row so a future notification cascades with it. `ListLike` remains `[INFERRED]`; Phase 4 owns lists.
+
+### One correction made before commit
+
+**The service's author lookup discarded its query error.** An independent review found that a transient failure would leave the author undefined, pass the self-like check, and — because the database deliberately permits a self-like — create exactly the row the rule exists to prevent. Corrected to `if (lookupError) throw lookupError;`, which is what `result.ts` prescribes for a database failure and what this file's three other query handlers already did. **The database boundary was not touched.**
+
+**It is not directly testable here, and that is stated rather than papered over.** The service builds a cookie-bound client, so the integration suite cannot call it at all — which is why those 19 tests replicate the service's SQL rather than invoking it. Simulating a transient failure would mean mocking `createClient`, a pattern that exists nowhere in this repository. The requirement met is that production code no longer ignores the error.
+
+### Verification history — the current state is green, and the detour is worth keeping
+
+**The final state is green: local `verify:full` exit 0, 89/89 end-to-end, and CI #72 green on the exact SHA.** Getting there took three local attempts, and the reason was the machine rather than the code:
+
+- One run produced **three additional `want-to-listen` end-to-end failures** under high load — measured at **50.11 / 28.12 / 15.00**, with a macOS Software Update at 37% CPU.
+- An isolated control of that same spec then passed **7 of 7** once conditions were examined, with the three failing tests completing in 4.2–6.9s against the 30s timeouts they had exceeded.
+- A final run on a quiet machine — load **2.23** at start — passed **89 of 89** with zero retries and zero flakes.
+
+**Those three failures are an environmental observation, not a Want to Listen defect, and must not be recorded as one.** Nothing in `want-to-listen.spec.ts` or the Want to Listen implementation was changed at any point.
+
+**This is recorded because it is the clearest data yet on §8's open end-to-end flake items**, and it is filed for triage as **F-015** in `docs/product-feedback.md`. **It is not closed and not fixed** — the local suite's sensitivity to machine load remains an open question, and one green run does not answer it.
+
+### What stays open — none of it closed by this slice
+
+- **`collection.spec.ts:277` remains `[OPEN]`** (§8). It passed in the final local run and in CI #72, which means only that it did not reproduce. The missing `toHaveURL` wait at line 290 is still there.
+- **Local full-suite load sensitivity is `[OPEN]`**, now with the measurements above and F-015 awaiting triage.
+- **The independent review's non-blocking findings are untouched**: `cursorFrom`'s three rejection paths are untested; the feed's desktop link and mobile tab carry no test; `PUBLIC` holds `EXECUTE` on `feed_activity` while the migration comment says otherwise (**conventional** — every `security invoker` function here carries it); a partial final page of the feed offers no `Back to top`; and the `review_likes` table comment reads _"Generates a notification"_ in the present tense for behaviour that arrives next slice. **That last one was found in review, classified Low, and deliberately not changed.**
+- **Activity write-pair atomicity** and the **`activity_subject_matches_type` `ELSE` gap** are unchanged.
+- **Want to Listen activity** is still not written, blocked on two recorded questions — whether removing generates an event, and whether collecting should erase one already generated.
+- **Read-time grouping** stays deferred with its trigger.
+- **Staging is now six migrations behind**, this one included, and none is scheduled.
+- **`docs/product-feedback.md` holds 15 entries, none triaged.**
+
+---
+
+## 42. Staging schema reconciliation — decided and documented, **nothing deployed yet**
+
+> **⚠️ This section was written at STEP C, before any staging write.** It records what STEP A verified and what STEP B decided. **It claims no post-deployment result of any kind** — the reconciled ledger, the recovered routes and the verification that could not be performed all belong to STEP K, after the deployment actually happens. Anything below that reads as an outcome is a prediction, and is labelled as one.
+>
+> **It supersedes one line in §41** — _"Staging is now six migrations behind, this one included, and **none is scheduled**"_ — which was true when written. Six are still undeployed; they are no longer unscheduled. §41 is left exactly as written.
+
+### The decisions — STEP B, 2026-09-03
+
+| #      | Decision                                                                                                                                                                                       |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **B1** | **Deploy the six undeployed migrations to staging.** `refine_search_precision`, `create_follows`, `enforce_claim_batch_size`, `create_activity`, `create_feed_activity`, `create_review_likes` |
+| **B2** | **As one ordered batch, not split**, through the documented Supabase mechanism, preserving timestamp order                                                                                     |
+| **B3** | **Post-deployment verification is in scope**, subject to the limit recorded below                                                                                                              |
+| **B4** | **Search quality is excluded from the acceptance criteria.** Deployment establishes that the function is live and executable, never that its results are better                                |
+| **B5** | **The `head: true` silent-zero defect is recorded and deliberately not fixed** — §8 carries it                                                                                                 |
+| **B6** | **Eleven items held out of scope**, listed below                                                                                                                                               |
+| **B7** | **The staging `service_role` key is not rotated**; §8's open question stands untouched                                                                                                         |
+| **B8** | **Documentation is confined to this cycle** — no `CLAUDE.md`, no `product-feedback.md`, no Notifications decision folded in                                                                    |
+
+**Recording an alternative that was genuinely available rather than pretending the decision was obvious:** leaving staging deliberately divergent was defensible — it holds three test accounts, no external users, and its value is as a real-data rehearsal rather than as a service. It was rejected because the divergence is the product of inattention rather than intent, and because the batch grows with every subsequent slice. **Deploying is a choice made on evidence, not the default that needed no argument.**
+
+### Verified — STEP A facts, established by direct observation
+
+**Deployment coupling.** `main` reaches the staging app at <https://longplayr.vercel.app>, and that app reads the linked staging project. Established from the deployed artefact rather than from configuration, because `vercel.json` carries only the cron and `.vercel/` is gitignored:
+
+| Evidence                                        | Result                                                                            |
+| ----------------------------------------------- | --------------------------------------------------------------------------------- |
+| `GET /` on `longplayr.vercel.app`               | **200**                                                                           |
+| `GET /` on `longplayr-staging.vercel.app`       | **404** — the host named in `deployment.md:169` does not exist                    |
+| Supabase host in rendered artwork URLs          | `oexuqjpvyeijmlirxtal.supabase.co`, matching `supabase/.temp/linked-project.json` |
+| `href="/feed"` in deployed markup               | **2 occurrences** — desktop link and mobile tab, introduced in `0b73851`          |
+| `/<handle>/followers` and `/<handle>/following` | Routes exist, introduced in `398bf4b`                                             |
+
+**Ledger and schema, and they agree.** `npx supabase migration list --linked` reports **19 local, 13 remote, six undeployed** — exactly the six named, with no drift and no remote-only rows. The schema was then read directly rather than trusted to the ledger, because a profile page rendering follower counts against a database with no `follows` table is what out-of-band DDL looks like — and out-of-band DDL would make `db push` fail on `relation already exists`:
+
+| Object                                              | Present on staging                     |
+| --------------------------------------------------- | -------------------------------------- |
+| `follows`, `activity`, `review_likes` tables        | **Absent**                             |
+| `activity_type` enum                                | **Absent**                             |
+| `feed_activity()`                                   | **Absent**                             |
+| `search_albums` containing `fuzzy_q`                | **false** — the pre-2026-08-28 version |
+| `claim_ingestion_jobs` containing `as materialized` | **false** — the pre-fix version        |
+
+**No out-of-band DDL exists. The ledger is accurate.** The suspicion that raised this check was wrong, and it is recorded because checking it is what made the apply-risk assessment trustworthy.
+
+**Corpus, measured the same day:** 707 albums · 317 artists · 3 profiles · 19 collection entries · **1 review** · 2 favourites · 0 want-to-listen. Queue: 1,273 succeeded, 5 failed, **0 pending, 0 running**.
+
+**Breakage, observed by unauthenticated GET:**
+
+| Route                                           | Result                                                                                                  |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `/`, `/albums`, `/albums/[mbid]`, `/search?q=…` | **200** — no dependency on the six, and `getMyReviewLikes` returns early for a signed-out visitor       |
+| `/<handle>`                                     | **200 — and silently wrong.** See §8                                                                    |
+| `/<handle>/followers`, `/<handle>/following`    | **500** — `follows` absent                                                                              |
+| `/feed`                                         | **307 → `/login`** — the signed-out redirect precedes the RPC, so the missing function is never reached |
+
+### Inferred from code plus verified schema — **predictions, not observations**
+
+None of the following was verified. Each requires an authenticated session, and the last additionally requires a write; both were out of bounds for STEP A.
+
+| Capability                                     | Predicted behaviour                                                                                                                                                                  | Basis                                                                  |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| Album page, signed in, album carrying a review | `getMyReviewLikes` issues a GET with a JSON error body → throws → **500**. Staging holds exactly **1** review, so the path is reachable                                              | Code plus verified absence                                             |
+| `/feed`, signed in                             | `feed_activity` absent → throws → **500**                                                                                                                                            | Code plus verified absence                                             |
+| Add, rate, relisten, review                    | The primary row is written and **commits**, then the `activity` insert 404s with a JSON body, `error.code !== 23505` → **throws**. The action half-succeeds and then errors          | Code, verified absence, and the existing write-pair atomicity `[OPEN]` |
+| Search behaviour                               | The **old** functions serve staging, so the article-normalisation fix is not in effect there                                                                                         | **Verified** by function marker, not inferred                          |
+| Job queue                                      | The **old** `claim_ingestion_jobs` serves staging, so §38's batch-size defect is deployed and the 04:00 UTC cron runs against it. **Latent** — there is no pending work to mis-claim | Marker verified; latency read from the queue state                     |
+
+**The write path is the sharpest of these** and the reason the divergence is not merely cosmetic: the failure lands _after_ the collection entry, rating or review has already committed.
+
+### Apply-risk assessment
+
+| Migration                  | Class                                           | Locks / rewrite      | Depends on                                                     | Can it fail on the real corpus |
+| -------------------------- | ----------------------------------------------- | -------------------- | -------------------------------------------------------------- | ------------------------------ |
+| `refine_search_precision`  | `create or replace` ×2 functions                | None — metadata only | `pg_trgm`, `albums`, `artists`, all present                    | **No**                         |
+| `create_follows`           | Table, 2 indexes, grants, RLS, 2 policies       | New relation only    | `profiles`                                                     | No                             |
+| `enforce_claim_batch_size` | `create or replace` function, revoke/grant      | None — metadata only | `ingestion_jobs`                                               | No                             |
+| `create_activity`          | Enum, table, 3 indexes, grants, RLS, 2 policies | New relation only    | `profiles`, `collection_entries`, `relisten_events`, `reviews` | No                             |
+| `create_feed_activity`     | Function, grant                                 | None                 | **`follows`, `activity`, `activity_type`** plus five existing  | Only if applied out of order   |
+| `create_review_likes`      | Table, 1 index, grants, RLS, 2 policies         | New relation only    | `profiles`, `reviews`                                          | No                             |
+
+**The one genuine failure mode was checked against the live database rather than against the migration files.** A `create or replace function` errors outright on a changed return type and silently creates an _overload_ on a changed signature. The deployed definitions read:
+
+```
+claim_ingestion_jobs (batch_size integer) -> SETOF ingestion_jobs
+search_albums  (query text, max_results integer) -> TABLE(id uuid, … tier smallint, text_rank real)
+search_artists (query text, max_results integer) -> TABLE(id uuid, … album_count bigint, tier smallint)
+```
+
+All three match their replacements exactly. **No return-type change, no overload risk.**
+
+**No migration inserts, backfills or validates data.** No constraint is added to a populated table, so there is no validation scan and no rewrite. `activity`'s two unique indexes are built on an empty table. Ordering is already encoded in the filename timestamps and needs no manual sequencing.
+
+**`refine_search_precision`, scrutinised on its own because its history demanded it.** Its apply-risk is nil — identical signatures, `stable` SQL, no lock. What it changes is **results**, over a corpus that has never seen it. §35 recorded that boundary honestly and it still stands. Deploying converts an unmeasured change into a **measurable** one; it does not measure it. That question is now carried in §11.
+
+### ⚠️ Pending — belongs to STEP K, not claimed here
+
+The reconciled ledger (19/19); the existence of the three tables, the enum and the function; both replaced functions carrying their new markers; and whether the profile, followers, following, album, feed and write paths behave as predicted above.
+
+### The verification limit, accepted deliberately
+
+**Three of the checks cannot be completed within this cycle's boundary**, and STEP F will record them as unverified with the reason rather than reporting them as passing. The signed-in album page, the signed-in feed and the activity-backed write paths each need an authenticated session, and the write path needs a write. **The staging corpus is intentionally thin and no social data will be manufactured to make a feed demonstration possible.** A feed with nothing in it is the honest consequence of three accounts and zero follows, not a defect to be papered over with fixtures.
+
+### One documentation defect found and deliberately not fixed
+
+**`deployment.md:169` names `https://longplayr-staging.vercel.app` as the Playwright base URL. That host returns 404.** The live staging host is `https://longplayr.vercel.app`, which §1 has correct. Recorded as a finding; the correction is out of scope for this cycle and belongs to whichever cycle next touches that document.
+
+### Boundaries held
+
+Excluded, each by decision rather than by omission: **Notifications** (implementation and design), **Want to Listen activity**, **catalogue breadth and depth**, **Phase 2 leftovers**, **product-feedback triage**, **F-015**, the **`collection.spec.ts:277` race**, **service-role key rotation**, the **`deployment.md` hostname correction**, **Activity write-pair atomicity**, and the **`activity_subject_matches_type` `ELSE` gap**.
+
+**Two files carrying pre-existing uncommitted changes were deliberately not touched** — `CLAUDE.md`, whose status line is stale by two slices, and `docs/product-feedback.md`. Both belong to earlier work, and neither was folded into this cycle to tidy the working tree.
 
 ---
 
