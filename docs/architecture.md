@@ -821,7 +821,7 @@ Confirmations of decisions made in `docs/data-model.md`, recorded here for archi
 
 ### 16.1 The feed query — where the follow-graph filter lives
 
-**[DECIDED 2026-09-01. Recorded before implementation; nothing below is built.]** This resolves the bullet above into a concrete shape. The bullet's decisions are unchanged: still a query over the materialised `Activity` table, still filtered by the follow graph, still ordered by time, still **not fan-out-on-write**.
+**[DECIDED 2026-09-01. Built 2026-09-01 — see the correction below.]** This resolves the bullet above into a concrete shape. The bullet's decisions are unchanged: still a query over the materialised `Activity` table, still filtered by the follow graph, still ordered by time, still **not fan-out-on-write**.
 
 **`/feed` is fully dynamic, per-user and uncacheable**, which §7 already records for the feed surface and which nothing here changes.
 
@@ -853,6 +853,10 @@ The cursor parser and path builder belong in the **app layer**, not `src/service
 Together those make "past the end" **unavailable as a permanent route fact**, so the offset destinations' `page > totalPages` → `notFound()` convention cannot be reproduced — it depends on a count this surface deliberately does not have. The behaviour is therefore an explicit end-of-feed state carrying its own route back to the first page.
 
 **This changes nothing about the query or the pagination shape.** No look-ahead is introduced: `nextCursor` is still emitted whenever a page comes back full, so an exactly-full final page still offers `Older →` and still lands on the end state. Fetching `limit + 1` to suppress that link is a possible later refinement, **not adopted here** — it would reduce how often the state is reached without changing what happens when it is, since stale, shared and hand-edited cursors reach it regardless.
+
+**[CORRECTED 2026-09-02] This section is built.** It opened "Recorded before implementation; nothing below is built", which was true when written on 2026-09-01 and stopped being true the same day: the feed shipped in `0b73851` and was verified by CI run #71 on that exact SHA. **The decisions above are unchanged** — only the claim about their build state was stale, and it is corrected rather than deleted so the sequence stays legible.
+
+**Who keeps such markers current across cycles is unresolved**, and this correction does not settle it. STEP C records decisions before implementation and correctly marks them unbuilt; nothing in the cycle flips them afterwards. That is a process question for `CLAUDE.md`, raised here rather than answered.
 
 ---
 

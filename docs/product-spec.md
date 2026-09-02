@@ -202,6 +202,23 @@ Primary: artwork, title, artist, year, average rating with count. Then: your ent
 
 The page must read correctly in three states: **not in your collection**, **in your collection unrated**, and **in your collection rated**. The primary action changes in each.
 
+**Reviews from others can be liked. [DECIDED 2026-09-02 — Phase 3 slice 4. Decided, not built.]** This is the "Likes only" interaction §4 names, given its first surface. The album page is where it belongs because it is already where other people's reviews are rendered.
+
+| Behaviour                   | Decision                                                                                 |
+| --------------------------- | ---------------------------------------------------------------------------------------- |
+| Toggle                      | Like and unlike, like every other like in the product                                    |
+| One per user per review     | Enforced by the database                                                                 |
+| Unliking                    | Hard-deletes the like. Unliking what you have not liked is a no-op                       |
+| The review is deleted       | Its likes go with it, by cascade                                                         |
+| Liking your own review      | **Not offered, and refused** — see the limit below                                       |
+| A moderation-removed review | Cannot be liked. It is not publicly readable, and that rule is not restated for likes    |
+| Activity                    | **None.** A like is a notification trigger, never a feed event — §4's standing exclusion |
+| Notification to the author  | **Decided and not built.** The Notifications slice owns it                               |
+
+**Self-like prevention is a service guarantee, not an integrity boundary**, and the distinction is recorded because the two look alike in use. One like per user per review is enforced by the database; refusing to like your own review is not, because a review's author is not a column on the like. `data-model.md` §5 records why no trigger is added for it.
+
+**Until the Notifications slice lands, a like is visible to nobody but the person who gave it.** That is the expected intermediate state, not an oversight: §6's Notifications surface is the only thing that makes a like legible to its recipient, which is the argument that put it in the MVP at all.
+
 ### Artist page
 
 Primary: name and discography as an artwork grid. **One interleaved chronological run, newest first — albums, EPs and mixtapes together, never grouped by type. [DECIDED]** Release type is available as a small label on each item, but it never fragments the grid.
@@ -300,9 +317,9 @@ Reverse-chronological. Each item: who, what they did, the album (with artwork), 
 
 **`/feed` is the feed's address, and the home page is not it. [DECIDED 2026-09-01]** Its own top-level destination, reachable from the navigation at every width. `/` is unchanged and stays the orientation surface that makes no catalogue queries — **the signed-in home page belongs to Phase 5**, along with the cold-start and no-follows states, and claiming it here would settle that phase's work by implementing it.
 
-| Destination | Holds                                                                              | State         |
-| ----------- | ---------------------------------------------------------------------------------- | ------------- |
-| `/feed`     | **Following feed.** The events of the people you follow, newest first, 20 per page | **Not built** |
+| Destination | Holds                                                                              | State     |
+| ----------- | ---------------------------------------------------------------------------------- | --------- |
+| `/feed`     | **Following feed.** The events of the people you follow, newest first, 20 per page | **Built** |
 
 **The navigation entry is present regardless of session state. [DECIDED 2026-09-01]** A nav item that appears on sign-in changes the shape of the bar underneath the user, which the mobile tab bar's own rationale rejects. `You` already resolves to `/login` when signed out, so a nav entry leading to authentication is the established pattern rather than a new one.
 

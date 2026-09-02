@@ -6,6 +6,7 @@ import { ActionCard, type ActionCardState } from '@/components/ActionCard';
 import { AlbumCover } from '@/components/AlbumCover';
 import { Container } from '@/components/Container';
 import { ScoreBadge } from '@/components/ScoreBadge';
+import { ReviewLikeButton } from '@/components/ReviewLikeButton';
 import { SectionHeader } from '@/components/SectionHeader';
 import { getAlbumByMbid } from '@/services/catalogue/queries';
 import { drainJobs } from '@/services/catalogue/jobs';
@@ -15,6 +16,7 @@ import { getMyFavourite } from '@/services/collection/favourites';
 import { getMyWantToListen } from '@/services/collection/want-to-listen';
 import { getAlbumRating } from '@/services/collection/ratings';
 import { getAlbumReviews } from '@/services/collection/reviews';
+import { getMyReviewLikes } from '@/services/social/review-likes';
 import { Avatar } from '@/components/Avatar';
 import { getCurrentProfile, getCurrentUser } from '@/services/profiles';
 
@@ -27,6 +29,7 @@ import {
   saveReviewAction,
   toggleFavouriteAction,
   toggleLikeAction,
+  toggleReviewLikeAction,
   toggleWantToListenAction,
 } from './actions';
 
@@ -177,6 +180,16 @@ export default async function AlbumPage({ params }: PageProps<'/albums/[mbid]'>)
   const reviews = (await getAlbumReviews(album.id)).filter(
     (review) => review.author.id !== viewer?.id,
   );
+
+  // Which of these the viewer has liked — one query for the page, read through
+  // the social service so no social state enters the collection review query.
+  // Empty for a signed-out visitor.
+  //
+  // **No author check is needed here, and adding one would be dead code:** the
+  // filter above already drops the viewer's own review, so this list holds only
+  // other people's. The service refuses a self-like regardless, as a backstop
+  // against a stale page.
+  const likedReviewIds = await getMyReviewLikes(reviews.map((review) => review.id));
 
   // Secondary types qualify the primary one: a live album is an Album that is
   // also Live.
@@ -366,6 +379,17 @@ export default async function AlbumPage({ params }: PageProps<'/albums/[mbid]'>)
                   <p className="mt-3 whitespace-pre-wrap font-serif text-base leading-[1.65] text-text-secondary">
                     {review.body}
                   </p>
+
+                  {/* A footer beneath the words, and only for a signed-in
+                      visitor. No count in this slice, so a signed-out reader
+                      sees the review exactly as before. */}
+                  {viewer && (
+                    <ReviewLikeButton
+                      reviewId={review.id}
+                      liked={likedReviewIds.has(review.id)}
+                      toggleAction={toggleReviewLikeAction}
+                    />
+                  )}
                 </li>
               ))}
             </ul>

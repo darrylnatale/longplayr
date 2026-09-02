@@ -273,11 +273,11 @@ Sequencing against `product-spec.md` §8.10 faults 1 and 2, and against the enri
 
 **Goal.** Other people become visible. The product becomes social rather than personal.
 
-**Status: slices 1 and 2 of the phase are built. [CORRECTED 2026-09-01]** Slice 1 is Follows — the relation, the profile control, the stat cluster and the two relationship destinations. **Slice 2 is the `Activity` table and its four write points**, `listened` / `relistened` / `rated` / `reviewed`, with no feed query and no feed surface. **Still absent from this phase**: the feed, notifications, likes on reviews, and Want to Listen activity.
+**Status: slices 1, 2 and 3 of the phase are built; slice 4 is decided and unbuilt. [CORRECTED 2026-09-02]** Slice 1 is Follows — the relation, the profile control, the stat cluster and the two relationship destinations. **Slice 2 is the `Activity` table and its four write points**, `listened` / `relistened` / `rated` / `reviewed`, with no feed query and no feed surface. **Still absent from this phase**: the feed, notifications, likes on reviews, and Want to Listen activity.
 
 > **What that paragraph said before, corrected rather than deleted.** It read _"Status: slice 1 of the phase is built… **Nothing else in this phase exists**: no `Activity`, no feed, no notifications, no likes on reviews."_ The `Activity` half stopped being true when slice 2 landed, and the slice-3 boundary below depends on `Activity` existing, so leaving it would make this section contradict itself.
 
-**Slice 3 — the following feed. Scope approved 2026-09-01; nothing is built.** Decisions are recorded in `product-spec.md` §6 (surface, pagination, tiers, empty states, routing), `architecture.md` §16.1 (query boundary) and `data-model.md` §7 (filter semantics).
+**Slice 3 — the following feed. Scope approved 2026-09-01; built, committed and CI-verified 2026-09-01 in `0b73851`. [CORRECTED 2026-09-02 — this line read "nothing is built", which was true when written and stopped being true the same day.]** Decisions are recorded in `product-spec.md` §6 (surface, pagination, tiers, empty states, routing), `architecture.md` §16.1 (query boundary) and `data-model.md` §7 (filter semantics).
 
 **In scope:** the `/feed` route and its navigation entries; the feed query boundary as a `security invoker` RPC; forward-only keyset pagination; the two feed item tiers; the two empty states; and the integration and end-to-end coverage the phase's test list already requires.
 
@@ -296,6 +296,23 @@ Sequencing against `product-spec.md` §8.10 faults 1 and 2, and against the enri
 | Browse and search; Follows implementation                                                       | Built or belonging elsewhere                                                               |
 | The job-queue investigation                                                                     | Historical context only                                                                    |
 | **The Phase 5 home page**                                                                       | `/` is untouched, and the signed-in home stays Phase 5's to decide                         |
+
+**Slice 4 — review likes. Decided 2026-09-02; nothing is built.** Decisions are recorded in `data-model.md` §5 (the `ReviewLike` model, its cascades, and the uniqueness-versus-self-like distinction) and `product-spec.md` §6 (the behaviour and its surface on the album page).
+
+**In scope:** the `review_likes` table and its migration; the service layer; a like control on the album page's existing review list; and the integration, unit and end-to-end coverage the phase's test list requires of it.
+
+**Out of scope, and the first two are the load-bearing exclusions:**
+
+| Excluded                                                      | Why                                                                     |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| **Notifications** — table, page, unread count, navigation     | The next slice. `ReviewLike` is the primitive it consumes               |
+| **Any `Activity` change** — enum value, subject column, write | Likes are a notification trigger, never a feed event. Standing decision |
+| `ListLike`                                                    | Phase 4 owns lists; its shape stays `[INFERRED]`                        |
+| A self-like database trigger                                  | Deliberately not added; `data-model.md` §5 records why                  |
+
+**Two things this slice cannot finish, named so they are not mistaken for gaps.** The phase's test list below requires _"Likes generate no activity events, but **do** generate notifications"_ — **that test spans two slices**, and slice 4 owns only the first half. And **a like is visible to nobody but its owner until Notifications lands**, which is the expected intermediate state rather than an oversight.
+
+**Notifications remains the later Phase 3 slice**, and the dependency runs one way: `Notification.review_like_id` needs a single column to reference and cascade, so the like table must exist first.
 
 **Features**
 

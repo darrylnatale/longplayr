@@ -349,15 +349,41 @@ Per-item commentary is deferred; adding it later is a nullable column, requiring
 
 Three distinct things can be liked, and they are **not** modelled polymorphically:
 
-| Liking a…  | Stored as                                                     |
-| ---------- | ------------------------------------------------------------- |
-| **Album**  | `CollectionEntry.liked` — already a column, no separate table |
-| **Review** | `ReviewLike` (`user_id`, `review_id`)                         |
-| **List**   | `ListLike` (`user_id`, `list_id`)                             |
+| Liking a…  | Stored as                                                      |
+| ---------- | -------------------------------------------------------------- |
+| **Album**  | `CollectionEntry.liked` — already a column, no separate table  |
+| **Review** | `ReviewLike` (`user_id`, `review_id`) **[DECIDED 2026-09-02]** |
+| **List**   | `ListLike` (`user_id`, `list_id`) **[INFERRED]** — Phase 4     |
 
-**[INFERRED]** Separate tables rather than a polymorphic `Like` table: polymorphic foreign keys can't be enforced by the database, and there are only two of them. The cost of the general solution exceeds its benefit here.
+Separate tables rather than a polymorphic `Like` table: polymorphic foreign keys can't be enforced by the database, and there are only two of them. The cost of the general solution exceeds its benefit here.
+
+**`ReviewLike` is now decided, and only `ReviewLike`. [DECIDED 2026-09-02 — Phase 3 slice 4. Nothing below is built.]** This line previously carried the whole paragraph above as **`[INFERRED]`**, which by this document's own notation means "follows necessarily; flagged for correction". It is confirmed for reviews on the same reasoning that confirmed `Follow` on 2026-08-30, and **`ListLike` is deliberately left `[INFERRED]`** — Phase 4 owns it, and confirming a shape for an entity that does not exist would be deciding for a phase that has not started.
+
+| Field                         | Notes                                                                        |
+| ----------------------------- | ---------------------------------------------------------------------------- |
+| `id`                          | uuid primary key. **Surrogate, not a composite key on the pair** — see below |
+| `user_id`                     | → `profiles(id)`, `on delete cascade`                                        |
+| `review_id`                   | → `reviews(id)`, `on delete cascade`                                         |
+| `created_at`                  |                                                                              |
+| `unique (user_id, review_id)` | One like per user per review, enforced by the database                       |
+
+**The surrogate key is a downstream requirement, not a style choice.** §7 gives `Notification` a nullable `review_like_id` alongside `follow_id` and `list_like_id`, and requires that unliking removes the notification by cascade. **A foreign key must reference one column**, so a composite key on the pair would force that table to carry two columns for one of its four subject references. This is the identical argument that gave `follows` a surrogate key, and it is recorded here for the same reason.
+
+**Cascades in both directions, and each covers a real case.** An author hard-deletes their review and its likes go with it; an account is deleted and both its own likes and the likes on its reviews go. Neither leaves an orphan, which the hard-deletion rule in §8 requires.
+
+**Behaviour. [DECIDED 2026-09-02]** Liking is a **toggle**. Unliking **hard-deletes** the row; unliking something not liked is a **no-op**, matching `unfollowUser` and `removeWantToListen`. Liking requires the review to be **publicly readable**, so a moderation-removed review cannot be liked by someone who guesses its id — `reviews_public_read` stays the single authority on that rather than being restated.
+
+> **Uniqueness and self-like prevention are not the same kind of guarantee, and the difference must not be blurred.**
+>
+> **One like per user per review is enforced by the database**, by the unique constraint above.
+>
+> **A user cannot like their own review, and that is service-layer behaviour only. [DECIDED 2026-09-02]** It is **not** an integrity boundary. `follows_no_self_follow` can be a check constraint because both columns sit in the same row; a review's author lives in another table, so a `CHECK` cannot express this and only a trigger could. **No trigger is introduced**: a self-like is a vanity annoyance rather than an integrity or privacy failure, and its worst outcome is one meaningless row and — once notifications exist — one notification to yourself. Describing it as enforced would be false.
 
 Likes generate **no activity events** — they'd dominate the feed by volume. **[DECIDED — B5]** They do generate **notifications** to the content's author, which is the only way they become visible at all.
+
+**That decision is unchanged, and slice 4 changes nothing about `Activity`. [2026-09-02]** No new enum value, no new subject column, no write. A review like is a **notification trigger, never a feed event**, and the four types `Activity` already carries stay exactly four.
+
+**Notifications are not built in slice 4.** `ReviewLike` is the durable primitive the later Notifications slice consumes; until then a like is recorded and visible to nobody but its owner. One consequence of the cascades above is worth naming because that slice inherits it: **unliking destroys the like row, so a notification hanging off it cascades away too** — which is exactly what §7 requires of an undone action. Whether re-liking should therefore produce a second notification is the Notifications slice's question and is deliberately not answered here.
 
 ---
 
@@ -400,7 +426,7 @@ Materialised feed events. **[DECIDED — D2]**
 
 Feed query: events whose actor is someone you follow, newest first.
 
-**That sketch is now resolved into the query's actual semantics. [DECIDED 2026-09-01 — recorded before implementation, nothing below is built.]** The filter set in full — the sketch restated, then four decisions it left open:
+**That sketch is now resolved into the query's actual semantics. [DECIDED 2026-09-01; built 2026-09-01 — see the correction below.]** The filter set in full — the sketch restated, then four decisions it left open:
 
 | Rule                                                                       | Why                                                                                                                                                                                                                                      |
 | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -411,6 +437,8 @@ Feed query: events whose actor is someone you follow, newest first.
 | A `rated` event **disappears** when the entry's current rating is null     | The claim has stopped being true, which is what the paragraph above forbids. **This tolerates the non-atomic rating write; it does not fix it** — that remains `[OPEN]` and belongs to its own cycle                                     |
 
 **These filters belong in the query and the domain layer, not in presentation.** They govern what the feed _is_, so a second client must get the same events — `CLAUDE.md`'s test for where domain logic lives.
+
+**[CORRECTED 2026-09-02] These filters are built.** The block above opened "recorded before implementation, nothing below is built", which was accurate on 2026-09-01 and stopped being so the same day — the feed shipped in `0b73851`, CI-verified by run #71. **The filter set itself is unchanged**; only the build-state claim was stale, and it is marked rather than quietly rewritten. Who keeps such markers current between cycles is an unresolved process question and is not settled here.
 
 ### Notification
 

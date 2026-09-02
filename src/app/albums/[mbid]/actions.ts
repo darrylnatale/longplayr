@@ -7,6 +7,7 @@ import { markRelisten } from '@/services/collection/relistens';
 import { addFavourite, removeFavourite } from '@/services/collection/favourites';
 import { REVIEW_MAX_LENGTH, deleteReview, saveReview } from '@/services/collection/reviews';
 import { addWantToListen, removeWantToListen } from '@/services/collection/want-to-listen';
+import { likeReview, unlikeReview } from '@/services/social/review-likes';
 
 /**
  * Album page mutations.
@@ -325,6 +326,33 @@ export async function toggleFavouriteAction(
  * addition while that is unanswered would settle half a question by
  * implementing it.
  */
+/**
+ * Likes or unlikes someone else's review.
+ *
+ * **The action chooses, the service acts** — the desired state arrives in the
+ * form, exactly as `toggleWantToListenAction` and `toggleFavouriteAction` do.
+ * No new action protocol.
+ *
+ * **Errors here are a backstop, not the mechanism.** The album page renders no
+ * control for a signed-out visitor or for the review's own author, so
+ * `onboarding_required` and `self_like` should be unreachable through the
+ * interface. They are returned rather than thrown because a stale page can
+ * still post one.
+ */
+export async function toggleReviewLikeAction(
+  _prev: CollectionActionState,
+  formData: FormData,
+): Promise<CollectionActionState> {
+  const reviewId = String(formData.get('reviewId') ?? '');
+  const liked = formData.get('liked') === 'true';
+
+  const result = liked ? await likeReview(reviewId) : await unlikeReview(reviewId);
+  if (!result.ok) return { error: result.message };
+
+  revalidatePath(`/albums/[mbid]`, 'page');
+  return {};
+}
+
 export async function toggleWantToListenAction(
   albumId: string,
   _prev: CollectionActionState,
