@@ -20,6 +20,8 @@ import { usePathname } from 'next/navigation';
 type Props = {
   /** Resolved server-side: login, onboarding, or the user's profile. */
   youHref: string;
+  /** Unread notifications. Only whether it is above zero is used here. */
+  unread: number;
 };
 
 const ICON = 'h-5 w-5';
@@ -91,7 +93,7 @@ function YouIcon() {
   );
 }
 
-export function MobileTabBar({ youHref }: Props) {
+export function MobileTabBar({ youHref, unread }: Props) {
   const pathname = usePathname();
 
   const tabs = [
@@ -117,6 +119,11 @@ export function MobileTabBar({ youHref }: Props) {
       href: youHref,
       label: 'You',
       Icon: YouIcon,
+      // The unread indicator rides here rather than on a fifth tab. Four tabs
+      // is the locked shape; a fifth would narrow every one of them, and
+      // notifications are reachable from the personal surface on mobile.
+      // `architecture.md` §16.3.
+      indicate: unread > 0,
       // Everything that is "about you" lights the same tab, wherever it leads.
       match: (p: string) =>
         p === youHref ||
@@ -133,7 +140,7 @@ export function MobileTabBar({ youHref }: Props) {
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
       <ul className="grid grid-cols-4">
-        {tabs.map(({ href, label, Icon, match }) => {
+        {tabs.map(({ href, label, Icon, match, indicate }) => {
           const active = match(pathname);
           return (
             <li key={label}>
@@ -144,8 +151,23 @@ export function MobileTabBar({ youHref }: Props) {
                   active ? 'text-accent' : 'text-text-muted'
                 }`}
               >
-                <Icon />
+                {/*
+                 * The dot is positioned on the icon rather than added as a
+                 * sibling, so the tab's height and the row's grid are
+                 * untouched — the count itself stays on the desktop nav, where
+                 * there is room for a number.
+                 */}
+                <span className="relative">
+                  <Icon />
+                  {indicate && (
+                    <span
+                      aria-hidden
+                      className="absolute -right-1 -top-0.5 h-1.5 w-1.5 rounded-full bg-accent"
+                    />
+                  )}
+                </span>
                 {label}
+                {indicate && <span className="sr-only">, unread notifications</span>}
               </Link>
             </li>
           );

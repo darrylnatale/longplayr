@@ -881,6 +881,122 @@ Together those make "past the end" **unavailable as a permanent route fact**, so
 
 **One class of count is explicitly outside this contract as written:** a count returned alongside rows from an ordinary range query, where an error check already precedes any use of the count. Those do not exhibit the HEAD-specific failure and are excluded deliberately, not overlooked. If the same failure mode is ever demonstrated there, this line is what should be revisited.
 
+### 16.3 Notifications — directed, private, and disjoint from the feed
+
+**[DECIDED 2026-09-03. NOT BUILT — Phase 3 slice 5, decisions recorded before implementation.]** `Notification` is the counterpart to §16.1's feed: `Activity` is **broadcast** — things you did, shown to whoever follows you — while a notification is **directed**, something another person did to you. The two carry disjoint event types and neither writes the other's rows.
+
+**Phase 3 ships exactly two types: `followed` and `review_liked`.** `list_liked` is **deferred until Lists and `ListLike` exist**, and this is a phase boundary rather than a product rejection — `product-spec.md` §5 and §6 both keep list likes in the finished surface. The reason is concrete rather than cautious: there is no table for `list_like_id` to reference, **so the foreign key cannot be created at all**, and an enum member no code can write is speculative schema. `activity_type` shipped with exactly the values its slice used; this follows that precedent.
+
+**A notification represents the current existence of its source action. It is not a historical audit event.** Undoing the source removes the notification; re-creating the source produces a **new** one; nothing is retained as history. `data-model.md` §7 requires that the page never report something that has been undone, and that requirement is what settles this.
+
+#### Integrity, and why uniqueness is not optional here
+
+**The source writes are idempotent in a way that would otherwise duplicate notifications.** `followUser` and `likeReview` both return the **pre-existing row** when they hit a unique violation, and neither can distinguish "I created this" from "this already existed". A write path that created a notification after every apparently successful call would therefore emit a second one on a double-submit or a retry.
+
+**`unique (follow_id)` and `unique (review_like_id)` make that ambiguity irrelevant** — the write can insert unconditionally and tolerate the violation, exactly as `activity.ts`'s `record()` already does. Both columns are nullable and Postgres permits many NULLs under a unique constraint, so `followed` and `review_liked` rows coexist without a partial index.
+
+**The subject/type consistency constraint carries an explicit `ELSE false`.** `activity_subject_matches_type` has no `ELSE`, so a `CASE` with no matching branch returns `NULL`, `NULL` satisfies a `CHECK`, and a future enum value is **silently unconstrained**. That gap is tolerated on `activity` and deliberately not reproduced here — this table is expected to gain `list_liked` later, which is precisely the case that would slip through.
+
+**Every lifecycle transition is a cascade, not a second write.** Unfollow, unlike, review deletion, and actor or recipient account deletion all remove notifications through foreign keys.
+
+#### Privacy — the first genuinely private table in this schema
+
+**A notification's existence is private to its recipient.** The actor's identity may be displayed, because profiles are already public; the row itself must never be queryable by anyone else.
+
+> **This is a material departure from every social table built so far, and it is the slice's highest-risk detail.** `follows`, `activity` and `review_likes` are all `*_public_read` with `qual = true`, which is correct for them — everything user-generated is public. **A read policy copied from any of them would expose every user's notifications.** The read policy is `recipient_id = (select auth.uid())`, and `anon` gets nothing.
+>
+> **Read and write are scoped to different people**, which is unusual enough to state: the **actor** inserts, the **recipient** reads. The insert policy is `actor_id = (select auth.uid())` and the two must not be collapsed into one.
+>
+> Clearing unread state needs an update, and RLS cannot restrict columns — so it is bounded by a **column-level `grant update (read_at)`**, letting a recipient clear their own state without rewriting `type` or `actor_id`. No delete grant exists; cascade does that work.
+
+#### The query is a direct table read, not a function
+
+**§16.1's rationale does not transfer, and inheriting its machinery without its reason would be cargo-culting.** The feed needed a Postgres function because _PostgREST cannot express a subquery in a filter_ — `actor_id in (select followee_id …)`. A notification query has no subquery: `recipient_id = auth.uid()` is a single-column equality that RLS expresses natively and PostgREST filters trivially.
+
+**If a concrete payload-join limitation appears during implementation, that is a new decision to raise, not a function to introduce quietly.**
+
+**Pagination is keyset on `(created_at desc, id desc)`, forward-only**, matching the feed rather than the numbered pagination used by the collection and the two relationship destinations. §16.1's reasons apply almost verbatim: a notification list grows at the top while it is being read, so numbered offsets re-show rows already passed, and an offset page wants `count: 'exact'` on every request.
+
+#### Read semantics and the unread count
+
+**Read state is per item.** A notification stays unread until that specific notification is interacted with; **rendering the page marks nothing**. New arrivals while the page is open remain unread, and pagination cannot clear items the reader never saw — a property model A ("opening marks everything read") cannot offer, since its correctness depends on the unread set fitting one page. **No mark-all-read control in this slice.**
+
+**Navigation must never depend on the read write succeeding.** A recipient who could not reach a review because a `read_at` update failed would be a worse outcome than a notification that stays bold. Marking read is idempotent, so a lost write costs one stale unread and nothing more.
+
+**The unread count is computed on read** — `read_at is null`, for the authenticated recipient, **through `countRows` with `COUNT_ONLY`** per §16.2, which lint enforces. **No denormalised counter**, following the same reasoning §16 gives for follower and following counts: no stored aggregate, so no drift, and none of the four cascade paths needs a decrement. **No query at all for signed-out visitors.**
+
+Note the count renders in global navigation, so it executes on **every page render for a signed-in user** — a third query in a header component that already awaits the user and profile. That cost is accepted rather than optimised away, because there is currently **no volume evidence anywhere** to optimise against. If measurement later shows a real problem, that is its own decision.
+
+#### Surface
+
+`/notifications` — already a reserved handle — newest first, follower and review-like items, a read/unread visual distinction, items navigating to their target, an unread count in global navigation for signed-in users, and an empty state. **No email, no push, no per-type preferences, and no list-like notifications in Phase 3.**
+
+#### Trigger and atomicity boundary
+
+A successful follow creates one notification for the followee; a successful review like creates one for the review's author — **available without an extra query**, since `likeReview` already reads it for the self-like check. **Self-follow is impossible** (`follows_no_self_follow` is a check constraint). **Self-like remains a service-layer guarantee only** — the database permits it by design — so a user never receives a notification for their own review because the service refuses the like, not because the schema forbids it. **No Activity row is written.**
+
+**Activity's write-pair atomicity `[OPEN]` is not a prerequisite**, and the failure modes differ in kind:
+
+- **Source fails → no notification, guaranteed twice** — the write path returns first, and the foreign key cannot reference a row that does not exist.
+- **Source succeeds, notification write fails → the source stands and the notification may be missing.** Under-delivery, not a false claim.
+
+Activity's sharp case — a `rated` event outliving a cleared rating — has no analogue here, because deletion is the database's job rather than a second write's.
+
+#### Notification delivery is best-effort, and the source action is authoritative
+
+**[DECIDED 2026-09-03, after the section above.]** A follow or a review like is the thing the user asked for. **A notification is secondary delivery on top of it**, so a notification failure must never turn a succeeded source action into an error the caller reports.
+
+- **Source succeeds, notification write fails → the source still succeeds from the caller's perspective.** The failure is caught at the integration boundary, not propagated out of `followUser` or `likeReview`.
+- **It is not silently discarded.** The error is logged server-side with enough context to diagnose it — the notification type, the source row id, and the error itself.
+- **Source fails → no notification is attempted.** Unchanged.
+
+**This deliberately diverges from Activity**, whose write pair propagates. The reason is the asymmetry §16.3 already records: an Activity failure can leave a _claim that has stopped being true_, while a missing notification is only under-delivery. Divergence is the point, not an inconsistency to reconcile later.
+
+> **Do not let this read as guaranteed delivery.** The contract is **best-effort secondary delivery after a successful source mutation**. Nothing here weakens a constraint, a policy or a grant to achieve it — the failure is caught above the database, never designed around it.
+
+**Logging note, recorded because it sets a small precedent.** `src/` currently contains no `console.*` calls at all; the only logging in the repository is in `scripts/*.mjs`, and `albums/[mbid]/page.tsx`'s `after()` catch swallows with a comment and no log. This uses `console.error` — the minimal mechanism the platform already captures — rather than introducing logging infrastructure for one call site.
+
+#### Mobile navigation carries the unread indicator on **You**, not a fifth tab
+
+**[DECIDED 2026-09-03, after the section above.]** `MobileTabBar` keeps its four tabs — Browse, Search, Feed, You. **The unread indicator attaches to the existing "You" tab**, and notifications are reached on mobile through the user's personal surface.
+
+Notifications remain a **desktop and global navigation destination** with their own link and count. The mobile treatment is the minimal badge required to expose unread state; **the tab bar is not otherwise redesigned**, and adding a fifth tab — which would narrow every tab and alter a component the design foundation locked — is rejected.
+
+#### `[OPEN]` — resolved at implementation review, recorded for the trail
+
+The four questions this section originally deferred were resolved during STEP D, against the code rather than by guess. **The mark-read dispatch** is a real link to a route that marks read and then redirects, with the write awaited inside `try`/`catch` so navigation proceeds regardless — and `prefetch` disabled, since a prefetched item would otherwise be marked read on hover. **The payload embed** works directly: every hop from notification to album is a single foreign key, so the two-FK trap does not apply — but the subject embeds must not use `!inner`, or every notification of the other type is silently filtered out. **Badge presentation** is a capped numeric count, and **empty-state copy** follows the feed's existing tone; both are implementation-level.
+
+#### The pagination cursor is canonicalized before it reaches the filter
+
+**[DECIDED 2026-09-03, after a defect found at implementation verification. NOT BUILT.]**
+
+**The defect.** `cursorFrom` validated its timestamp with `Date.parse`, which accepts strings PostgREST cannot parse — `"2020-01-01,"` among them. The value was then interpolated into the `.or()` keyset filter, where a comma is **grammar rather than data**, producing `PGRST100 "failed to parse logic tree"`. `listNotifications` threw and `/notifications` returned **500** for a hand-edited URL, contradicting the documented rule that a malformed cursor falls back to the first page.
+
+**Not a security hole, and it should not be described as one.** Row-level security is enforced by Postgres independently of the filter text, so no row belonging to anyone else was reachable. This is PostgREST grammar breakage, not SQL injection.
+
+**Why the feed never had it.** `listFeed` passes its cursor as **named RPC parameters**, which never enter a filter grammar. The identical validation is harmless there and unsafe here, and copying it without noticing the different consumer is the actual mistake.
+
+**Why the fix is not "bind the values".** `.or()` is the only disjunction the query builder offers, and it takes grammar as a string; `(a < x) OR (a = x AND b < y)` cannot be expressed by `.lt()`, `.eq()`, `.not()` or `.filter()` in any combination. Percent-encoding does not help either — the transport encodes both positions identically, and PostgREST decodes the `or=(…)` payload back into grammar before parsing it. **The only construct in this stack that genuinely binds a cursor value is an RPC**, which is disproportionate database infrastructure for one list.
+
+**The decision: strict validation, then canonicalization, and only canonical values reach the filter.** Both cursor halves are validated and then **re-emitted from the validated representation** rather than passed through as user text. The admitted alphabet contains no `,`, `(`, `)` or `"`, so arbitrary text cannot become grammar.
+
+> **This is a correctness and security boundary, not formatting.** And it is **not equivalent to a bound SQL parameter** — the safety property is narrower and worth stating exactly: only machine-checked values over a closed alphabet enter the PostgREST grammar. Anything failing validation never reaches the database at all; it falls back to page one.
+
+**The timestamp is canonicalized by validated re-emission, not by a `Date` round trip. [AMENDED before implementation, and the amendment is compelled by measurement.]** The decision as first written specified `new Date(parsed).toISOString()`. That was checked against the real stack before building anything and **must not be used**:
+
+|                                        |                                                       |
+| -------------------------------------- | ----------------------------------------------------- |
+| Postgres stores, and PostgREST returns | **microseconds** — `2026-09-03T08:40:31.106813+00:00` |
+| `new Date(…).toISOString()` emits      | **milliseconds** — `2026-09-03T08:40:31.106Z`         |
+
+The cursor would land **813µs earlier than the boundary row**, so rows older than that row but inside the same millisecond fall outside both branches of the predicate — **silently skipped, never shown on either page.** It would also make the tie-break branch effectively dead, since a real row rarely ends in exactly `.xxx000`. That is the same silent-skipping failure the over-fetching alternative was rejected for, reintroduced through the canonicalizer.
+
+**Re-emitting the regex-matched text instead preserves the microseconds exactly while keeping the alphabet closed** — the identical technique the UUID half already uses.
+
+**The validator must accept every cursor this implementation emits**, and PostgREST's rendering is more variable than it looks: trailing zeros are trimmed, so the fractional part carries **anywhere from zero to six digits** — `.106813`, `.10681`, `.5`, `.1`, or no fractional part at all for a whole second. A regex tighter than that would reject legitimate cursors and silently strand readers on page one.
+
+**Unchanged by this amendment:** the keyset semantics remain exactly `created_at < before OR (created_at = before AND id < before_id)`, ordered `created_at desc, id desc`; the cursor format and page size are untouched; and no RPC, function, view, migration or schema change is introduced.
+
 ---
 
 ## 17. Scalability — what breaks first, and when

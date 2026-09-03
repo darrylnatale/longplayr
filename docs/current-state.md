@@ -2696,6 +2696,92 @@ It now takes an optional admin client, defaulting to `createAdminClient()`, foll
 
 ---
 
+## 44. Notifications — Phase 3 slice 5: investigated and decided, **nothing implemented**
+
+> **⚠️ Written at STEP C, before any code exists.** No table, no migration, no service, no route, no component, no test. **No staging write has occurred.** The authoritative decisions are `architecture.md` §16.3, marked **NOT BUILT**; this section records where the cycle stands and what STEP A found.
+
+**This is the last named feature in Phase 3.** Follows, Activity writes, the following feed and review likes are all built and CI-verified. Until this lands, **a follow and a like on a review are visible to nobody but the person who performed them** — `product-spec.md` §6 is explicit that the notifications surface is the only thing that makes a like legible to its recipient at all.
+
+### Dependencies — already satisfied, and deliberately so
+
+Three enablers were built by earlier slices _for this one_, which is why it needs no change to `follows` or `review_likes`:
+
+| Enabler                                  | Where                                                                                                    | Why                                              |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `follows.id` surrogate primary key       | `create_follows.sql` — _"Surrogate key so notifications.follow_id can reference one column and cascade"_ | The FK target exists                             |
+| `review_likes.id` surrogate primary key  | `create_review_likes.sql`, same stated reason                                                            | The FK target exists                             |
+| **`notifications` is a reserved handle** | `handle.ts:41`, pinned by `handle.test.ts:75`                                                            | `/notifications` cannot collide with `/[handle]` |
+
+Both source tables are **deployed to staging** as of §42, so the slice can eventually be validated against real schema rather than fixtures alone.
+
+### What STEP A established
+
+**Nothing exists.** Every occurrence of "notification" in the repository is a comment explaining why something _else_ was shaped for it, or a reserved-word entry.
+
+**The idempotent source writes are the finding that shaped the design.** `followUser` and `likeReview` both return the **pre-existing row** on a unique violation and **cannot distinguish "created" from "already existed"**. A naive create-after-success would emit a second notification on any double-submit or retry.
+
+**`likeReview` already reads the review's author** for its self-like check, so the recipient is available at the write point **without an extra query**.
+
+**`unlikeReview`'s own comment already specifies the intended lifecycle** — _"a notification hanging off a like cascades away when the like goes, and a re-like is a new event"_ — so the undo semantics were pre-decided in code rather than invented here.
+
+**The feed's function rationale does not transfer.** §16.1 chose a Postgres function because PostgREST cannot express a subquery in a filter; a notification query has no subquery.
+
+**Notifications would be the first genuinely private table.** `follows`, `activity` and `review_likes` are all public-read with `qual = true`.
+
+**`architecture.md` had no notification content at all** before this cycle, though it owns technical decisions and gave the feed a full §16.1. §16.3 closes that gap.
+
+### The approved boundary
+
+**IN:** two types, `followed` and `review_liked` · per-item read state · computed unread count through `countRows` · direct table query under recipient-scoped RLS · unique `follow_id` and `review_like_id` · keyset pagination · `/notifications` and a signed-in navigation count · the cascade lifecycle.
+
+**OUT:** `list_liked` until Lists exists · mark-all-read · denormalised counters · a Postgres function or view · email, push and per-type preferences · any Activity change · fixing Activity's atomicity `[OPEN]` · `development-plan.md`'s stale Phase 3 status, which is real but is housekeeping outside this cycle.
+
+### The four questions STEP D had to answer — **all four resolved 2026-09-03**
+
+Recorded here as written, with their resolutions, because the trail is the useful part:
+
+1. ~~**The mark-read dispatch mechanism.**~~ **A real `<Link>` to a route that marks read and then redirects**, with the write awaited inside `try`/`catch` so navigation proceeds whether or not it succeeds. Every mutation in this codebase is a form-submitted server action and no fire-and-forget client fetch exists, so inventing one was out. **`prefetch` is disabled** — a prefetched item would be marked read on hover.
+2. ~~**The `review_liked` payload join shape.**~~ **Direct query works.** Every hop from notification to album is a single foreign key, so the two-FK trap does not apply, and `getAlbumReviews` already runs a three-level embed. **§16.3's escalation clause was not triggered.** One trap found: the subject embeds must not use `!inner`, or every notification of the other type is silently filtered out.
+3. ~~**Badge presentation.**~~ A **capped numeric count** on the existing accent token. Implementation-level.
+4. ~~**Empty-state copy.**~~ Follows the feed's existing tone. Implementation-level.
+
+### Two decisions that arose after STEP C, and are now settled
+
+**N1 — mobile navigation. [DECIDED 2026-09-03]** `MobileTabBar` keeps four tabs; **the unread indicator attaches to the existing "You" tab** and mobile reaches notifications through the personal surface. A fifth tab would narrow every tab and alter a component the design foundation locked. Notifications remain a desktop and global navigation destination.
+
+**N2 — notification write failure. [DECIDED 2026-09-03]** **The source action is authoritative.** A follow or like that succeeds stays successful for the caller even if the notification write fails; the failure is caught at the integration boundary and **logged with the notification type, the source id and the error** rather than discarded. Source failure still attempts no notification. **This diverges from Activity deliberately**, on the asymmetry §16.3 records — a stale Activity row is a claim that has stopped being true, a missing notification is only under-delivery. **The contract is best-effort secondary delivery, and must not be described as guaranteed.** Nothing is weakened in the schema or RLS to achieve it.
+
+Both are recorded authoritatively in `architecture.md` §16.3.
+
+### Two contradictions found and deliberately not resolved here
+
+- **`development-plan.md`'s Phase 3 status is stale and wrong.** It reads _"slices 1, 2 and 3 are built; slice 4 is decided and unbuilt"_ and lists **the feed and review likes as "still absent from this phase"**, when both shipped and are CI-verified. **The plan outranks this file**, so a reader following the authority order would conclude the feed does not exist. Housekeeping, and outside this cycle's boundary.
+- **`product-spec.md` §5 and §6 describe v1 notifications as including "likes on your lists"** — a type Phase 3 cannot deliver. The spec describes the finished feature; §16.3 records the phase boundary without amending it.
+
+### The pagination cursor defect, found at verification and not yet fixed
+
+**The slice was built and reached STEP F, where the verification gate found a real defect and returned BLOCKED.** It is recorded here because the cycle went back to STEP B rather than forward.
+
+**What it is.** `cursorFrom` validated its timestamp with `Date.parse`, which accepts `"2020-01-01,"`. That value was interpolated into the `.or()` keyset filter, where a comma is **grammar rather than data**, so PostgREST answered `PGRST100 "failed to parse logic tree"`, `listNotifications` threw, and `/notifications` returned **500** — contradicting the documented rule that a malformed cursor falls back to page one. Reproduced against the live database, not reasoned about.
+
+**Not a privacy or security failure**, and it must not be written up as one: RLS is enforced independently of the filter text, and this is PostgREST grammar breakage rather than SQL injection. Reachable only from a hand-edited URL; no link the application emits produces it.
+
+**No test caught it** — none supplied a malformed-but-parseable cursor.
+
+**The decision, taken 2026-09-03:** keep the `.or()` query, tighten validation, and let **only canonical machine-checked values** reach the filter. `architecture.md` §16.3 holds the reasoning, including why binding the values is not available — `.or()` is the only disjunction the query builder offers, and the only construct that genuinely binds a cursor here is an RPC, which was judged disproportionate for one list.
+
+> **One amendment was compelled by measurement before any code was written.** The decision first specified canonicalizing the timestamp with `new Date(parsed).toISOString()`. Measured against the real stack, **Postgres and PostgREST carry microseconds while `toISOString()` emits milliseconds**, so the cursor would land up to 999µs early and rows inside that window would be **silently skipped from both pages** — the same failure the over-fetching option was rejected for. The timestamp is therefore canonicalized by **re-emitting the regex-matched text**, which keeps the microseconds and the closed alphabet. Recorded because the check was the point: the instruction to verify precision only mattered if a negative answer changed the design, and it did.
+
+**Also measured, and it constrains the validator:** PostgREST trims trailing zeros, so a legitimate cursor's fractional part carries **zero to six digits** — `.106813`, `.10681`, `.5`, `.1`, or none. A tighter pattern would reject valid cursors and strand readers on page one.
+
+### Status
+
+**Built, verified, and returned to STEP B by its own verification gate. Not fixed, not committed, not pushed. No migration exists and no staging write has occurred.**
+
+The implementation from STEP E is present in the working tree and passes everything except the defect above: **308 unit, 553 integration, 1 seed** all green, and the end-to-end failures observed were the documented load-sensitivity, confirmed by an isolated control run of 13/13.
+
+---
+
 ## 27. Where to start next — **SUPERSEDED; see §29 and §31**
 
 > **Left as written, and stale in two specific ways.** §29 already records that steps 1 to 3 below are done. **§31 additionally retires the first of the two operational prerequisites**: the job queue was drained on 2026-08-25 and is no longer a blocker on anything. The **§8.10 search-precision** prerequisite still stands, as do all three standing prohibitions.

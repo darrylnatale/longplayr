@@ -433,6 +433,68 @@ export type Database = {
         }
         Relationships: []
       }
+      notifications: {
+        Row: {
+          actor_id: string
+          created_at: string
+          follow_id: string | null
+          id: string
+          read_at: string | null
+          recipient_id: string
+          review_like_id: string | null
+          type: Database["public"]["Enums"]["notification_type"]
+        }
+        Insert: {
+          actor_id: string
+          created_at?: string
+          follow_id?: string | null
+          id?: string
+          read_at?: string | null
+          recipient_id: string
+          review_like_id?: string | null
+          type: Database["public"]["Enums"]["notification_type"]
+        }
+        Update: {
+          actor_id?: string
+          created_at?: string
+          follow_id?: string | null
+          id?: string
+          read_at?: string | null
+          recipient_id?: string
+          review_like_id?: string | null
+          type?: Database["public"]["Enums"]["notification_type"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_follow_id_fkey"
+            columns: ["follow_id"]
+            isOneToOne: true
+            referencedRelation: "follows"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_recipient_id_fkey"
+            columns: ["recipient_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_review_like_id_fkey"
+            columns: ["review_like_id"]
+            isOneToOne: true
+            referencedRelation: "review_likes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -853,6 +915,7 @@ export type Database = {
         | "fetch_tracklist"
         | "discover_curated_artist"
       job_status: "pending" | "running" | "succeeded" | "failed"
+      notification_type: "followed" | "review_liked"
       tracklist_status: "pending" | "found" | "absent" | "failed"
       user_status: "active" | "suspended" | "banned"
     }
@@ -1011,6 +1074,7 @@ export const Constants = {
         "discover_curated_artist",
       ],
       job_status: ["pending", "running", "succeeded", "failed"],
+      notification_type: ["followed", "review_liked"],
       tracklist_status: ["pending", "found", "absent", "failed"],
       user_status: ["active", "suspended", "banned"],
     },

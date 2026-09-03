@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import type { Database } from '@/lib/supabase/database.types';
 
 import { getCurrentProfile } from '../profiles';
+import { recordReviewLiked } from './notifications';
 import { err, ok, type Result } from '../result';
 
 /**
@@ -16,9 +17,14 @@ import { err, ok, type Result } from '../result';
  * **No Activity row is written here, and none ever should be.** Likes generate
  * no feed events by decision (`product-spec.md` §4, `data-model.md` §5): they
  * would dominate by volume and crowd out reviews. They generate a
- * **notification** instead — **which does not exist yet.** Notifications are the
- * next slice, and until they land a like is visible to nobody but the person
- * who gave it. That is the expected intermediate state, not a gap.
+ * **notification** instead, which is the only way a like becomes visible to its
+ * recipient at all. **[UPDATED 2026-09-03]** That notification now exists; this
+ * comment previously said it did not.
+ *
+ * **The notification is best-effort and the like is authoritative.** A
+ * notification failure is caught and logged rather than turning a like that
+ * happened into an error — `architecture.md` §16.3, and deliberately unlike
+ * Activity, which lets its write propagate.
  *
  * **Two guarantees of different strength, and they must not be conflated.**
  * *One like per user per review* is enforced by the database, by
@@ -103,7 +109,14 @@ export async function likeReview(reviewId: string): Promise<Result<ReviewLike, R
         .eq('user_id', profile.id)
         .eq('review_id', reviewId)
         .single();
-      if (existing) return ok(existing);
+      if (existing) {
+        // The repeat path notifies too, discarded by the unique constraint on
+        // `notifications.review_like_id`. Skipping it would lose the
+        // notification whenever a first attempt created the like but failed
+        // before notifying.
+        if (author) await notify(author, profile.id, existing.id);
+        return ok(existing);
+      }
     }
     if (error.code === FOREIGN_KEY_VIOLATION || error.code === INSUFFICIENT_PRIVILEGE) {
       return err('not_found', 'That review is not available.');
@@ -111,7 +124,30 @@ export async function likeReview(reviewId: string): Promise<Result<ReviewLike, R
     throw error;
   }
 
+  // `author` is already in scope from the self-like check above, so the
+  // recipient costs no extra query. A self-like returned before reaching here,
+  // which is why a user never receives a notification for their own review.
+  if (author) await notify(author, profile.id, data.id);
   return ok(data);
+}
+
+/**
+ * Attempts the like notification without letting it fail the like.
+ *
+ * **The like is the thing the user asked for; the notification is secondary
+ * delivery on top of it** (`architecture.md` §16.3). Identical reasoning and
+ * identical shape to the follow path, and deliberately unlike Activity, which
+ * lets its write propagate because a stale activity row makes a false claim
+ * where a missing notification only under-delivers.
+ *
+ * The contract is best-effort delivery. It is not guaranteed.
+ */
+async function notify(recipientId: string, actorId: string, reviewLikeId: string): Promise<void> {
+  try {
+    await recordReviewLiked(recipientId, actorId, reviewLikeId);
+  } catch (error) {
+    console.error('notification failed: review_liked', { reviewLikeId, error });
+  }
 }
 
 /**

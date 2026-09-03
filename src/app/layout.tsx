@@ -4,7 +4,9 @@ import Link from 'next/link';
 
 import { Container } from '@/components/Container';
 import { MobileTabBar } from '@/components/MobileTabBar';
+import { unreadBadgeLabel } from '@/components/NotificationItem';
 import { getCurrentProfile, getCurrentUser } from '@/services/profiles';
+import { unreadNotificationCount } from '@/services/social/notifications';
 
 import { signOut } from './(auth)/actions';
 import './globals.css';
@@ -49,7 +51,8 @@ function youDestination(signedIn: boolean, handle: string | null): string {
  * design tokens. Hidden below 768px, where MobileTabBar takes over rather than
  * duplicating these links in a cramped row.
  */
-async function SiteHeader() {
+async function SiteHeader({ unread }: { unread: number }) {
+  const badge = unreadBadgeLabel(unread);
   const user = await getCurrentUser();
   const profile = user ? await getCurrentProfile() : null;
 
@@ -86,6 +89,26 @@ async function SiteHeader() {
                 className="text-sm text-text-muted transition-colors hover:text-text"
               >
                 Feed
+              </Link>
+              {/*
+               * Present whether or not anyone is signed in, for the same reason
+               * Feed is: a nav item that appears on sign-in changes the shape of
+               * the bar underneath the user. The count is the part that is
+               * signed-in only, because a count of nobody's unread is nothing.
+               */}
+              <Link
+                href="/notifications"
+                className="flex items-center gap-1.5 text-sm text-text-muted transition-colors hover:text-text"
+              >
+                Notifications
+                {badge && (
+                  <span
+                    className="tabular rounded-sm bg-accent px-1.5 py-0.5 text-[0.6875rem] font-medium leading-none text-accent-contrast"
+                    aria-label={`${unread} unread`}
+                  >
+                    {badge}
+                  </span>
+                )}
               </Link>
             </div>
           </div>
@@ -142,13 +165,20 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
   const profile = user ? await getCurrentProfile() : null;
   const youHref = youDestination(Boolean(user), profile?.handle ?? null);
 
+  // **Resolved once and handed to both navigations**, so the header badge and
+  // the mobile tab indicator cannot disagree and the count is not queried twice
+  // per render. **Signed-out visitors run no notification query at all** — the
+  // guard is here rather than inside the service, so the query never happens
+  // rather than happening and returning zero.
+  const unread = profile ? await unreadNotificationCount() : 0;
+
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} ${newsreader.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col font-sans">
-        <SiteHeader />
+        <SiteHeader unread={unread} />
         {/*
          * Width is no longer imposed here. Each page declares its own through
          * Container — reading surfaces at 1120px, grid surfaces at
@@ -158,7 +188,7 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
          * The bottom padding clears the mobile tab bar, which is fixed.
          */}
         <main className="flex-1 pb-24 pt-8 md:pb-16">{children}</main>
-        <MobileTabBar youHref={youHref} />
+        <MobileTabBar youHref={youHref} unread={unread} />
       </body>
     </html>
   );
