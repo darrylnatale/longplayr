@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+
+import { countRows, COUNT_ONLY } from '../count';
 import type { Database } from '@/lib/supabase/database.types';
 
 import { CoverArtUnavailableError, fetchAndStoreArtwork } from './artwork';
@@ -697,12 +699,11 @@ export async function queueDepth(admin: Admin = createAdminClient()) {
 
   const counts = await Promise.all(
     statuses.map(async (status) => {
-      const { count, error } = await admin
-        .from('ingestion_jobs')
-        .select('id', { count: 'exact', head: true })
-        .eq('status', status);
-      if (error) throw error;
-      return [status, count ?? 0] as const;
+      const count = await countRows(
+        admin.from('ingestion_jobs').select('id', COUNT_ONLY).eq('status', status),
+        'ingestion_jobs.by_status',
+      );
+      return [status, count] as const;
     }),
   );
 

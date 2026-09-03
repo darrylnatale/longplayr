@@ -858,6 +858,29 @@ Together those make "past the end" **unavailable as a permanent route fact**, so
 
 **Who keeps such markers current across cycles is unresolved**, and this correction does not settle it. STEP C records decisions before implementation and correctly marks them unbuilt; nothing in the cycle flips them afterwards. That is a process question for `CLAUDE.md`, raised here rather than answered.
 
+### 16.2 The counting contract — what a count may and may not mean
+
+**[DECIDED 2026-09-03. Built 2026-09-03]** Counts are load-bearing here because of the bullets above: follower and following counts, averages and collection totals are all **computed on read** rather than stored, so a count is not a cached convenience that can be stale — it is the answer.
+
+**The contract, in four lines:**
+
+| State                                      | Meaning                                                                                                                    |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `count === 0`, no error                    | **A legitimate empty result.** Nobody follows you, nobody has collected this album, the queue is drained                   |
+| `count === n`, no error                    | The answer                                                                                                                 |
+| **`count === null` with `error === null`** | **Not a legitimate successful state.** An infrastructure or query failure, and it must never be silently converted to zero |
+| `error` set                                | A real failure, and it stays a failure                                                                                     |
+
+**Why this needs stating at all, rather than being obvious.** A `head: true` count is issued as an HTTP `HEAD` request, and a HEAD response carries no body. The Supabase client rewrites a **404 with an empty body** into a success-shaped result — status `204`, `error` left null, `count` null — so the idiomatic `count ?? 0` reports a **confident zero** for a relation the database could not resolve. A missing, renamed or **not-yet-cached** relation therefore reads as "none", and the caller cannot tell it apart from an honest empty result. This was not reasoned about: it was reproduced against a real database, and observed in production on a profile page that reported "0 followers" while the relation was absent.
+
+**The invariant is centralised in one shared counting boundary in `src/services/`, not repeated at each call site.** Two reasons, and the second is the load-bearing one: the invariant is uniform, so per-site checks would duplicate the same four lines with no gain; and **a boundary protects counts that do not exist yet**, where a convention protects only the ones someone remembered. The boundary is responsible for rejecting the null/null state, for preserving a legitimate zero unchanged, for letting real errors stay errors, and for **useful diagnostics** — a non-404 HEAD failure otherwise raises an error whose message is the empty string, which is thrown but untraceable.
+
+**Every service-layer `head: true` count must go through that boundary**, enforced by lint rather than by reviewer memory, and scoped to `src/services/**` with the boundary itself exempt. **Test-suite counts are deliberately outside it** — they assert against a schema they control, and a silent zero there fails the test rather than misinforming a reader.
+
+**The boundary's exact API is deliberately not specified here.** That is an implementation decision, and fixing a signature in the architecture document before the code exists would be recording a guess as a constraint.
+
+**One class of count is explicitly outside this contract as written:** a count returned alongside rows from an ordinary range query, where an error check already precedes any use of the count. Those do not exhibit the HEAD-specific failure and are excluded deliberately, not overlooked. If the same failure mode is ever demonstrated there, this line is what should be revisited.
+
 ---
 
 ## 17. Scalability — what breaks first, and when

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 
 import type { AlbumSummary } from '../catalogue/queries';
+import { countRows, COUNT_ONLY } from '../count';
 
 /**
  * Discovery.
@@ -51,12 +52,9 @@ export async function getCatalogueSize(): Promise<{ albums: number; artists: num
   const supabase = await createClient();
 
   const [albums, artists] = await Promise.all([
-    supabase.from('albums').select('id', { count: 'exact', head: true }),
-    supabase.from('artists').select('id', { count: 'exact', head: true }),
+    countRows(supabase.from('albums').select('id', COUNT_ONLY), 'albums.catalogue_size'),
+    countRows(supabase.from('artists').select('id', COUNT_ONLY), 'artists.catalogue_size'),
   ]);
 
-  if (albums.error) throw albums.error;
-  if (artists.error) throw artists.error;
-
-  return { albums: albums.count ?? 0, artists: artists.count ?? 0 };
+  return { albums, artists };
 }

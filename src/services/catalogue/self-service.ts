@@ -1,4 +1,9 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
+
 import { createAdminClient } from '@/lib/supabase/admin';
+import type { Database } from '@/lib/supabase/database.types';
+
+import { countRows, COUNT_ONLY } from '../count';
 
 import { err, ok, type Result } from '../result';
 import { getCurrentProfile, getCurrentUser } from '../profiles';
@@ -16,6 +21,17 @@ import { classify } from './scope';
  * for a human to exercise. The real risks are out-of-scope records and bulk
  * junk, which a scope filter and a rate limit handle better than a queue.
  */
+
+/**
+ * A service-role client.
+ *
+ * Injectable on `remainingAllowance` for one reason only: the fail-open this
+ * module used to have is unreachable in a test unless the count can be made to
+ * fail, and the alternative was mutating a schema. Same shape and same default
+ * as `jobs.ts`, which established the pattern. **Not a dependency-injection
+ * convention** — nothing else here takes a client.
+ */
+type Admin = SupabaseClient<Database>;
 
 export const RATE_LIMIT_PER_HOUR = 30;
 export const RATE_LIMIT_PER_DAY = 100;
@@ -89,20 +105,28 @@ export async function searchUpstream(query: string, limit = 10): Promise<Upstrea
 }
 
 /** Remaining additions allowed for a user in each window. */
-export async function remainingAllowance(userId: string): Promise<{ hour: number; day: number }> {
-  const admin = createAdminClient();
+export async function remainingAllowance(
+  userId: string,
+  admin: Admin = createAdminClient(),
+): Promise<{ hour: number; day: number }> {
   const now = Date.now();
 
   const [hour, day] = await Promise.all(
-    [3_600_000, 86_400_000].map(async (windowMs) => {
-      const { count, error } = await admin
-        .from('catalogue_additions')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', userId)
-        .gte('created_at', new Date(now - windowMs).toISOString());
-      if (error) throw error;
-      return count ?? 0;
-    }),
+    (
+      [
+        [3_600_000, 'catalogue_additions.hour_window'],
+        [86_400_000, 'catalogue_additions.day_window'],
+      ] as const
+    ).map(([windowMs, label]) =>
+      countRows(
+        admin
+          .from('catalogue_additions')
+          .select('id', COUNT_ONLY)
+          .eq('user_id', userId)
+          .gte('created_at', new Date(now - windowMs).toISOString()),
+        label,
+      ),
+    ),
   );
 
   return {

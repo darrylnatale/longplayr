@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import type { Database } from '@/lib/supabase/database.types';
 
+import { countRows, COUNT_ONLY } from '../count';
 import { getCurrentProfile } from '../profiles';
 import { err, ok, type Result } from '../result';
 
@@ -208,28 +209,25 @@ export async function getFollowCounts(
   const supabase = await createClient();
 
   const [followers, following] = await Promise.all([
-    supabase
-      .from('follows')
-      .select('id, person:profiles!follows_follower_id_fkey!inner(status)', {
-        count: 'exact',
-        head: true,
-      })
-      .eq('followee_id', userId)
-      .eq('person.status', 'active'),
-    supabase
-      .from('follows')
-      .select('id, person:profiles!follows_followee_id_fkey!inner(status)', {
-        count: 'exact',
-        head: true,
-      })
-      .eq('follower_id', userId)
-      .eq('person.status', 'active'),
+    countRows(
+      supabase
+        .from('follows')
+        .select('id, person:profiles!follows_follower_id_fkey!inner(status)', COUNT_ONLY)
+        .eq('followee_id', userId)
+        .eq('person.status', 'active'),
+      'follows.followers',
+    ),
+    countRows(
+      supabase
+        .from('follows')
+        .select('id, person:profiles!follows_followee_id_fkey!inner(status)', COUNT_ONLY)
+        .eq('follower_id', userId)
+        .eq('person.status', 'active'),
+      'follows.following',
+    ),
   ]);
 
-  if (followers.error) throw followers.error;
-  if (following.error) throw following.error;
-
-  return { followers: followers.count ?? 0, following: following.count ?? 0 };
+  return { followers, following };
 }
 
 /**
@@ -259,14 +257,16 @@ async function listRelationship(
   // be told so. The count does not come back on that response, so this is the
   // one case that costs a second round trip.
   if (error?.code === RANGE_NOT_SATISFIABLE) {
-    const { count: total, error: countError } = await supabase
-      .from('follows')
-      .select(embed, { count: 'exact', head: true })
-      .eq(column, value)
-      .eq('person.status', 'active');
+    const total = await countRows(
+      supabase
+        .from('follows')
+        .select(embed, COUNT_ONLY)
+        .eq(column, value)
+        .eq('person.status', 'active'),
+      'follows.relationship_total',
+    );
 
-    if (countError) throw countError;
-    return { items: [], total: total ?? 0 };
+    return { items: [], total };
   }
 
   if (error) throw error;

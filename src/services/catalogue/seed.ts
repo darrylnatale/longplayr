@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+
+import { countRows, COUNT_ONLY } from '../count';
 import type { Database } from '@/lib/supabase/database.types';
 import { ListenBrainzSource } from '../discovery/listenbrainz';
 import type { PopularityRange } from '../discovery/popularity';
@@ -364,10 +366,10 @@ export async function seedCatalogue(options: SeedOptions = {}): Promise<SeedRepo
   report.artwork = await artworkCoverage(admin);
 
   const [albums, artists] = await Promise.all([
-    admin.from('albums').select('id', { count: 'exact', head: true }),
-    admin.from('artists').select('id', { count: 'exact', head: true }),
+    countRows(admin.from('albums').select('id', COUNT_ONLY), 'albums.seed_report_total'),
+    countRows(admin.from('artists').select('id', COUNT_ONLY), 'artists.seed_report_total'),
   ]);
-  report.catalogue = { albums: albums.count ?? 0, artists: artists.count ?? 0 };
+  report.catalogue = { albums, artists };
 
   report.durationSeconds = Math.round((Date.now() - startedAt) / 1000);
   return report;

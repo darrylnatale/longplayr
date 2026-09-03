@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+
+import { countRows, COUNT_ONLY } from '../count';
 import type { Database } from '@/lib/supabase/database.types';
 
 /**
@@ -185,14 +187,12 @@ export async function artworkCoverage(admin: Admin = createAdminClient()): Promi
   observedCoveragePercent: number;
 }> {
   const counts = await Promise.all(
-    (['found', 'absent', 'failed', 'pending'] as const).map(async (status) => {
-      const { count, error } = await admin
-        .from('albums')
-        .select('id', { count: 'exact', head: true })
-        .eq('artwork_status', status);
-      if (error) throw error;
-      return count ?? 0;
-    }),
+    (['found', 'absent', 'failed', 'pending'] as const).map((status) =>
+      countRows(
+        admin.from('albums').select('id', COUNT_ONLY).eq('artwork_status', status),
+        'albums.by_artwork_status',
+      ),
+    ),
   );
 
   const [found, absent, failed, pending] = counts;

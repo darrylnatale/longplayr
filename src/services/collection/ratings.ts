@@ -1,5 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 
+import { countRows, COUNT_ONLY } from '../count';
+
 /**
  * Album averages, computed at read time.
  *
@@ -65,11 +67,8 @@ export async function getAlbumRating(albumId: string): Promise<RatingSummary> {
  */
 export async function getAlbumCollectorCount(albumId: string): Promise<number> {
   const supabase = await createClient();
-  const { count, error } = await supabase
-    .from('collection_entries')
-    .select('id', { count: 'exact', head: true })
-    .eq('album_id', albumId);
-
-  if (error) throw error;
-  return count ?? 0;
+  return countRows(
+    supabase.from('collection_entries').select('id', COUNT_ONLY).eq('album_id', albumId),
+    'collection_entries.collectors_by_album',
+  );
 }

@@ -1,5 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 
+import { countRows, COUNT_ONLY } from '../count';
+
 import { CURATED_ARTISTS, type CuratedArtist } from './curated-artists';
 import { withinCurrentDepth } from './depth-policy';
 import { classify } from './scope';
@@ -172,12 +174,13 @@ async function countExisting(admin: Admin, mbids: string[]): Promise<number> {
   // `in` clause is close enough to a URL limit to be worth not discovering in
   // production.
   for (let i = 0; i < mbids.length; i += 100) {
-    const { count, error } = await admin
-      .from('albums')
-      .select('mbid', { count: 'exact', head: true })
-      .in('mbid', mbids.slice(i, i + 100));
-    if (error) throw error;
-    found += count ?? 0;
+    found += await countRows(
+      admin
+        .from('albums')
+        .select('mbid', COUNT_ONLY)
+        .in('mbid', mbids.slice(i, i + 100)),
+      'albums.held_by_mbid_chunk',
+    );
   }
   return found;
 }

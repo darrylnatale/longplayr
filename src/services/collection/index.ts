@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import type { Database } from '@/lib/supabase/database.types';
 
+import { countRows, COUNT_ONLY } from '../count';
 import { getCurrentProfile } from '../profiles';
 import { err, ok, type Result } from '../result';
 import { recordListened, recordRated, removeRated } from '../social/activity';
@@ -297,13 +298,12 @@ export async function listCollection(
   // The count does not come back on that response, so this is the one case that
   // costs a second round trip. The happy path stays a single query.
   if (error?.code === RANGE_NOT_SATISFIABLE) {
-    const { count: total, error: countError } = await supabase
-      .from('collection_entries')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId);
+    const total = await countRows(
+      supabase.from('collection_entries').select('id', COUNT_ONLY).eq('user_id', userId),
+      'collection_entries.user_total',
+    );
 
-    if (countError) throw countError;
-    return { items: [], total: total ?? 0 };
+    return { items: [], total };
   }
 
   if (error) throw error;
