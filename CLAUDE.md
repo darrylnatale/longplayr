@@ -2,7 +2,7 @@
 
 A social music platform: users record the albums they've listened to, rate and review them, build lists, follow each other, and discover music through that activity.
 
-**Current state: Phase 2 complete to its definition of done. Phase 3 in progress — four slices are built, pushed and CI-verified: 1 Follows, 2 Activity writes, 3 the following feed, 4 review likes. The last CI-verified commit is `f95010b` (run #73). Notifications is the fifth and remaining slice and does not exist, so a follow, and a like on a review, is visible to nobody but the person who performed it.** See `docs/current-state.md` for exactly where things stand and what to do next. `docs/development-plan.md` defines what belongs to which phase — do not build ahead of the current phase without saying so.
+**Current state: Phase 2 complete to its definition of done. Phase 3 is feature-complete — all five slices are built, pushed and CI-verified: 1 Follows, 2 Activity writes, 3 the following feed, 4 review likes, 5 Notifications. The last CI-verified commit is `fffbc46` (run #78).** See `docs/current-state.md` for exactly where things stand and what to do next. `docs/development-plan.md` defines what belongs to which phase — do not build ahead of the current phase without saying so.
 
 ---
 
