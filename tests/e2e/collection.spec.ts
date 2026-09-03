@@ -287,6 +287,7 @@ test('the review editor works at phone width', async ({ page }) => {
   await expect(page).toHaveURL('/onboarding', NAV);
   await page.getByLabel('Handle').fill(user.handle);
   await page.getByRole('button', { name: 'Claim handle' }).click();
+  await expect(page).toHaveURL(`/${user.handle}`, NAV);
 
   await page.goto(`/albums/${ALBUM_MBID}`);
   await page.getByRole('button', { name: 'Write a review…' }).click();

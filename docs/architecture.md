@@ -581,9 +581,11 @@ A shared leading article inflates trigram overlap between otherwise unrelated st
 
 All three demonstrated collisions fall below the **existing** threshold; all three legitimate cases stay above it.
 
-#### Corpus-wide evidence — 883 queries, all 317 artists
+#### Corpus-wide evidence — 883 queries, generated across the 317-artist corpus
 
 Prefixes of length 6–9 from every artist name of ≥8 characters, at **unchanged `> 0.3`**:
+
+> **[CLARIFIED 2026-09-03 — wording only; no number below has changed.]** This heading read "**883 queries, all 317 artists**", which sits awkwardly against the rule stated directly beneath it: **only 243 of the 317 artists have names reaching 8 characters**, so 74 contributed no query. The sweep **scanned** the whole corpus; it **generated from** the eligible subset. **The two statements together do not pin a unique query set**, and a 2026-09-03 reconstruction applying the stated rule produced **943** queries rather than 883 — the deduplication that closes that gap was never recorded. The 883 figures remain the historical evidence exactly as measured; they are simply **not reproducible byte-for-byte**, and should not be treated as interchangeable with a later count.
 
 |                                  | Current             | Normalised          |
 | -------------------------------- | ------------------- | ------------------- |
@@ -599,6 +601,32 @@ Prefixes of length 6–9 from every artist name of ≥8 characters, at **unchang
 > **The product accepts a 5 percentage point reduction in legitimate partial-prefix album recall in exchange for materially reducing article-driven fuzzy-credit noise.**
 
 **Context that bears on how severe this defect actually is:** in every measured article-leading example the **intended result still ranked first** — `the warning` returns _The Warning_ at tier 1 with the noise strictly below it; `michael ` returns Michael Jackson at tier 3; `arctic m` returns Arctic Monkeys with no noise at all. **The defect being addressed is clutter beneath a correct top result, not an incorrect top result.** Accepting the status quo was a defensible alternative and is recorded as such.
+
+#### The deployed function, measured on the real corpus — **2026-09-03**
+
+**[MEASURED AND RULED 2026-09-03. The trade above is RETAINED.]**
+
+Everything above this heading was measured against **candidate SQL, before the deployed function existed**. This block is the first measurement of **what actually shipped**, run read-only against the real **707-album / 317-artist** staging corpus. **The two are separate measurements and must not be merged**: different SQL, different sets, and the historical one is not reproducible byte-for-byte (see the clarification above).
+
+On a reconstructed **943-query** set — prefix lengths 6–9 across the **243** eligible artists:
+
+|                                   |                       |
+| --------------------------------- | --------------------- |
+| Pre-change reconstructed baseline | **890 / 943 (94.4%)** |
+| Deployed function                 | **854 / 943 (90.6%)** |
+| **Change-caused misses**          | **36**                |
+| **Pre-existing misses**           | **53**                |
+| **Gained**                        | **0**                 |
+
+**All 36 change-caused misses are short partial prefixes of article-leading artist names, and the complete artist name always succeeds.** Recovery occurs at 7–9 characters — The Killers `the kil` (7), The Weeknd `the wee` (7), The Beach Boys `the beac` (8), The Rolling Stones `the rolli` (9), A Perfect Circle `a perfe` (7).
+
+**Every miss is predicate exclusion, not limit truncation.** All 89 were re-run at limit 100 and **none recovered**, so no relevant album is present-but-buried.
+
+**A separate 211-query curated set found no plausible false negatives** — full titles, article-stripped titles, single-word titles, character-dropped misspellings and one-album artists all pass, and the original `the warning` collision returns _The Warning_ in 2 rows.
+
+> **Ruling: the 36 misses are not material. The trade is retained, and no search implementation change was made** — no revert, no threshold change, no ranking change.
+
+**The ruling's scope is a condition, not a footnote.** It rests on the failure window being confined to short, deliberately submitted prefixes, and **search is submit-driven with no autocomplete** — verified in code, not assumed. **Building as-you-type search would fire these prefixes on the way to every longer query and requires revisiting this**, as would a substantially larger catalogue: this was judged on 707 albums and 317 artists.
 
 #### Why `> 0.5` was rejected — preserved so it is not re-proposed
 
