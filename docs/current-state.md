@@ -718,6 +718,30 @@ None of these reopen Phase 1.
 
 ---
 
+### The end-to-end failure mode is memory exhaustion — **[ESTABLISHED 2026-09-04]**
+
+**The cause of the long-running local end-to-end failures is now established, and it is not what the earlier entries supposed.** Measured on the maintainer's host: **free physical memory ≈0.01 GB**, **swap 11.5 GB of 12.3 GB consumed before any test ran**, top twenty processes totalling 2.2 GB against 8 GB installed. The suite then needs a Docker VM (3.8 GB allocated), a Next server and Chromium simultaneously.
+
+**Evidence, and what it eliminates:**
+
+| Finding                  | Measurement                                                                            |
+| ------------------------ | -------------------------------------------------------------------------------------- |
+| Failure signatures       | 38 timeouts, 4 `net::ERR_ABORTED`, 3 `session closed` — **never an assertion failure** |
+| Degradation within a run | Tests 1–20 **7.9s** → tests 81+ **24.5s**, monotonic                                   |
+| Same commit on CI        | **108/108 passed in 12.4m**, zero flaky, zero retries                                  |
+| Local first 40 tests     | Match CI's per-test average, then diverge                                              |
+| File descriptors         | 12,831 open against a 30,720 limit — **eliminated**                                    |
+| Database connections     | 17 of 100 — **eliminated**                                                             |
+| Test parallelism         | Already `workers: 1` — **never an available remedy**                                   |
+
+> **The `[OPEN]` load-sensitivity characterisation above and F-015's premise are superseded in their causal claim, and retained rather than deleted.** F-015 is titled _"the end-to-end suite tracks machine load, not randomness"_. The correlation with load average was real; **the causal attribution to CPU load was not**. Load average counts processes blocked on I/O, which is what swapping produces. A deliberate experiment removing external load left the failure rate at **28% against 30%**, while load climbed 4.4 → 16.5 with nothing external running. The original hypothesis was a reasonable reading of the six measurements then available.
+
+**`docs/product-feedback.md` is the maintainer's file and was not modified.** This section is the authoritative record of the outcome; marking F-015 in the inbox is the maintainer's to make.
+
+**Classification: environmental limitation, not a repository defect.** No application defect was established, and CI runs the same code successfully. The design record is `architecture.md` §12.
+
+---
+
 ### A local end-to-end failure mode worth knowing, found 2026-08-23
 
 **Aborted tests leave database residue, and the next run fails on it.** During the catalogue-curation cycle a `verify:full` run failed **12 end-to-end tests** under load. Those tests died mid-flight before their cleanup hooks ran, leaving **7 orphaned `auth.users`, 7 profiles, 7 collection entries and one rating** in the local database — where the suite normally returns `auth.users` to zero.
@@ -791,6 +815,8 @@ See `docs/product-spec.md` §8 and `docs/data-model.md` §9 for the authoritativ
   - **One pre-existing statement makes this sharper.** `data-model.md` §2 says _"'Various Artists' is a real MusicBrainz artist and **arrives as an ordinary row**. **[INFERRED]** It gets an artist page like any other."_ That was harmless under a bounded seed and is now the exact assumption that would produce the runaway. **It is deliberately untouched**, and by the repo's own convention `[INFERRED]` means "flagged for correction"
 - **Whether the curated starting set is a list of _artists_ or a list of _albums_. [OPEN — raised 2026-08-23]** Not cosmetic. The ListenBrainz seed is an **album** list and it produced 163 one-album artists, because artists entered incidentally. **A curated album list would reproduce that sparsity by the same mechanism**; a curated artist list composes naturally with depth. Cheap to decide deliberately, expensive to discover later. **Must not be inferred from the existing chart seed**
 - **Whether `refine_search_precision` actually improves search over the real corpus. [OPEN — raised 2026-09-03 (§42)]** §35 already recorded the boundary and it is unchanged: CI verified the implementation against a **clean fixture database** and **never established the 707-album corpus result**, because the migration had not reached staging. **§42 deployed it on 2026-09-03, and `search_albums` and `search_artists` were confirmed executable against the real 707-album corpus** — returning 3 and 1 rows for a probe query run solely to prove execution. That establishes **nothing whatever about result quality** — search evaluation was explicitly excluded from that cycle's acceptance criteria so that deployment could not be mistaken for a subjective quality review. Answering it needs representative queries run against the real corpus and human judgement of the output. **It is the one question CI structurally cannot answer**, and it was the strongest single candidate for the cycle that followed §42. It was deferred twice before being taken up. **[CLOSED 2026-09-03 — see §45.]** The evaluation ran against the deployed function on the real corpus and the maintainer ruled: **36 change-caused misses, 53 pre-existing, 0 gains** on a reconstructed 943-query set, every change-caused miss confined to a **short partial prefix of an article-leading artist name**, and the broader 211-query curated set producing **no plausible false negatives**. The misses were judged **non-material**, the trade stands, and **no search implementation change was made**. The bounded limitation is recorded in §45 and durably in `architecture.md` §10. **The ruling is scoped to the current 707-album / 317-artist corpus and to submit-driven search; as-you-type search or a substantially larger catalogue would require revisiting it**
+- **Whether a locally RED `verify:full` may satisfy the pre-commit requirement when CI passes the same SHA. [DEFERRED 2026-09-04 — deliberately not resolved]** Raised by the end-to-end investigation and **explicitly not decided**, for three reasons. It would amend a `CLAUDE.md` rule written after a specific incident, where `verify` was wrongly named as the compensating control and left `main` red for three commits. **Deciding it before the remediation is measured would be deciding blind** — a materially faster, less memory-hungry local suite may make the question moot. And it is a process decision that changes no code. **Revisit once the end-to-end remediation has been implemented and a full run measured.** `CLAUDE.md` is unchanged.
+- **Whether the end-to-end gate should run the production build rather than `npm run dev`. [OPEN 2026-09-04 — the 2026-08-28 rejection stands]** `architecture.md` §12 rejected this after measuring compilation latency; a later 41% dev-versus-production result **is confounded**, because the dev server was killed first and the comparison ran with ~2.4 GB more memory available. The **correctness** argument — Vercel serves the production build and the local gate never exercises it — is untouched by that confound and is separately unresolved. See `architecture.md` §12.
 - Report reason categories (Phase 6)
 - MBID merge handling, handle reuse after deletion
 - Genre and tag data

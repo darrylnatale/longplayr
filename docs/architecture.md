@@ -745,6 +745,74 @@ And the test that prompted the investigation, `collection-sort.spec.ts:391`, too
 
 **So the e2e server stays on `npm run dev` and no production-server mode was implemented.** Recorded because the change was proposed, looked plausible, and would have produced a green run or two while fixing nothing.
 
+#### Whether the end-to-end gate should run the production build — **[OPEN 2026-09-04. The rejection above stands.]**
+
+**The 2026-08-28 rejection above is not superseded, and this note does not supersede it.** It measured compilation latency on an idle machine — 388ms startup, ~3s of compilation paid once, 39–110ms warm per request — and concluded that a production server would save "perhaps 30–60ms per request against a 13-second gap". **That reasoning is unchallenged on its own terms.**
+
+**A later measurement appeared to contradict it and does not, because it is confounded.** On 2026-09-04 the same thirteen tests ran in **48.4s against `next dev` and 28.7s against `next start`**. But the two batches ran under **different memory conditions**: the dev server was killed before the production server started, and swap fell from 11,848 MB to 9,384 MB across the comparison. **The production batch therefore had roughly 2.4 GB more memory available**, and the result cannot be attributed to the server type.
+
+**A reconciliation exists but is not established.** The 2026-08-28 work measured _compilation latency_; the memory finding above concerns _resident footprint_ — the dev server held ~270 MB under load against ~108 MB for the production server. On a host with essentially no free memory, footprint could matter where latency does not. **Both records could be correct about different mechanisms. That is a hypothesis, and it has not been tested.**
+
+**Two separate questions are entangled here and should not be answered together.** Whether the production build is the _correct_ verification target is a **correctness** question — Vercel serves that artifact and the local gate does not currently exercise it. Whether it is _faster_ is a performance question, and it is the one the evidence cannot presently answer.
+
+**What would settle the performance half:** an A/B under identical memory conditions — start one server, measure, stop it, start the other, measure, with free memory and swap recorded at every point and the order reversed on a second pass. **That experiment has since been run — see below. The question remains `[OPEN]` regardless, because the experiment addresses only the performance half.**
+
+##### The controlled A/B, as run **[MEASURED 2026-09-04. Still not a decision.]**
+
+Conducted on the exhausted host described below in this section — free physical memory ≈0.01 GB, swap already ~9–11 GB consumed. Thirteen tests (`follows.spec.ts`, `search.spec.ts`), one build produced up front so build time was charged to neither arm, database reseeded identically between arms, free memory and swap recorded at every stage, and the order reversed on the second pass.
+
+| Pass | Order            | `next dev` | `next start` | Swap at arm start (dev / prod) |
+| ---- | ---------------- | ---------- | ------------ | ------------------------------ |
+| 1    | dev → production | **51.5s**  | **26.7s**    | 10,558M / 8,970M               |
+| 2    | production → dev | **44.4s**  | **29.8s**    | 9,219M / **8,928M**            |
+
+**Production was faster in both execution orders.** Arithmetic means: **48.0s dev against 28.2s production**, an observed mean difference of **≈41%**.
+
+> **That 41% is the observed mean of this experiment. It is not an established general performance magnitude, and must not be quoted as one.**
+
+**Swap growth during each arm, measured directly:**
+
+| Arm          | Pass 1    | Pass 2    |
+| ------------ | --------- | --------- |
+| `next dev`   | **+587M** | **+395M** |
+| `next start` | **+148M** | **+210M** |
+
+Aggregated, **≈+491M for dev against ≈+178M for production** — roughly 2.8×. The per-pass figures above are the measurements; the aggregate is derived from them.
+
+##### The residual confound, recorded because reversal did not remove it
+
+**Production began from the lower-swap state in _both_ passes** — 8,970M and 8,928M, against dev's 10,558M and 9,219M. Each run leaves swap higher than it found it, so **the arm running second inherited worse memory pressure**, and in pass 1 dev additionally started at the session's high-water mark. **Reversing the execution order therefore did not isolate order from memory state.**
+
+**What this does and does not license.** The **direction** of the result is supported: production won under both orders, and in pass 2 the starting gap was only **291M** yet production still won by 33%. The **magnitude is not established** — the 41% mean rests on comparisons where production consistently held the better memory position.
+
+**The swap-growth measurement is mechanistic rather than inferred from timing**, so it is not subject to the ordering confound and is independent evidence that the dev server's resident cost during a run is materially higher. **It does not eliminate the timing confound**, and it should not be read as doing so.
+
+##### What this changes, and what it does not
+
+**It does not overturn the 2026-08-28 rejection, and does not reopen it.** That work measured **compilation latency on an idle machine** — 388ms startup, ~3s paid once, 30–60ms per warm request — and its reasoning is unaffected. This experiment measures **memory footprint and host-pressure behaviour on an exhausted machine**. **Both observations can be valid simultaneously**, which is the reconciliation this section previously offered as a hypothesis and which now has supporting evidence.
+
+**The correctness question is untouched by all of it.** Whether the deployed artifact ought to be the verification target is an architectural argument that timing cannot settle. **No production-build change has been approved, none has been made, and the target remains `[OPEN]`.**
+
+#### The end-to-end suite is memory-sensitive, and that is the supported explanation **[DECIDED 2026-09-04]**
+
+**The local suite fails under memory pressure, not under CPU load.** Measured on the maintainer's host while the suite was failing: **free physical memory ≈0.01 GB**, swap **11.5 GB of 12.3 GB consumed before any test ran**, with the top twenty processes totalling only 2.2 GB against 8 GB installed. Concurrently the suite requires a Docker VM (allocated 3.8 GB), a Next server and a Chromium instance.
+
+**The failure signature follows from that and from nothing else.** Every failure is a timeout, `net::ERR_ABORTED` or `session closed` — **never an assertion about wrong output** — and per-test duration degrades monotonically through a run, measured at 7.9s for tests 1–20 against 24.5s for tests 81+. The identical commit passed **108/108 in 12.4m on CI**, and the local run's first forty tests match CI's per-test average before diverging.
+
+**Two candidate causes were eliminated by measurement rather than by reasoning:** file descriptors (12,831 open against a 30,720 system limit) and database connections (17 of 100). Test parallelism was never available as a remedy — the suite is already `workers: 1`, `fullyParallel: false`.
+
+> **The load-average correlation recorded previously is incidental, not causal.** Load average counts processes blocked on I/O, which is exactly what swapping produces. A deliberate experiment removing external load left the failure rate essentially unchanged — **28% against 30%** — while load rose from 4.4 to 16.5 during a run with nothing external running. **The earlier characterisation is superseded in its causal claim and retained as history**; it was a reasonable reading of the measurements available then.
+
+**This is an environmental limitation, not a repository defect.** No application defect was established, and CI provides an independent full-suite environment that runs the same code successfully.
+
+**No minimum RAM figure is stated, deliberately.** The evidence is one host at one configuration, and "8 GB is insufficient" is an observation about that machine rather than a measured threshold. **The diagnostic to reach for is free memory and swap usage — not CPU or load average.**
+
+#### A fresh server per local run **[DECIDED and IMPLEMENTED 2026-09-04]**
+
+`playwright.config.ts` sets `reuseExistingServer: !process.env.CI`, so a local run attaches to whatever is already listening on the port. **An orphaned server from an interrupted run is silently reused** — observed directly, when a stale `next dev` process survived an aborted run and had to be killed by hand before the next run could start.
+
+**A fresh server is now started for every local verification run.** `reuseExistingServer: false`, verified by execution: with a server already listening, Playwright refuses to run — _"http://localhost:3000 is already used"_ — rather than adopting it. Reuse makes a run's result depend on invisible state, and a stale process can serve stale code while the run reports success. CI is unaffected; it already runs with reuse disabled. The cost is server startup per run, which is noise against a suite measured in tens of minutes.
+
 #### What the cost actually is
 
 UI-driven **prerequisite** setup. `collection-sort.spec.ts:391` spent roughly 74% of its runtime on one signup, four collects and two ratings — none of which it asserts anything about. Measured across `want-to-listen.spec.ts`, tests calling `signUp` ran 2.6–6.1s while the one signed-out test ran **511ms**.

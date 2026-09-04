@@ -23,7 +23,21 @@ export default defineConfig({
     : {
         command: 'npm run dev',
         url: baseURL,
-        reuseExistingServer: !process.env.CI,
+        // **A fresh server every run, including locally.** Playwright documents
+        // `!process.env.CI` as the idiom, and this departs from it deliberately:
+        // with reuse enabled, an orphaned server left by an interrupted run is
+        // adopted silently, so a run can exercise stale code while reporting
+        // success. That was observed rather than theorised. `false` makes
+        // Playwright throw when something is already listening, which turns a
+        // silent problem into a visible one.
+        //
+        // **The workflow the idiom protects is still available, deliberately.**
+        // Setting `PLAYWRIGHT_BASE_URL` skips this block entirely and runs
+        // against a server you started yourself.
+        //
+        // CI is unaffected: `!process.env.CI` was already `false` there.
+        // See `architecture.md` §12.
+        reuseExistingServer: false,
         timeout: 120_000,
       },
 });
