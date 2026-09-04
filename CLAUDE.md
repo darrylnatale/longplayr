@@ -2,7 +2,7 @@
 
 A social music platform: users record the albums they've listened to, rate and review them, build lists, follow each other, and discover music through that activity.
 
-**Current state: Phase 2 complete to its definition of done. Phase 3 is feature-complete — all five slices are built, pushed and CI-verified: 1 Follows, 2 Activity writes, 3 the following feed, 4 review likes, 5 Notifications. The last CI-verified commit is `fffbc46` (run #78).** See `docs/current-state.md` for exactly where things stand and what to do next. `docs/development-plan.md` defines what belongs to which phase — do not build ahead of the current phase without saying so.
+**Current state: Phase 2 complete to its definition of done. Phase 3 is feature-complete — all five slices built: 1 Follows, 2 Activity writes, 3 the following feed, 4 review likes, 5 Notifications. Phase 4 has started: slice 1, Lists, is built, pushed and CI-verified, and slices 2 (list likes) and 3 (list activity) are not. The last CI-verified commit is `a1c9550` (run #80).** See `docs/current-state.md` for exactly where things stand and what to do next. `docs/development-plan.md` defines what belongs to which phase — do not build ahead of the current phase without saying so.
 
 ---
 
@@ -111,6 +111,14 @@ npm run verify:full                  # what CI runs — use before commit and pu
 
 **Always verify from a clean build.** `rm -rf .next && npm run verify`. This is a standing requirement, not a suggestion: `PageProps` and `LayoutProps` are generated into `.next/types`, so a stale directory can make typecheck pass locally while failing in CI. That exact discrepancy has already put a red commit on `main` once.
 
+**Migrations deploy before the code that needs them. Pushing is deploying.**
+
+Vercel deploys on push, but a migration only reaches the database when someone runs `npx supabase db push --linked`. Push first and the live app queries tables that do not exist. **This has happened twice** — §42 and §46 of `docs/current-state.md` — and the second took **every profile page down for every visitor**, found by opening the site rather than by any check that ran.
+
+**CI cannot catch it, and a green run is not evidence.** CI applies migrations to a _fresh_ database and passes. `verify:full`, CI, and the deployed schema are **three separate things**.
+
+The order is therefore: **apply the migration, confirm it, then push the code.** A `pre-push` hook enforces it (`scripts/check-migrations-deployed.mjs`, wired through `core.hooksPath=.githooks`), and `npm run db:pending` runs the same check by hand. It fails open when Supabase is unreachable — being offline is not evidence of a problem — so **it reduces the risk rather than removing it**. `git push --no-verify` bypasses it deliberately.
+
 **There is no branch protection.** GitHub gates it behind a paid plan for private repositories, and paying or going public purely for that has been declined. Nothing mechanically prevents a red commit landing on `main`, so **`rm -rf .next && npm run verify:full` before pushing is the actual safety net.** Treat it accordingly.
 
 This was learned the expensive way. The rule here previously named `verify` as the compensating control, which was wrong: `verify` does not run Playwright, so a commit that broke two end-to-end assertions passed the documented pre-push check and left `main` red for three commits before anyone noticed.
@@ -151,7 +159,7 @@ Every coherent feature change or product slice follows these steps, in this orde
 | **F** | Verify              | Run the required local verification and establish the actual test state of the implementation                                                                                                                                                       |
 | **G** | Review              | Independently review the implementation against the approved decision, boundary, tests, evidence and repository state. **No modifications during review**                                                                                           |
 | **H** | Commit              | Commit only the reviewed implementation, after STEP G returns **READY TO COMMIT**. Keep unrelated work and other cycles' documentation out of the commit                                                                                            |
-| **I** | Push                | Push only the reviewed commit. A push may be deliberately deferred, provided the local commit and repository state are recorded clearly                                                                                                             |
+| **I** | Push                | **Apply any pending migration to the deployed database first — pushing is deploying.** Then push only the reviewed commit. A push may be deliberately deferred, provided the local commit and repository state are recorded clearly                 |
 | **J** | CI                  | Verify CI against the exact pushed SHA to a terminal state where possible. **Never claim CI success without evidence of a completed successful run**                                                                                                |
 | **K** | Checkpoint          | Reconcile `docs/current-state.md` with the actual repository, remote and CI state. Record what the completed cycle changed, what was verified, what remains open and any evidence limitations. **Then close with the plain-language summary below** |
 

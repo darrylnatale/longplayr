@@ -1,0 +1,5 @@
+#!/bin/sh
+# Refuses a push that would deploy code ahead of its migrations.
+# See scripts/check-migrations-deployed.mjs and docs/current-state.md §46.
+# Bypass deliberately with: git push --no-verify
+exec node scripts/check-migrations-deployed.mjs

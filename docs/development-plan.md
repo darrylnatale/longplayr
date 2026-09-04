@@ -273,7 +273,7 @@ Sequencing against `product-spec.md` §8.10 faults 1 and 2, and against the enri
 
 **Goal.** Other people become visible. The product becomes social rather than personal.
 
-**Status: slices 1, 2 and 3 of the phase are built; slice 4 is decided and unbuilt. [CORRECTED 2026-09-02]** Slice 1 is Follows — the relation, the profile control, the stat cluster and the two relationship destinations. **Slice 2 is the `Activity` table and its four write points**, `listened` / `relistened` / `rated` / `reviewed`, with no feed query and no feed surface. **Still absent from this phase**: the feed, notifications, likes on reviews, and Want to Listen activity.
+**Status: the phase is feature-complete — all five slices are built. [CORRECTED 2026-09-04]** The line below described slices 1–3 as built with slice 4 decided and unbuilt, which was true on 2026-09-02 and went stale twice over: review likes shipped in `f783bba` and Notifications in `f268241`, and Phase 4 has since started. The per-slice description that follows is kept as written, because it still describes what each slice contains. Slice 1 is Follows — the relation, the profile control, the stat cluster and the two relationship destinations. **Slice 2 is the `Activity` table and its four write points**, `listened` / `relistened` / `rated` / `reviewed`, with no feed query and no feed surface. **Still absent from this phase**: the feed, notifications, likes on reviews, and Want to Listen activity.
 
 > **What that paragraph said before, corrected rather than deleted.** It read _"Status: slice 1 of the phase is built… **Nothing else in this phase exists**: no `Activity`, no feed, no notifications, no likes on reviews."_ The `Activity` half stopped being true when slice 2 landed, and the slice-3 boundary below depends on `Activity` existing, so leaving it would make this section contradict itself.
 
@@ -365,6 +365,8 @@ Sequencing against `product-spec.md` §8.10 faults 1 and 2, and against the enri
 - List creation and updates generate activity events
 
 **Dependencies.** Phase 3 (list activity needs the feed).
+
+**Status: slice 1 is built, pushed and CI-verified (`a1c9550`, CI #80). [2026-09-04]** Slices 2 and 3 are not built. See `docs/current-state.md` §46.
 
 **Slicing. [DECIDED 2026-09-03]** The feature list above is delivered in three slices. **This is sequencing within Phase 4, not a reduction of its scope** — every feature listed above remains in the phase, and the definition of done below is unchanged.
 

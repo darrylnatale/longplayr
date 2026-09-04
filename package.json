@@ -19,6 +19,7 @@
     "db:reset": "supabase db reset",
     "db:env": "node scripts/write-local-env.mjs",
     "db:types": "supabase gen types typescript --local > src/lib/supabase/database.types.ts",
+    "db:pending": "node scripts/check-migrations-deployed.mjs",
     "verify": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build",
     "verify:full": "npm run verify && npm run test:integration && npm run db:seed:fixtures && npm run test:e2e",
     "db:seed:fixtures": "node scripts/with-websocket.mjs vitest run --project seed tests/seed/seed-fixtures.test.ts",
