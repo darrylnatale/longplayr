@@ -2,6 +2,10 @@
 
 import { revalidatePath } from 'next/cache';
 
+import { addAlbumToList } from '@/services/lists';
+
+import type { ListActionState } from '@/app/lists/[id]/actions';
+
 import { addToCollection, rateAlbum, removeFromCollection, setLiked } from '@/services/collection';
 import { markRelisten } from '@/services/collection/relistens';
 import { addFavourite, removeFavourite } from '@/services/collection/favourites';
@@ -364,5 +368,28 @@ export async function toggleWantToListenAction(
   if (!result.ok) return { error: result.message };
 
   revalidatePath(`/albums/[mbid]`, 'page');
+  return {};
+}
+
+/**
+ * Adds this album to one of the caller's lists.
+ *
+ * **The list is taken from the form, and that is safe because RLS decides.** A
+ * forged `list_id` naming someone else's list matches no row the caller may
+ * write, so the insert is refused rather than silently succeeding. The service
+ * turns that, and the duplicate case, into messages the album page renders.
+ */
+export async function addToListAction(
+  albumId: string,
+  _prev: ListActionState,
+  formData: FormData,
+): Promise<ListActionState> {
+  const listId = String(formData.get('list_id') ?? '');
+  if (!listId) return { error: 'Choose a list.' };
+
+  const result = await addAlbumToList(listId, albumId);
+  if (!result.ok) return { error: result.message };
+
+  revalidatePath(`/lists/${listId}`);
   return {};
 }

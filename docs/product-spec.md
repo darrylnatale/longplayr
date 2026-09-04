@@ -101,7 +101,11 @@ A later Phase 3 slice owns both, together with the schema change that adds the e
 | ---------- | ----------------------------------------------------------- |
 | Scope      | Title, description, albums, optional ranked ordering, likes |
 | Not in v1  | Per-item commentary, collaborative lists                    |
-| Visibility | Public **[INFERRED from the all-public model]**             |
+| Visibility | **Public. [DECIDED 2026-09-03]**                            |
+
+**Visibility was `[INFERRED from the all-public model]` and is now decided outright**, because Phase 4 slice 1 builds the table and an inference is not a thing a migration can be written against. **There is no visibility column and no privacy control** — everything user-generated is public, so a field with one legal value would be schema implying an option that does not exist.
+
+**Slice 1 of Phase 4 builds the Lists identity and its core surfaces**: create, edit, hard delete, add and remove albums, ranked or unranked, reordering, the public list page and lists on profiles. **Likes on lists, `list_liked` notifications, and list activity events are later slices of the same phase**, and the row above still says likes are in scope for Lists. **`ListLike` remains `[INFERRED]` in `data-model.md` §5 and is not built by slice 1** — that is sequencing, not a change of intent. See `development-plan.md` Phase 4.
 
 ### Privacy, safety, moderation
 

@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { after } from 'next/server';
 
 import { ActionCard, type ActionCardState } from '@/components/ActionCard';
+import { AddToListForm } from '@/components/AddToListForm';
 import { AlbumCover } from '@/components/AlbumCover';
 import { Container } from '@/components/Container';
 import { ScoreBadge } from '@/components/ScoreBadge';
@@ -17,6 +18,7 @@ import { getMyWantToListen } from '@/services/collection/want-to-listen';
 import { getAlbumRating } from '@/services/collection/ratings';
 import { getAlbumReviews } from '@/services/collection/reviews';
 import { getMyReviewLikes } from '@/services/social/review-likes';
+import { listUserLists } from '@/services/lists';
 import { Avatar } from '@/components/Avatar';
 import { getCurrentProfile, getCurrentUser } from '@/services/profiles';
 
@@ -30,6 +32,7 @@ import {
   toggleFavouriteAction,
   toggleLikeAction,
   toggleReviewLikeAction,
+  addToListAction,
   toggleWantToListenAction,
 } from './actions';
 
@@ -168,6 +171,13 @@ export default async function AlbumPage({ params }: PageProps<'/albums/[mbid]'>)
   const favourited = favouriteRow !== null;
   const wanted = wantRow !== null;
 
+  // The viewer's own lists, for the add control. `null` means "no control at
+  // all" — signed out or mid-onboarding — which is distinct from an empty array,
+  // meaning signed in with nowhere to add yet.
+  const listViewer = await getCurrentProfile();
+  const viewerHandle = listViewer?.handle ?? '';
+  const viewerLists = listViewer ? (await listUserLists(listViewer.id, { limit: 50 })).items : null;
+
   // Computed on read from non-null ratings, never stored. Deletion therefore
   // needs no recomputation step, and no counter can drift.
   const rating = await getAlbumRating(album.id);
@@ -276,6 +286,24 @@ export default async function AlbumPage({ params }: PageProps<'/albums/[mbid]'>)
               deleteReview: deleteReviewAction.bind(null, album.id),
             }}
           />
+
+          {/*
+           * Only when the viewer has somewhere to put it. A select with no
+           * options is a control that cannot work, so someone with no lists gets
+           * the link instead — the same reasoning as the profile's
+           * no-empty-scaffold rule.
+           */}
+          {viewerLists !== null &&
+            (viewerLists.length > 0 ? (
+              <AddToListForm albumId={album.id} lists={viewerLists} action={addToListAction} />
+            ) : (
+              <p className="text-sm text-text-faint">
+                <Link href={`/${viewerHandle}/lists`} className="transition-colors hover:text-text">
+                  Make a list
+                </Link>{' '}
+                to start collecting albums into one.
+              </p>
+            ))}
 
           <div>
             <SectionHeader as="h3">Rating</SectionHeader>

@@ -10,6 +10,7 @@ import { ProfileStats } from '@/components/ProfileStats';
 import { SectionHeader } from '@/components/SectionHeader';
 import { COLLECTION_PREVIEW_LIMIT, listCollection } from '@/services/collection';
 import { listProfileFavourites } from '@/services/collection/favourites';
+import { LISTS_PREVIEW_LIMIT, listUserLists } from '@/services/lists';
 import { getCurrentProfile, getCurrentUser, getProfileByHandle } from '@/services/profiles';
 import { getFollowCounts, getMyFollow } from '@/services/social';
 
@@ -120,11 +121,13 @@ export default async function ProfilePage({ params }: PageProps<'/[handle]'>) {
   // `getMyFollow` is only asked when there is somebody to ask about and it is
   // not the viewer themselves — the control does not render in either case, so
   // the query would be answering a question nobody put.
-  const [{ items: preview, total }, favourites, counts, myFollow] = await Promise.all([
+  const [{ items: preview, total }, favourites, counts, myFollow, lists] = await Promise.all([
     listCollection(profile.id, { limit: COLLECTION_PREVIEW_LIMIT }),
     listProfileFavourites(profile.id),
     getFollowCounts(profile.id),
     viewer && !isOwnProfile ? getMyFollow(profile.id) : Promise.resolve(null),
+    // A preview only. The destination carries the pagination.
+    listUserLists(profile.id, { limit: LISTS_PREVIEW_LIMIT }),
   ]);
 
   // A signed-in visitor who has not chosen a handle has no profile row, so
@@ -191,6 +194,46 @@ export default async function ProfilePage({ params }: PageProps<'/[handle]'>) {
         <section className="mt-8">
           <SectionHeader>Favourites</SectionHeader>
           <FavouriteRow albums={favourites} />
+        </section>
+      )}
+
+      {/*
+       * **No empty scaffold.** A profile with no lists renders no Lists section
+       * at all, for the same reason there is no "no favourites" placeholder: an
+       * empty section on every profile is an untrue claim about the person.
+       */}
+      {lists.items.length > 0 && (
+        <section className="mt-8">
+          <SectionHeader
+            trailing={
+              lists.total > LISTS_PREVIEW_LIMIT ? (
+                <Link
+                  href={`/${profile.handle}/lists`}
+                  className="transition-colors hover:text-text"
+                >
+                  All {lists.total}
+                </Link>
+              ) : undefined
+            }
+          >
+            <Link href={`/${profile.handle}/lists`} className="transition-colors hover:text-text">
+              Lists
+            </Link>
+          </SectionHeader>
+
+          <ul className="mt-3 flex flex-col gap-2">
+            {lists.items.map((list) => (
+              <li key={list.id}>
+                <Link
+                  href={`/lists/${list.id}`}
+                  className="flex items-baseline justify-between gap-3 rounded-md border border-border bg-surface px-4 py-3 transition-colors hover:border-border-strong"
+                >
+                  <span className="min-w-0 truncate text-text">{list.title}</span>
+                  <span className="tabular shrink-0 text-xs text-text-faint">{list.itemCount}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 

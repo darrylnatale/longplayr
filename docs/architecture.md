@@ -1027,6 +1027,62 @@ The cursor would land **813µs earlier than the boundary row**, so rows older th
 
 ---
 
+### 16.4 Lists — identity first, consumers later
+
+**[DECIDED 2026-09-03 — Phase 4 slice 1. Nothing here is built.]** This records the decisions an implementation needs in order to be unambiguous. Where something is deliberately left open, it says so.
+
+#### Routes, and why the identifier is a UUID
+
+| Route             | Purpose                                                      |
+| ----------------- | ------------------------------------------------------------ |
+| `/lists/[id]`     | The public list page. **`[id]` is the List's database UUID** |
+| `/[handle]/lists` | A profile's lists                                            |
+
+**`lists` has been a reserved handle since Phase 0**, alongside `feed`, `notifications`, `albums`, `artists` and `search` — **every one of which is a top-level route**. The reservation anticipated this route rather than coinciding with it, so the top-level shape is the existing convention, not a new choice. `/[handle]/lists` matches the existing `collection`, `followers` and `following` sub-routes.
+
+**No slug in slice 1, and this is a decision rather than a deferral.** A list already has database identity; a slug would add generation, uniqueness, and mutation-on-rename semantics to buy readability no authoritative document has asked for. A UUID also gives a list exactly **one** address, avoiding the two-URLs-one-page problem the notifications first page was designed around. **A human-readable slug is reconsiderable as a new product decision on demonstrated need** — it is not an outstanding obligation.
+
+#### Ownership, visibility and access
+
+**Lists are public** (`product-spec.md` §Lists, decided 2026-09-03) and **carry no visibility column** — see `data-model.md` §5.
+
+**The access model follows `review_likes` rather than `notifications`.** Public read for `anon` and `authenticated`; write restricted to the owner via `auth.uid() = user_id` in both `USING` and `WITH CHECK`. **Grants are required alongside the policies** — they are evaluated first, and their absence looks like an RLS bug.
+
+**Unlike a review like, a list is editable**, so `lists` and `list_items` need `update` grants that `review_likes` deliberately withholds. That difference is the reason to state it: the review-like precedent is being followed for read/write scoping, **not** for its no-update stance.
+
+#### Deletion
+
+Hard delete, per `CLAUDE.md`. Profile → lists → items cascade downward. **Album deletion removes the `ListItem` and never the List**, so catalogue maintenance cannot destroy user-authored curation.
+
+#### Ordering
+
+**`position` is meaningful only when `is_ranked`, and reordering leaves positions contiguous.** That invariant is decided.
+
+**Positions are maintained on every list, ranked or not**, so that toggling ranking preserves the order in both directions — see `data-model.md` §5, which owns the field semantics. **"Meaningful only when ranked" is not "maintained only when ranked"**, and building it as the latter would silently lose a user's curation the first time they toggled the flag.
+
+> **The mechanism that maintains it is explicitly an implementation decision, and is not made here.** Whether reordering is a single database function or a client-computed rewrite, how concurrent reorders are handled, and what is indexed are STEP D questions. **Sparse or fractional positioning is not to be introduced speculatively** — the invariant above is a contiguity guarantee, not a hint toward a gap-based scheme.
+
+#### Two constraint seams the later slices must not miss
+
+**These are recorded together because they fail in opposite directions, and only one fails loudly.**
+
+| Seam                                                         | Behaviour on a new enum value                                                                                                                  |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `notifications_subject_matches_type` — ends **`else false`** | **Fails loudly.** A `list_liked` row is rejected until the `CASE` gains a matching `WHEN`                                                      |
+| `activity_subject_matches_type` — has **no `ELSE`**          | **Fails silently.** A `CASE` with no matching branch returns `NULL`, `NULL` satisfies a `CHECK`, so the new type is **entirely unconstrained** |
+
+**Slice 1 adds no activity type and no notification type, so it closes neither seam and must add no speculative enum value.** The obligation falls to the first slice that adds one: the activity slice must close the `ELSE` gap in the same migration that adds `list_created`, and the likes slice must extend the notifications `CASE` when it adds `list_liked`.
+
+#### Sequencing
+
+**Slice 1 establishes identity; the later slices consume it.**
+
+1. **Slice 1 — identity and surfaces.** `lists`, `list_items`, CRUD, membership, ranking, reordering, the list page and profile surfacing.
+2. **Slice 2 — list likes.** Needs `lists.id` for `list_likes.list_id`, then `notifications.list_like_id`, the enum value, and the `else false` extension. **`ListLike` is still `[INFERRED]` in `data-model.md` §5 and requires its own product decision first.**
+3. **Slice 3 — list activity.** Needs `lists.id` for `activity.list_id`, the enum values, the `ELSE`-gap closure, and the undecided feed-worthiness and debounce semantics.
+
+**The dependency is one-directional and mechanical**, which is why slice 1 is worth doing alone: `list_liked` was deferred in Phase 3 because there was no table for the foreign key to reference at all, and slice 1 removes exactly that blocker without pre-empting either decision that follows it.
+
 ## 17. Scalability — what breaks first, and when
 
 Honest ordering of what would need attention, rather than premature optimisation:

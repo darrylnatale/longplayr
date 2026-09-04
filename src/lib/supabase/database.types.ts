@@ -433,6 +433,86 @@ export type Database = {
         }
         Relationships: []
       }
+      list_items: {
+        Row: {
+          album_id: string
+          created_at: string
+          id: string
+          list_id: string
+          position: number
+        }
+        Insert: {
+          album_id: string
+          created_at?: string
+          id?: string
+          list_id: string
+          position: number
+        }
+        Update: {
+          album_id?: string
+          created_at?: string
+          id?: string
+          list_id?: string
+          position?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "list_items_album_id_fkey"
+            columns: ["album_id"]
+            isOneToOne: false
+            referencedRelation: "albums"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "list_items_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "lists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lists: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_ranked: boolean
+          status: Database["public"]["Enums"]["content_status"]
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_ranked?: boolean
+          status?: Database["public"]["Enums"]["content_status"]
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_ranked?: boolean
+          status?: Database["public"]["Enums"]["content_status"]
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lists_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notifications: {
         Row: {
           actor_id: string
@@ -796,6 +876,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      add_list_item: {
+        Args: { p_album_id: string; p_list_id: string }
+        Returns: undefined
+      }
       claim_ingestion_jobs: {
         Args: { batch_size: number }
         Returns: {
@@ -859,6 +943,14 @@ export type Database = {
           review_body: string
           type: Database["public"]["Enums"]["activity_type"]
         }[]
+      }
+      remove_list_item: {
+        Args: { p_album_id: string; p_list_id: string }
+        Returns: undefined
+      }
+      reorder_list_item: {
+        Args: { p_item_id: string; p_to_position: number }
+        Returns: undefined
       }
       search_albums: {
         Args: { max_results?: number; query: string }

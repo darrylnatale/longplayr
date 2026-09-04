@@ -328,13 +328,17 @@ A review reaches its author through `collection_entries.user_id`, which referenc
 
 ## 5. Lists and interactions
 
+**[DECIDED 2026-09-03 — Phase 4 slice 1. Nothing here is built yet.]** The two tables below are the slice's whole schema. `ListLike` is **not** part of it and stays `[INFERRED]` below.
+
 ### List
 
-| Field                             | Notes                                |
-| --------------------------------- | ------------------------------------ |
-| `user_id`, `title`, `description` |                                      |
-| `is_ranked`                       | Whether items carry meaningful order |
-| `status`                          | `live` / `removed` — moderation      |
+| Field                             | Notes                                                     |
+| --------------------------------- | --------------------------------------------------------- |
+| `user_id`, `title`, `description` | `user_id` is the owner; only the owner mutates the list   |
+| `is_ranked`                       | Whether items carry meaningful order                      |
+| `status`                          | `live` / `removed` — moderation, **present from day one** |
+
+**No visibility column.** Lists are public (`product-spec.md` §Lists, decided 2026-09-03), and a column with one legal value would imply an option the product does not offer.
 
 ### ListItem
 
@@ -342,6 +346,18 @@ A review reaches its author through `collection_entries.user_id`, which referenc
 | --------------------- | -------------------------------------------------------- |
 | `list_id`, `album_id` | Unique together — an album appears at most once per list |
 | `position`            | Ordering. Meaningful only when the list is ranked        |
+
+**The uniqueness is per list, not global** — the same album may appear in any number of different lists, which is the point of lists.
+
+**Reordering leaves positions contiguous.** That is the invariant the phase's tests assert; **the mechanism that maintains it is an implementation decision, not a modelling one**, and no sparse or fractional positioning is implied by recording the invariant here.
+
+**`position` is always stored and always maintained contiguous, on every list, ranked or not. [DECIDED 2026-09-03]** `is_ranked` decides whether that order is _meaningful to the reader_, not whether it exists. Read the row above as "meaningful only when ranked" — never as "maintained only when ranked", which would let an unranked list accumulate gaps and lose the order on the way back.
+
+**Toggling ranking preserves the order in both directions, and that is the whole point.** Un-ranking **does not** null, reset or rewrite positions; re-ranking restores exactly the order that was there before, **with no fallback sort** — not by title, creation date or album metadata. The ordering is user curation, so turning ranking off must not destroy it, and the transition stays reversible without inventing an arbitrary reconstruction rule.
+
+**Adding appends; removing closes the gap.** A new item takes `max(position) + 1` — at the end of a ranked list, and simply next in sequence on an unranked one. Removing an item closes the gap it leaves. **Reordering itself is offered only for ranked lists**, though the positions it maintains exist regardless.
+
+**Deletion is hard, and the cascade directions are not symmetric.** Deleting a profile removes their lists; deleting a list removes its items. **Deleting an album removes the `ListItem` and leaves the List standing** — a list that loses one entry is still that list, and cascading upward would let catalogue maintenance silently destroy user-authored curation.
 
 Per-item commentary is deferred; adding it later is a nullable column, requiring no restructuring. Ranked ordering is settled **now** precisely because it isn't. **[DECIDED — B7]**
 
