@@ -823,6 +823,7 @@ No custom metrics pipeline, no dashboards beyond what the platforms provide. Add
 - **Rate limits** on the abuse-prone write paths. Catalogue additions are capped at **30 per hour and 100 per day per user** — protecting both search quality and the shared MusicBrainz request budget. Reviews, follows and reports need ceilings too; their numbers are not yet set.
 - **Input validation** at every server boundary via a schema validator; review bodies sanitised on render.
 - **Admin surface** gated by a role check and separated from user-facing routes.
+- **Database privileges are set by revoking, not only by granting. [DECIDED 2026-09-04]** Postgres and Supabase both hand out defaults that an explicit `grant` does not remove, so a migration naming its intended audience restricts nobody. Measured on 2026-09-04, before correction: `anon` held `TRUNCATE`, `TRIGGER`, `REFERENCES` and `MAINTAIN` on all 20 `public` tables, and `PUBLIC` held `EXECUTE` on 9 of 10 project-authored functions. **Not a leak and not exploitable** — see `§16.5`, which holds the evidence, the per-function intent and the boundary.
 
 Per `docs/claude-course-analysis.md` §10, the course's own advice — don't put unaudited authentication in front of real user data — is taken at its stated standard: **a security review before launch**, focused on auth flows, authorisation checks, and the admin surface.
 
@@ -1082,6 +1083,79 @@ Hard delete, per `CLAUDE.md`. Profile → lists → items cascade downward. **Al
 3. **Slice 3 — list activity.** Needs `lists.id` for `activity.list_id`, the enum values, the `ELSE`-gap closure, and the undecided feed-worthiness and debounce semantics.
 
 **The dependency is one-directional and mechanical**, which is why slice 1 is worth doing alone: `list_liked` was deferred in Phase 3 because there was no table for the foreign key to reference at all, and slice 1 removes exactly that blocker without pre-empting either decision that follows it.
+
+### 16.5 The privilege boundary — a grant states intent, only a revoke enforces it
+
+**[DECIDED 2026-09-04. Nothing here is built.]** This records a boundary the repository already believed it had. It is a **grants decision only** — no RLS policy, no schema and no application code changes.
+
+#### The finding, measured rather than reasoned
+
+Measured against the local database on 2026-09-04, and reproduced over HTTP:
+
+| Measurement                                                            | Result                                                                                                                                                                                                                       |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `anon` privileges on the 20 tables in `public`                         | **`TRUNCATE`, `TRIGGER`, `REFERENCES` and `MAINTAIN` on every one**                                                                                                                                                          |
+| Project-authored functions in `public` carrying `EXECUTE` for `PUBLIC` | **9 of 10** — `add_list_item`, `remove_list_item`, `reorder_list_item`, `ensure_collection_entry`, `feed_activity`, `search_albums`, `search_artists`, and the two trigger functions `set_updated_at`, `sync_relisten_count` |
+| The exception                                                          | **`claim_ingestion_jobs`**, the only function carrying an explicit `revoke`                                                                                                                                                  |
+| `POST /rest/v1/rpc/feed_activity` with the `anon` key                  | **HTTP 200**                                                                                                                                                                                                                 |
+
+That last row is the one that matters, because `create_feed_activity.sql` grants execute to `authenticated` alone and says in a comment: _"there is nothing here for `anon` to read."_ **The comment states an intent the database does not enforce.**
+
+> **Two figures in this table were wrong when first written, and are corrected rather than quietly replaced. [CORRECTED 2026-09-04 during STEP D]**
+>
+> It read **"7 of 8"** and **"`TRUNCATE`, `TRIGGER` and `REFERENCES`"**. Both understated the finding, and both for the same kind of reason — a measurement that could not see what it was looking for.
+>
+> **The function count missed the two trigger functions.** `set_updated_at` and `sync_relisten_count` carry a **null `proacl`**, and a null ACL does not mean owner-only — it means the built-in default applies, which for a function includes `EXECUTE` to `PUBLIC`. The original count matched on the ACL string `=X/`, which a null ACL does not contain. `sync_relisten_count` is additionally `security definer`.
+>
+> **The privilege list missed `MAINTAIN`.** On Postgres 17 the default ACL is `Dxtm` — the `m` is `MAINTAIN`, and `information_schema.role_table_grants` does not report it. Raw `relacl` does: `anon=rDxtm/postgres` on `albums`.
+
+#### Why it happens, and why the existing convention produces it
+
+**Postgres grants `EXECUTE` on a newly created function to `PUBLIC`**, and Supabase's default privileges grant table privileges to `anon` and `authenticated`. An explicit `grant … to authenticated` therefore **adds** a grant and removes nothing.
+
+So a migration that names its intended audience **restricts nobody**. Seven migrations in this repository read as though they close a boundary and do not close it, and two further functions were never given an audience at all — they simply inherited `PUBLIC`. `claim_ingestion_jobs` is the sole counter-example, and it is correct precisely because it carries `revoke all on function … from public, anon, authenticated` — the pattern was known and applied once.
+
+**`CLAUDE.md`'s Phase 0 convention produces this outcome as written.** It requires explicit grants and says nothing about revoking defaults, and it is written about tables rather than functions. It is amended in the same cycle as this section, and the amendment is the part that stops the defect recurring.
+
+#### What this is not
+
+**Not a data leak.** The seven reachable functions are all `security invoker`, so RLS decides what they can see. `feed_activity` aggregates rows that are world-readable anyway, so its response contains nothing `anon` could not already select directly.
+
+**Not exploitable for destruction.** PostgREST exposes no verb for `TRUNCATE` or `CREATE TRIGGER`, and no `security definer` function is `anon`-executable, so the table-level privileges have no reachable path through the API.
+
+**Not urgent, and it must not be written up as an incident.** The honest description is a **defence-in-depth gap plus a false statement in the record**. The second half is the reason to act: a future security judgement made by reading those grant lines would be wrong.
+
+#### The decision
+
+**Both halves are corrected together, as one boundary.** They differ in severity — the function grants contradict a written claim and are reachable, the table privileges are unexamined inherited defaults that are not — but they share one root cause and one fix, and the convention being amended covers tables and functions alike. Correcting only the functions would leave `CLAUDE.md` describing a table-side state the database does not have, which is the same false-record failure at one remove.
+
+Per-function intent, decided rather than pattern-matched:
+
+| Function                                                                            | Intended audience                   | Why                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ----------------------------------------------------------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `search_albums`, `search_artists`                                                   | **`anon` retained, explicitly**     | Signed-out search is a shipped feature. The access is deliberate, so it is granted rather than inherited                                                                                                                                                                                                                                                                                                  |
+| `feed_activity`                                                                     | **`authenticated` only**            | Confirms the intent its own migration already records. A feed is a per-viewer query, not public content                                                                                                                                                                                                                                                                                                   |
+| `add_list_item`, `remove_list_item`, `reorder_list_item`, `ensure_collection_entry` | **`authenticated`, `service_role`** | Each is a mutation. `anon` holds no DML grant on the underlying tables, so execution already fails — the revoke makes the boundary true rather than incidental                                                                                                                                                                                                                                            |
+| `set_updated_at`, `sync_relisten_count`                                             | **No role**                         | Trigger functions. Unreachable through PostgREST, which does not expose `trigger`-returning functions, so the gain is principle rather than exposure — but `sync_relisten_count` is `security definer`, and that combination with `PUBLIC EXECUTE` is worth removing. **`EXECUTE` is checked when a trigger is created, not when it fires**, so the triggers keep working; verified by test, not inferred |
+| `claim_ingestion_jobs`                                                              | **`service_role` only, unchanged**  | Already correct. Re-revoking it would imply it was not                                                                                                                                                                                                                                                                                                                                                    |
+
+**Table privileges.** `TRUNCATE`, `TRIGGER`, `REFERENCES` and `MAINTAIN` are revoked from `anon` and `authenticated` across `public`. **`service_role` keeps everything**, which is what makes this safe for the test suite: integration tests truncate through a `service_role` admin client (`tests/integration/count.test.ts`), never as `anon` or `authenticated`.
+
+**Future objects still inherit all of it, and that is deliberate. [DECIDED 2026-09-04]** The systemic cause is `pg_default_acl`: the `postgres`-owned default for schema `public` grants `Dxtm` on new tables to `anon`, `authenticated` and `service_role`, so **every table a future migration creates arrives with the same four unwanted privileges**. Changing default ACLs is a separate decision and is **out of scope here** — it is a broader change whose interaction with Supabase's own provisioning is unexamined. **Until it is taken, the control is the amended `CLAUDE.md` convention**, which is process rather than mechanism, and that difference should not be blurred: this section describes **observed current privileges**, not a guarantee about objects that do not exist yet.
+
+**Every privilege the application uses is preserved.** The explicit `select` / `insert` / `update` / `delete` grants are untouched.
+
+#### Deliberately outside this boundary
+
+**`feed_activity` still takes a caller-supplied `p_viewer`.** It is `security invoker`, so **any authenticated caller can request any other user's feed**, and revoking `anon` does not change that. It is not a leak — the underlying rows are world-readable — but it is a real observation and **this decision must not be read as having addressed it**. It needs its own decision.
+
+Also excluded: RLS policies of any kind; `auth`, `storage` and other non-`public` schemas; extension-owned functions such as `pg_trgm`'s, which are not project-authored and raise a different question.
+
+#### Reversibility
+
+**A revoke is undone by the corresponding grant**, so this is among the more reversible changes in the project. The risk is not permanence but blast radius: the failure mode is `permission denied`, which `CLAUDE.md` warns reads like an RLS bug, and **this cycle carries no application code**, so the entire effect lands on the database at the moment the migration is applied.
+
+---
 
 ## 17. Scalability — what breaks first, and when
 
