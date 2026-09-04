@@ -12,7 +12,50 @@
 | 4. What gets built and when                  | `docs/development-plan.md`                   |
 | 5. Where we are right now                    | this file                                    |
 
-Verified against the repository and remote at **`a1c9550`** (`main` and `origin/main` identical, ahead/behind 0/0) and against CI run **33856564674** (#80) on `a1c9550` — **`completed/success`, attempt 1, both jobs, 350 unit and component, 582 integration, 1 seed, 103 end-to-end**, **zero failures, zero flaky, zero retries** (§46).
+Verified against the repository and remote at **`ecea6e9`** (`main` and `origin/main` identical, ahead/behind 0/0) and against CI run **33882478196** (#82) on `ecea6e9` — **`completed/success`, attempt 1, both jobs, 350 unit and component, 594 integration, 1 seed, 103 end-to-end**, **zero failures, zero flaky, zero retries** (§47).
+
+> ## ✅ The privilege boundary the migrations claimed now exists
+>
+> **A grant states intent; only a revoke enforces it.** Postgres grants `EXECUTE` on a new function to `PUBLIC`, and the default ACL for schema `public` grants `Dxtm` on new tables to `anon` and `authenticated` — so an explicit `grant … to authenticated` **adds** a grant and removes nothing. Seven migrations read as though they closed a boundary and closed nothing.
+>
+> **Measured before correction: `anon` held `TRUNCATE`, `TRIGGER`, `REFERENCES` and `MAINTAIN` on all 20 `public` tables, and `PUBLIC` held `EXECUTE` on 9 of 10 project-authored functions.** Calling `feed_activity` with the `anon` key returned **HTTP 200**, against that migration's own comment saying there was nothing there for `anon` to read.
+>
+> **It was never a leak and was never exploitable.** The reachable functions are all `security invoker`, so RLS still decided what they could see, and PostgREST exposes no verb for `TRUNCATE` or `CREATE TRIGGER`. **The reason to fix it was the false claim in the record** — a future security judgement made by reading those grant lines would have been wrong.
+>
+> **Signed-out search is preserved explicitly rather than by inheritance.** `search_albums` and `search_artists` are re-granted to `anon` in the same migration, so the capability is stated rather than surviving by accident.
+>
+> **`CLAUDE.md`'s Phase 0 convention produced this outcome as written** and is amended in the same commit. That amendment is the part that stops the defect recurring — and it is **process, not mechanism**: `pg_default_acl` is deliberately unchanged, so **every future table still inherits the same four privileges**.
+
+> ### ⚠️ CI passed on this SHA. The local `verify:full` did not, and both remain true
+>
+> **CI #82 succeeded on exactly `ecea6e9`**, attempt 1, both jobs, **103 end-to-end tests with zero failures, zero flaky and zero retries**. `ecea6e9` is **CI-verified**.
+>
+> **The local `verify:full` for this work exited 1** with **34 end-to-end failures**, and that is not rewritten as green. CI passing on different hardware does not make the local run green; the two facts sit side by side.
+>
+> **None of the 34 was attributable to this change.** Every signature was a timeout, `net::ERR_ABORTED` or `session closed`, never an assertion about wrong output, and **`permission denied` and `42501` appear nowhere in the log** — which is the exact string a privilege regression emits. Three runs produced **three different failure sets**, and all five tests that failed in _both_ full runs passed in isolation. That is consistent with the load sensitivity in §8 and F-015, and it is **not proof**; the machine cause stays `[OPEN]`.
+>
+> **No pre-change control run was performed.** The comparison rests on isolation results and the documentary history of §44, §45 and §46, not on a fresh measurement of the parent tree.
+
+> ### 🔎 Three kinds of verification, and they are not interchangeable
+>
+> | Scope                                        | How it was established                                                                                                                                                  |
+> | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+> | **Local catalogue-level privilege matrices** | **Directly measured** — `has_function_privilege` and `has_table_privilege` across all 10 functions and 20 tables                                                        |
+> | **Deployed boundary**                        | **Behaviourally verified over HTTP** — five restricted RPCs refused, both search RPCs served, signed-out pages 200                                                      |
+> | **Deployed catalogue-level matrices**        | **Inferred, not measured.** No database password is available locally, so the object-level state on staging rests on clean migration application plus local equivalence |
+>
+> **CI does not close that third row.** CI applies migrations to its own fresh database; `verify:full`, CI and the deployed schema remain three separate things.
+
+> ### 📄 Uncommitted at the end of the session of 2026-09-04
+>
+> `ecea6e9` is the implementation commit and `origin/main` matches it. Two files remain on disk only, and **neither belongs to the privilege cycle**.
+>
+> | File                       | Owner                                                                                                                                                                                                                                              |
+> | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+> | `CLAUDE.md`                | **Separate process-definition work done after the cycle** — STEP 00 added to the authoritative workflow, and the asynchronous-CI rules (`CI PENDING` is never `PASS`, provisional closeout). **Not part of the privilege boundary implementation** |
+> | `docs/product-feedback.md` | **Maintainer's own work. Do not touch, do not stage.** Untouched throughout this cycle                                                                                                                                                             |
+
+**The previous entry, left as written.** Verified at **`a1c9550`** against CI run **33856564674** (#80) — `completed/success`, attempt 1, both jobs, 350 unit and component, 582 integration, 1 seed, 103 end-to-end, zero failures, zero flaky, zero retries (§46).
 
 > ## ✅ Lists exist — Phase 4 has started
 >
@@ -3130,6 +3173,71 @@ That sentence is why this was corrected at all. The service originally said reor
 ### What this does not change
 
 No activity or notification enum value, no change to either table's check constraint, no feed code. **Both documented ELSE-gap seams are untouched**: `activity_subject_matches_type` still has no `ELSE`, and `notifications_subject_matches_type` still ends `else false`. `ListLike` remains `[INFERRED]` and unbuilt.
+
+---
+
+## 47. Privilege boundary correction — implemented, reviewed, committed, pushed, deployed and CI-verified
+
+**Commit `ecea6e9`, CI run `33882478196` (#82) on that exact SHA** — `completed/success`, **attempt 1**, both jobs, **350 unit and component, 594 integration, 1 seed, 103 end-to-end**, with **zero failures, zero flaky tests and zero retries**.
+
+**The design record is `architecture.md` §16.5 and the amended convention in `CLAUDE.md`. This section records where things stand.**
+
+### What shipped
+
+One migration — `20260904130000_revoke_inherited_privileges.sql` — of twelve statements, **revokes only**. No RLS policy, no schema, no data, no default ACL, nothing outside `public`, no extension-owned function, and no application source change at all.
+
+|                            |                                                                                                                                               |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Functions**              | `PUBLIC EXECUTE` revoked from nine project-authored functions                                                                                 |
+| **Signed-out search**      | `search_albums` and `search_artists` **re-granted to `anon` explicitly**, so the capability is stated rather than inherited                   |
+| **`feed_activity`**        | `authenticated` only — confirming the intent its own migration already recorded in a comment                                                  |
+| **Trigger functions**      | `set_updated_at` and `sync_relisten_count` included. Unreachable through PostgREST, but `sync_relisten_count` is `security definer`           |
+| **`claim_ingestion_jobs`** | **Untouched.** The one function that was already correct; re-revoking it would imply it was not                                               |
+| **Tables**                 | `TRUNCATE`, `TRIGGER`, `REFERENCES` and `MAINTAIN` revoked from `anon` and `authenticated` across all 20. **`service_role` keeps everything** |
+| **Preserved**              | Every `select` / `insert` / `update` / `delete` grant, including the column-level `update (read_at)` on `notifications`                       |
+
+### `MAINTAIN` and the two trigger functions were found during planning, not during discovery
+
+**The first measurement understated the defect twice, and both figures were corrected before implementation.** It read _"7 of 8 functions"_ and named three table privileges.
+
+**The function count missed the trigger functions** because it matched on the ACL string `=X/`, and those two carry a **null `proacl`** — which does not mean owner-only, it means the built-in default applies, and for a function that default includes `EXECUTE` to `PUBLIC`. **The privilege list missed `MAINTAIN`** because `information_schema.role_table_grants` does not report it on Postgres 17; raw `relacl` does, as `Dxtm`.
+
+Both were carried into scope by explicit decision rather than absorbed silently, and `architecture.md` §16.5 records the correction rather than overwriting the original figures.
+
+### `service_role` is what makes the table revoke safe
+
+Integration tests truncate through a **`service_role` admin client** (`tests/integration/count.test.ts`), never as `anon` or `authenticated`. That was established before the scope decision rather than assumed, and it is the reason revoking `TRUNCATE` from the two API roles does not break the suite.
+
+### Verification, stated as it happened
+
+**Direct privilege verification:** function matrix across all 10 project-authored functions and table privileges across all 20 tables, each measured per role; five negative HTTP cases and two positive; both triggers confirmed still firing. **12 new integration tests** in `tests/integration/privileges.test.ts`.
+
+> **⚠️ Negatives are asserted on the message, not the code, and that is load-bearing.** A missing grant and an RLS refusal **both** return `42501`. Only `permission denied for function …` distinguishes them, so a test asserting the code alone could pass with the grant wide open. `activity.test.ts:433` already asserts `42501` for an RLS violation, which is exactly the confusion `CLAUDE.md` warns about.
+
+> **⚠️ The local `verify:full` was RED and is not rewritten.** Exit 1, with 34 end-to-end failures across nine specs. See the banner above for why none is attributable to this change, and for the limits of that conclusion.
+
+### Deployment — and the ordering rule held this time
+
+**The migration was applied to the deployed database before the push**, which is the precondition §46's outage produced. `npm run db:pending` refused the push while it was unapplied, the migration was applied by `npx supabase db push --linked`, and the check then reported the deployed database up to date.
+
+**Verified on staging afterwards:** all five restricted RPCs refused with `permission denied for function …`, both search RPCs served, `anon` table reads still 200, `notifications` correctly 401 for `anon`, and `/`, `/albums`, `/darryl`, `/darryl/lists`, `/search` all **HTTP 200** — including the two profile routes §46's outage took down.
+
+**One incidental finding:** because the guard reported exactly one migration pending, the **§44/§46 contradiction is resolved** — `create_notifications` had in fact reached the deployed database.
+
+### Findings recorded, none of them fixed here
+
+- **Two sequences are outside the corrected boundary.** `ingestion_jobs_id_seq` and `catalogue_additions_id_seq` grant `w` — `UPDATE`, permitting `nextval()` and `setval()` — to `anon` and `authenticated`. **The same inherited-default defect on a third object class**, found at review, not in scope, and **§16.5's exclusions do not yet name sequences**. Same reachability profile as `TRUNCATE`: no PostgREST path.
+- **The table-level revoke has no automated regression coverage.** PostgREST exposes no verb for those four privileges, so `anon` cannot be made to attempt them from the suite. Verified by catalogue inspection only; the amended convention is the sole ongoing control.
+- **`pg_default_acl` is deliberately unchanged**, so every future table inherits `Dxtm` again. Out of scope by decision, and the reason the convention amendment exists.
+- **`feed_activity` takes a caller-supplied `p_viewer`** and is `security invoker`, so **any authenticated caller can request any other user's feed**. Not a leak — the rows are world-readable — and explicitly outside this boundary. It needs its own decision.
+
+### Still carried, and still true
+
+**The end-to-end load sensitivity in §8 is unchanged and was measured further here**: 34 failures at load ~9.5, a different set on a second run, and all five both-run failures passing in isolation. **§8's `[OPEN]` machine cause is not closed by this.** The `head:true`, `collection.spec.ts:277` and other residual items are untouched.
+
+### What this does not change
+
+No RLS policy, no schema, no data, no enum, no application code. **`ListLike` remains `[INFERRED]` and unbuilt**, Phase 4 slices 2 and 3 are untouched, and no product decision was taken.
 
 ---
 
