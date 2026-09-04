@@ -472,6 +472,42 @@ export type Database = {
           },
         ]
       }
+      list_likes: {
+        Row: {
+          created_at: string
+          id: string
+          list_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          list_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          list_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "list_likes_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "lists"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "list_likes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lists: {
         Row: {
           created_at: string
@@ -519,6 +555,7 @@ export type Database = {
           created_at: string
           follow_id: string | null
           id: string
+          list_like_id: string | null
           read_at: string | null
           recipient_id: string
           review_like_id: string | null
@@ -529,6 +566,7 @@ export type Database = {
           created_at?: string
           follow_id?: string | null
           id?: string
+          list_like_id?: string | null
           read_at?: string | null
           recipient_id: string
           review_like_id?: string | null
@@ -539,6 +577,7 @@ export type Database = {
           created_at?: string
           follow_id?: string | null
           id?: string
+          list_like_id?: string | null
           read_at?: string | null
           recipient_id?: string
           review_like_id?: string | null
@@ -557,6 +596,13 @@ export type Database = {
             columns: ["follow_id"]
             isOneToOne: true
             referencedRelation: "follows"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_list_like_id_fkey"
+            columns: ["list_like_id"]
+            isOneToOne: true
+            referencedRelation: "list_likes"
             referencedColumns: ["id"]
           },
           {
@@ -1007,7 +1053,7 @@ export type Database = {
         | "fetch_tracklist"
         | "discover_curated_artist"
       job_status: "pending" | "running" | "succeeded" | "failed"
-      notification_type: "followed" | "review_liked"
+      notification_type: "followed" | "review_liked" | "list_liked"
       tracklist_status: "pending" | "found" | "absent" | "failed"
       user_status: "active" | "suspended" | "banned"
     }
@@ -1166,7 +1212,7 @@ export const Constants = {
         "discover_curated_artist",
       ],
       job_status: ["pending", "running", "succeeded", "failed"],
-      notification_type: ["followed", "review_liked"],
+      notification_type: ["followed", "review_liked", "list_liked"],
       tracklist_status: ["pending", "found", "absent", "failed"],
       user_status: ["active", "suspended", "banned"],
     },

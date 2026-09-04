@@ -1,0 +1,23 @@
+-- longplayr — the third notification type
+--
+-- **This migration adds one enum label and nothing else, and the separation is
+-- required rather than tidy.** Postgres refuses to *use* a new enum value in the
+-- transaction that added it:
+--
+--   ERROR:  unsafe use of new value "list_liked" of enum type notification_type
+--   HINT:   New enum values must be committed before they can be used.
+--
+-- Supabase runs each migration file in its own transaction, so the label is
+-- committed here and the `CHECK` that references it lives in the next migration.
+-- Verified by execution before this was written.
+--
+-- **`list_liked` was deferred in Phase 3, not rejected.** `create_notifications.sql`
+-- could not add it because there was no `lists` table for `list_like_id` to
+-- reference. Slice 1 built that table; this discharges the deferral.
+-- See `architecture.md` §16.3 and `product-spec.md` §8.1.
+--
+-- **Rollback is asymmetric and worth knowing before deploying.** Postgres cannot
+-- remove an enum label, so this migration is effectively one-way: the table in
+-- the next migration drops cleanly, this label would remain, unused and harmless.
+
+alter type public.notification_type add value 'list_liked';

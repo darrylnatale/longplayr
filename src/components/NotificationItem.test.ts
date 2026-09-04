@@ -26,6 +26,23 @@ describe('notificationCopy', () => {
     );
   });
 
+  it('names the list that was liked', () => {
+    expect(notificationCopy('list_liked', 'Best of 2026')).toBe('liked your list Best of 2026');
+  });
+
+  // The regression this file exists to hold. Before the switch was made
+  // exhaustive, `list_liked` fell through to the review branch and rendered
+  // "liked your review" — a false statement about content the recipient never
+  // wrote, with no type error to catch it.
+  it('never describes a liked list as a liked review', () => {
+    expect(notificationCopy('list_liked', 'Best of 2026')).not.toContain('review');
+    expect(notificationCopy('list_liked', null)).not.toContain('review');
+  });
+
+  it('drops the list rather than printing an absence', () => {
+    expect(notificationCopy('list_liked', null)).toBe('liked your list');
+  });
+
   it('drops the album rather than printing an absence', () => {
     // A review whose album vanished mid-cascade must not render "your review of
     // undefined". The sentence still stands on its own without it.

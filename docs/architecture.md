@@ -916,6 +916,12 @@ Together those make "past the end" **unavailable as a permanent route fact**, so
 
 **Phase 3 ships exactly two types: `followed` and `review_liked`.** `list_liked` is **deferred until Lists and `ListLike` exist**, and this is a phase boundary rather than a product rejection — `product-spec.md` §5 and §6 both keep list likes in the finished surface. The reason is concrete rather than cautious: there is no table for `list_like_id` to reference, **so the foreign key cannot be created at all**, and an enum member no code can write is speculative schema. `activity_type` shipped with exactly the values its slice used; this follows that precedent.
 
+**`list_liked` is now decided and is the third type. [DECIDED 2026-09-04 — Phase 4 slice 2, not built.]** The deferral above is discharged: `ListLike` is decided in `data-model.md` §5, so the foreign key has something to reference. `Notification` therefore gains a third subject column, `list_like_id`, alongside `follow_id` and `review_like_id`, on the same terms — nullable, cascading, and carrying its own one-per-source uniqueness.
+
+**This is the case the `else false` was written for, and it is the slice that must extend it.** The `CASE` rejects a `list_liked` row until it gains a matching `WHEN`, which is the intended fail-closed behaviour rather than an obstacle. **Adding a third subject column also changes what the two existing branches must assert** — each must now exclude the new column as well — and that is a property of the constraint's shape, not an implementation detail.
+
+**Nothing about `Activity` changes.** A list like remains a notification trigger and never a feed event, unchanged from §4's standing decision. `list_created` and `list_updated` belong to slice 3 and are not decided here.
+
 **A notification represents the current existence of its source action. It is not a historical audit event.** Undoing the source removes the notification; re-creating the source produces a **new** one; nothing is retained as history. `data-model.md` §7 requires that the page never report something that has been undone, and that requirement is what settles this.
 
 #### Integrity, and why uniqueness is not optional here
@@ -1079,7 +1085,7 @@ Hard delete, per `CLAUDE.md`. Profile → lists → items cascade downward. **Al
 **Slice 1 establishes identity; the later slices consume it.**
 
 1. **Slice 1 — identity and surfaces.** `lists`, `list_items`, CRUD, membership, ranking, reordering, the list page and profile surfacing.
-2. **Slice 2 — list likes.** Needs `lists.id` for `list_likes.list_id`, then `notifications.list_like_id`, the enum value, and the `else false` extension. **`ListLike` is still `[INFERRED]` in `data-model.md` §5 and requires its own product decision first.**
+2. **Slice 2 — list likes.** Needs `lists.id` for `list_likes.list_id`, then `notifications.list_like_id`, the enum value, and the `else false` extension. ~~**`ListLike` is still `[INFERRED]` in `data-model.md` §5 and requires its own product decision first.**~~ **DECIDED 2026-09-04** — `ListLike` and the no-self-like rule are settled in `data-model.md` §5, so that precondition is discharged. **Nothing is built.**
 3. **Slice 3 — list activity.** Needs `lists.id` for `activity.list_id`, the enum values, the `ELSE`-gap closure, and the undecided feed-worthiness and debounce semantics.
 
 **The dependency is one-directional and mechanical**, which is why slice 1 is worth doing alone: `list_liked` was deferred in Phase 3 because there was no table for the foreign key to reference at all, and slice 1 removes exactly that blocker without pre-empting either decision that follows it.

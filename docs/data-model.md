@@ -369,7 +369,7 @@ Three distinct things can be liked, and they are **not** modelled polymorphicall
 | ---------- | -------------------------------------------------------------- |
 | **Album**  | `CollectionEntry.liked` — already a column, no separate table  |
 | **Review** | `ReviewLike` (`user_id`, `review_id`) **[DECIDED 2026-09-02]** |
-| **List**   | `ListLike` (`user_id`, `list_id`) **[INFERRED]** — Phase 4     |
+| **List**   | `ListLike` (`user_id`, `list_id`) **[DECIDED 2026-09-04]**     |
 
 Separate tables rather than a polymorphic `Like` table: polymorphic foreign keys can't be enforced by the database, and there are only two of them. The cost of the general solution exceeds its benefit here.
 
@@ -401,6 +401,31 @@ Likes generate **no activity events** — they'd dominate the feed by volume. **
 
 **Notifications are not built in slice 4.** `ReviewLike` is the durable primitive the later Notifications slice consumes; until then a like is recorded and visible to nobody but its owner. One consequence of the cascades above is worth naming because that slice inherits it: **unliking destroys the like row, so a notification hanging off it cascades away too** — which is exactly what §7 requires of an undone action. Whether re-liking should therefore produce a second notification is the Notifications slice's question and is deliberately not answered here.
 
+### ListLike
+
+**[DECIDED 2026-09-04 — Phase 4 slice 2. Nothing here is built.]** This line was **`[INFERRED]`** until now, which by this document's notation means "follows necessarily; flagged for correction". It is confirmed rather than assumed: it mirrors `ReviewLike` because the same downstream requirement produces the same shape, and the two differences are stated below rather than left to be discovered.
+
+| Field                       | Notes                                                                        |
+| --------------------------- | ---------------------------------------------------------------------------- |
+| `id`                        | uuid primary key. **Surrogate, not a composite key on the pair** — see below |
+| `user_id`                   | → `profiles(id)`, `on delete cascade`                                        |
+| `list_id`                   | → `lists(id)`, `on delete cascade`                                           |
+| `created_at`                |                                                                              |
+| `unique (user_id, list_id)` | One like per user per list, enforced by the database                         |
+
+**The surrogate key is required for the same reason `ReviewLike` carries one.** §7 gives `Notification` a nullable `list_like_id`, and a foreign key must reference **one** column; a composite key on the pair would force that table to carry two columns for one of its subject references.
+
+**Cascades in both directions.** An owner hard-deletes their list and its likes go with it; an account is deleted and both the likes it gave and the likes on its lists go. Neither leaves an orphan, which §8's hard-deletion rule requires.
+
+**Behaviour. [DECIDED 2026-09-04]** Liking is a **toggle**, unliking **hard-deletes**, and unliking something not liked is a **no-op** — the same shape as `ReviewLike`, `unfollowUser` and `removeWantToListen`. Liking requires the list to be **readable to the caller**, so a moderation-removed list cannot be liked by a stranger.
+
+> **A user cannot like their own list, and that is service-layer behaviour only. [DECIDED 2026-09-04]**
+>
+> **It is not an integrity boundary**, and the reason is identical to `ReviewLike`'s: a list's owner is `lists.user_id`, which sits in a **different table** from the like, so no `CHECK` can express the rule and only a trigger could. **None is added.**
+>
+> **One difference from `ReviewLike` is worth stating rather than discovering.** Because the rule is not enforced by the database, a caller writing directly to the table can still create a self-like. On a review that inflates nothing a reader sees; **`product-spec.md` §6 requires a like count on the list page**, so on a list it inflates a number the product displays. It remains a vanity annoyance rather than an integrity or privacy failure, and the decision is unchanged — but the consequence is not identical and should not be described as if it were.
+
+**Likes generate no activity events**, exactly as review likes do not — the standing decision in §4 and above. A list like is a **notification trigger, never a feed event**. `list_created` and `list_updated` are **slice 3's** concern and are not affected by this decision.
 ---
 
 ## 6. Artwork

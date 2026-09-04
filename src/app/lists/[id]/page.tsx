@@ -6,9 +6,10 @@ import { AlbumGrid } from '@/components/AlbumGrid';
 import { Container } from '@/components/Container';
 import { EditListForm } from '@/components/EditListForm';
 import { getList } from '@/services/lists';
+import { getMyListLikes, listLikeCount } from '@/services/social/list-likes';
 import { getCurrentProfile } from '@/services/profiles';
 
-import { removeItemAction, reorderItemAction } from './actions';
+import { removeItemAction, reorderItemAction, toggleListLikeAction } from './actions';
 
 /**
  * The public list page.
@@ -40,6 +41,21 @@ export default async function ListPage({ params }: PageProps<'/lists/[id]'>) {
   const viewer = await getCurrentProfile();
   const isOwner = viewer?.id === list.owner.id;
 
+  // **After `getList`, because it can `notFound()` — but these two together.**
+  // The page already awaited twice sequentially; adding two more round trips in
+  // series would compound the pattern §46 recorded on the album page.
+  const [likeCount, myLikes] = await Promise.all([
+    listLikeCount(list.id),
+    getMyListLikes([list.id]),
+  ]);
+  const likedByMe = myLikes.has(list.id);
+
+  // **The count renders for everyone** — `product-spec.md` §6 specifies it
+  // unconditionally. **The control does not**: a signed-out visitor sees no
+  // control, matching the review-like convention, and the owner sees none
+  // because they cannot like their own list.
+  const canLike = viewer !== null && !isOwner;
+
   return (
     <Container variant="content">
       <header className="mt-8">
@@ -51,6 +67,25 @@ export default async function ListPage({ params }: PageProps<'/lists/[id]'>) {
             {list.owner.displayName ?? list.owner.handle}
           </Link>
         </p>
+
+        <div className="mt-3 flex items-center gap-3">
+          <p className="text-sm text-text-secondary" data-testid="list-like-count">
+            {likeCount === 1 ? '1 like' : `${likeCount} likes`}
+          </p>
+
+          {canLike && (
+            <form action={toggleListLikeAction.bind(null, list.id)}>
+              <input type="hidden" name="liked" value={likedByMe ? 'false' : 'true'} />
+              <button
+                type="submit"
+                aria-pressed={likedByMe}
+                className="rounded-full border border-border px-3 py-1 text-sm text-text-secondary transition-colors hover:text-text"
+              >
+                {likedByMe ? 'Liked' : 'Like'}
+              </button>
+            </form>
+          )}
+        </div>
 
         {list.description && (
           <p className="mt-4 max-w-prose whitespace-pre-line text-text-secondary">

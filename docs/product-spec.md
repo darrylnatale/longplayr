@@ -366,6 +366,12 @@ This exists because likes and follows deliberately generate **no feed events**. 
 
 Title, description, author, like count. Then the albums — numbered if ranked, plain grid if not.
 
+**Liking a list. [DECIDED 2026-09-04 — not built]** Any signed-in user may like a list that is readable to them; **a user cannot like their own.** Liking is a toggle, and a moderation-removed list cannot be liked by a stranger for the same reason a removed review cannot — it is not publicly readable, and that rule is not restated for likes.
+
+**Self-like prevention is a service guarantee, not an integrity boundary**, exactly as it is for reviews above. One like per user per list is enforced by the database; refusing to like your own list is not, because a list's owner is not a column on the like. **The distinction matters more here than it does on a review**, because this page displays a like count and a review surface does not — see `data-model.md` §5.
+
+**A list like generates a notification to the owner and no feed event**, which is §4's standing exclusion applied unchanged. §8.1 already specifies "likes on your lists" as part of the notifications surface; **that surface does not yet carry them.**
+
 ### Search
 
 One input, results grouped by albums, artists, users. When an in-scope album isn't in the catalogue, results offer the MusicBrainz fallback with a one-click add.

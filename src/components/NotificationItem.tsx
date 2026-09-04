@@ -33,16 +33,37 @@ import type { NotificationListItem } from '@/services/social/notifications';
  * `FeedItem` exports `compactCopy`: the integration suite proves which
  * notifications come back, never how they read.
  *
- * **The album is dropped rather than guessed at when the embed came back
- * empty.** A review whose album vanished mid-cascade would otherwise print
- * "your review of undefined".
+ * **The subject is dropped rather than guessed at when the embed came back
+ * empty.** A review whose album vanished mid-cascade, or a list mid-delete,
+ * would otherwise print "your review of undefined".
  */
 export function notificationCopy(
   type: NotificationListItem['type'],
-  albumTitle: string | null,
+  subjectTitle: string | null,
 ): string {
-  if (type === 'followed') return 'followed you';
-  return albumTitle ? `liked your review of ${albumTitle}` : 'liked your review';
+  switch (type) {
+    case 'followed':
+      return 'followed you';
+    case 'review_liked':
+      return subjectTitle ? `liked your review of ${subjectTitle}` : 'liked your review';
+    case 'list_liked':
+      return subjectTitle ? `liked your list ${subjectTitle}` : 'liked your list';
+    default:
+      return assertNever(type);
+  }
+}
+
+/**
+ * Makes a new notification type a **compile error here**, not a wrong sentence.
+ *
+ * This function previously ended in an unconditional `return` for the
+ * review-like case, so adding `list_liked` to the enum would have type-checked
+ * cleanly and rendered "liked your review" for a list — a false statement about
+ * content the recipient did not write. The enum offered no protection; the
+ * exhaustive switch does.
+ */
+function assertNever(value: never): never {
+  throw new Error(`unhandled notification type: ${String(value)}`);
 }
 
 /**
@@ -88,7 +109,7 @@ export function NotificationItem({ item }: { item: NotificationListItem }) {
             className={`block text-sm ${unread ? 'font-medium text-text' : 'text-text-secondary'}`}
           >
             <span className="group-hover:underline">{name}</span>{' '}
-            {notificationCopy(item.type, item.album?.title ?? null)}
+            {notificationCopy(item.type, item.album?.title ?? item.list?.title ?? null)}
           </span>
           <span className="mt-0.5 block text-xs text-text-faint">
             {formatRelativeTime(item.createdAt)}

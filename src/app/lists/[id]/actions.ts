@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
 import { deleteList, removeAlbumFromList, reorderListItem, updateList } from '@/services/lists';
+import { likeList, unlikeList } from '@/services/social/list-likes';
 
 /**
  * Mutations on one list.
@@ -59,5 +60,25 @@ export async function reorderItemAction(
   toPosition: number,
 ): Promise<void> {
   await reorderListItem(itemId, toPosition);
+  revalidatePath(`/lists/${listId}`);
+}
+
+/**
+ * Likes or unlikes this list on behalf of the signed-in user.
+ *
+ * **The toggle direction comes from the form, and the actor comes from the
+ * session** — the service resolves the caller itself and never trusts a
+ * submitted user id.
+ *
+ * Failures are swallowed the way the other list actions here swallow theirs:
+ * `self_like` and `not_found` are outcomes the page simply re-renders past,
+ * and the owner is never shown the control that produces the first of them.
+ */
+export async function toggleListLikeAction(listId: string, formData: FormData): Promise<void> {
+  const liked = formData.get('liked') === 'true';
+
+  if (liked) await likeList(listId);
+  else await unlikeList(listId);
+
   revalidatePath(`/lists/${listId}`);
 }

@@ -137,10 +137,18 @@ afterAll(async () => {
 });
 
 describe('schema', () => {
-  it('carries exactly the two Phase 3 types, and not list_liked', async () => {
-    // `list_liked` is deferred until Lists exists — there is no table for
-    // `list_like_id` to reference. This pins the boundary so adding the member
-    // speculatively breaks a test rather than passing unnoticed.
+  it('refuses a list_liked notification carrying a follow as its subject', async () => {
+    // **This test previously asserted that `list_liked` was not a member of the
+    // enum at all** — a schema-absence proxy pinning the Phase 3 boundary, whose
+    // comment said adding the member speculatively should break a test. Phase 4
+    // slice 2 added it deliberately, with the table its foreign key needs, so
+    // the proxy did its job and is now converted rather than deleted.
+    //
+    // What guards the seam now is stronger: the type exists, and the rewritten
+    // `notifications_subject_matches_type` rejects it unless its own subject is
+    // the one present. The same insert still fails; it fails on the constraint
+    // instead of on the enum. See §39 for the identical conversion when Activity
+    // landed.
     const [recipient, actor] = [await createUser(), await createUser()];
     const { data: follow } = await admin
       .from('follows')
@@ -151,13 +159,12 @@ describe('schema', () => {
     const { error } = await admin.from('notifications').insert({
       recipient_id: recipient.id,
       actor_id: actor.id,
-      // Not a member of the enum today, deliberately.
-      type: 'list_liked' as unknown as 'followed',
+      type: 'list_liked',
       follow_id: follow!.id,
     });
 
     expect(error).not.toBeNull();
-    expect(error!.message).toMatch(/invalid input value for enum|notification_type/i);
+    expect(error!.message).toMatch(/notifications_subject_matches_type|check constraint/i);
   });
 
   it('rejects a subject that does not match its type', async () => {

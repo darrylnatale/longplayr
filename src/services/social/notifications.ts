@@ -42,6 +42,8 @@ export type NotificationListItem = {
   actor: { handle: string; displayName: string | null; avatarUrl: string | null };
   /** Present only on `review_liked`. The album whose review was liked. */
   album: { mbid: string; title: string } | null;
+  /** Present only on `list_liked`. The list that was liked. */
+  list: { id: string; title: string } | null;
 };
 
 export type NotificationPage = {
@@ -58,11 +60,11 @@ export const NOTIFICATIONS_PAGE_SIZE = 20;
  * PostgREST infers the row type from the select text, so this cannot be built by
  * concatenation — the same constraint `getAlbumReviews` records.
  *
- * **Neither subject embed uses `!inner`, and that is load-bearing.** A
- * `followed` row has a null `review_like_id` and a `review_liked` row has a null
- * `follow_id`; an inner join on either would silently drop every notification of
- * the other type. The failure would look like "follows never notify" rather than
- * like a query error, which is exactly the kind of bug that survives review.
+ * **No subject embed uses `!inner`, and that is load-bearing.** Exactly one
+ * subject column is non-null on any row, so an inner join on any of the three
+ * would silently drop every notification of the other two types. The failure
+ * would look like "follows never notify" rather than like a query error, which
+ * is exactly the kind of bug that survives review.
  *
  * The chain to the album is four levels deep but carries no ambiguity: every hop
  * is a single foreign key, so none of them needs naming the way an `albums` to
@@ -71,7 +73,8 @@ export const NOTIFICATIONS_PAGE_SIZE = 20;
 const NOTIFICATION_SELECT = `
   id, type, created_at, read_at,
   actor:profiles!notifications_actor_id_fkey(handle, display_name, avatar_url),
-  review_likes(reviews(collection_entries(albums(mbid, title))))
+  review_likes(reviews(collection_entries(albums(mbid, title)))),
+  list_likes(lists(id, title))
 ` as const;
 
 type EmbeddedRow = {
@@ -85,6 +88,7 @@ type EmbeddedRow = {
       collection_entries: { albums: { mbid: string; title: string } | null } | null;
     } | null;
   } | null;
+  list_likes: { lists: { id: string; title: string } | null } | null;
 };
 
 /**
@@ -98,6 +102,7 @@ function toListItem(row: EmbeddedRow): NotificationListItem[] {
   if (!row.actor) return [];
 
   const album = row.review_likes?.reviews?.collection_entries?.albums ?? null;
+  const list = row.list_likes?.lists ?? null;
 
   return [
     {
@@ -111,6 +116,7 @@ function toListItem(row: EmbeddedRow): NotificationListItem[] {
         avatarUrl: row.actor.avatar_url,
       },
       album: album ? { mbid: album.mbid, title: album.title } : null,
+      list: list ? { id: list.id, title: list.title } : null,
     },
   ];
 }
@@ -246,7 +252,8 @@ export async function notificationTarget(id: string): Promise<string | null> {
     .select(
       `type,
        actor:profiles!notifications_actor_id_fkey(handle),
-       review_likes(reviews(collection_entries(albums(mbid))))`,
+       review_likes(reviews(collection_entries(albums(mbid)))),
+       list_likes(lists(id))`,
     )
     .eq('id', id)
     .maybeSingle();
@@ -260,11 +267,18 @@ export async function notificationTarget(id: string): Promise<string | null> {
     review_likes: {
       reviews: { collection_entries: { albums: { mbid: string } | null } | null } | null;
     } | null;
+    list_likes: { lists: { id: string } | null } | null;
   };
 
   if (row.type === 'review_liked') {
     const mbid = row.review_likes?.reviews?.collection_entries?.albums?.mbid;
     return mbid ? `/albums/${mbid}` : null;
+  }
+
+  // A list like opens the list it was given to, mirroring the album above.
+  if (row.type === 'list_liked') {
+    const listId = row.list_likes?.lists?.id;
+    return listId ? `/lists/${listId}` : null;
   }
 
   return row.actor ? `/${row.actor.handle}` : null;
@@ -291,7 +305,7 @@ async function record(
   recipientId: string,
   actorId: string,
   type: NotificationType,
-  subject: { followId?: string; reviewLikeId?: string },
+  subject: { followId?: string; reviewLikeId?: string; listLikeId?: string },
 ): Promise<void> {
   const supabase = await createClient();
 
@@ -301,6 +315,7 @@ async function record(
     type,
     follow_id: subject.followId ?? null,
     review_like_id: subject.reviewLikeId ?? null,
+    list_like_id: subject.listLikeId ?? null,
   });
 
   // 23505 — the notification for this source row already exists, which is the
@@ -324,4 +339,13 @@ export function recordReviewLiked(
   reviewLikeId: string,
 ): Promise<void> {
   return record(recipientId, actorId, 'review_liked', { reviewLikeId });
+}
+
+/** Someone liked your list. */
+export function recordListLiked(
+  recipientId: string,
+  actorId: string,
+  listLikeId: string,
+): Promise<void> {
+  return record(recipientId, actorId, 'list_liked', { listLikeId });
 }
