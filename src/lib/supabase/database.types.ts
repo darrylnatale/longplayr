@@ -326,6 +326,41 @@ export type Database = {
           },
         ]
       }
+      discovery_chart_entries: {
+        Row: {
+          album_id: string
+          chart: string
+          collection_count: number
+          computed_at: string
+          distinct_users: number
+          rank: number
+        }
+        Insert: {
+          album_id: string
+          chart: string
+          collection_count: number
+          computed_at?: string
+          distinct_users: number
+          rank: number
+        }
+        Update: {
+          album_id?: string
+          chart?: string
+          collection_count?: number
+          computed_at?: string
+          distinct_users?: number
+          rank?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "discovery_chart_entries_album_id_fkey"
+            columns: ["album_id"]
+            isOneToOne: false
+            referencedRelation: "albums"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       favourite_albums: {
         Row: {
           album_id: string
@@ -1002,6 +1037,7 @@ export type Database = {
           type: Database["public"]["Enums"]["activity_type"]
         }[]
       }
+      refresh_popular_this_week: { Args: never; Returns: number }
       remove_list_item: {
         Args: { p_album_id: string; p_list_id: string }
         Returns: undefined
