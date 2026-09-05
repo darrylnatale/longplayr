@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
+import { signOut } from '../(auth)/actions';
+
 import { Avatar } from '@/components/Avatar';
 import { CollectionGrid } from '@/components/CollectionGrid';
 import { Container } from '@/components/Container';
@@ -201,6 +203,36 @@ export default async function ProfilePage({ params }: PageProps<'/[handle]'>) {
               >
                 Notifications
               </Link>
+            )}
+
+            {/*
+             * The mobile route out, and the only one there was not.
+             *
+             * `signOut` was reachable from exactly one place — the header's
+             * `hidden md:flex` block — so below 768px a signed-in user could not
+             * sign out at all. Every other affordance in that block is
+             * duplicated by the tab bar or the signed-out home page; this one
+             * was the sole orphan (`architecture.md` §16.3).
+             *
+             * **An action, not navigation**, which is why the notifications
+             * decision above did not settle it. No confirmation and no
+             * disclosure: the product has no confirmation convention anywhere,
+             * the `<details>` treatment in `EditListForm` is for *irreversible*
+             * actions, and signing out is reversible. Ceremony here would make
+             * mobile harder than desktop, which is the problem, not the fix.
+             *
+             * **No responsive class, deliberately** — the desktop duplication is
+             * accepted rather than hidden behind another breakpoint.
+             */}
+            {isOwnProfile && (
+              <form action={signOut}>
+                <button
+                  type="submit"
+                  className="mt-2 text-xs text-text-muted transition-colors hover:text-text"
+                >
+                  Sign out
+                </button>
+              </form>
             )}
           </div>
         </div>

@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 /**
  * Phase 0 definition of done, as an executable check:
@@ -145,4 +145,112 @@ test('reserved handles are rejected', async ({ page }) => {
   // Scoped by id: Next renders its own role="alert" route announcer.
   await expect(page.locator('#handle-error')).toContainText('not available');
   await expect(page).toHaveURL('/onboarding', NAV);
+});
+
+/**
+ * Signing out on a phone, and why these tests set a viewport.
+ *
+ * `signOut` was reachable from exactly one place — the header's `hidden md:flex`
+ * block — so below 768px a signed-in user could not sign out at all. 390x844
+ * follows the precedent in `collection.spec.ts`. The profile control is always
+ * addressed through `main`, because the header's own button stays in the DOM at
+ * every width and carries the same accessible name.
+ */
+const PHONE = { width: 390, height: 844 };
+
+/** The profile's own sign-out control, never the header's. */
+const profileSignOut = (page: Page) =>
+  page.getByRole('main').getByRole('button', { name: 'Sign out' });
+
+test('at phone width the owner signs out from their own profile', async ({ page }) => {
+  await page.setViewportSize(PHONE);
+
+  const user = uniqueUser();
+  createdEmails.push(user.email);
+
+  await page.goto('/signup');
+  await page.getByLabel('Email').fill(user.email);
+  await page.getByLabel('Password').fill(user.password);
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await expect(page).toHaveURL('/onboarding', NAV);
+  await page.getByLabel('Handle').fill(user.handle);
+  await page.getByRole('button', { name: 'Claim handle' }).click();
+  await expect(page).toHaveURL(`/${user.handle}`, NAV);
+
+  // The header route is genuinely gone at this width rather than merely unused,
+  // which is what makes the click below load-bearing. Hidden, not absent: the
+  // block stays in the DOM and `md:flex` decides whether it is shown.
+  await expect(page.getByRole('banner').getByRole('button', { name: 'Sign out' })).toBeHidden();
+
+  await profileSignOut(page).click();
+
+  // **Wait for the sign-out redirect to land before navigating again.**
+  // `signOut()` ends in `redirect('/')`, so an immediate `page.goto` races it —
+  // the mechanism behind the two flaky `list-likes` tests on CI #86, fixed in
+  // `3d62bfa`. That fix waited on the header's signed-out state; at this width
+  // the header is hidden and cannot be read, but the URL can be, at any width.
+  await expect(page).toHaveURL('/', NAV);
+
+  // **The session is gone, proven by the server refusing a protected route** —
+  // not by the redirect above, which only shows the action ran, and not by what
+  // the page happens to render.
+  await page.goto('/notifications');
+  await expect(page).toHaveURL(/\/login/, NAV);
+});
+
+test('at phone width a visitor sees no sign-out control on someone else’s profile', async ({
+  page,
+  context,
+}) => {
+  await page.setViewportSize(PHONE);
+
+  const owner = uniqueUser();
+  createdEmails.push(owner.email);
+  await page.goto('/signup');
+  await page.getByLabel('Email').fill(owner.email);
+  await page.getByLabel('Password').fill(owner.password);
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByLabel('Handle').fill(owner.handle);
+  await page.getByRole('button', { name: 'Claim handle' }).click();
+  await expect(page).toHaveURL(`/${owner.handle}`, NAV);
+
+  // A second account, signed in as somebody else. Cookies are cleared rather
+  // than signing out, the same way the public-visibility test above does it.
+  await context.clearCookies();
+  const visitor = uniqueUser();
+  createdEmails.push(visitor.email);
+  await page.goto('/signup');
+  await page.getByLabel('Email').fill(visitor.email);
+  await page.getByLabel('Password').fill(visitor.password);
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByLabel('Handle').fill(visitor.handle);
+  await page.getByRole('button', { name: 'Claim handle' }).click();
+  await expect(page).toHaveURL(`/${visitor.handle}`, NAV);
+
+  await page.goto(`/${owner.handle}`);
+
+  // The profile rendered before anything is asserted absent from it: without
+  // this, a 404 or an error page would satisfy the count below.
+  await expect(page.getByRole('heading', { name: owner.handle })).toBeVisible();
+  await expect(profileSignOut(page)).toHaveCount(0);
+});
+
+test('at phone width a signed-out visitor sees no sign-out control', async ({ page, context }) => {
+  await page.setViewportSize(PHONE);
+
+  const user = uniqueUser();
+  createdEmails.push(user.email);
+  await page.goto('/signup');
+  await page.getByLabel('Email').fill(user.email);
+  await page.getByLabel('Password').fill(user.password);
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByLabel('Handle').fill(user.handle);
+  await page.getByRole('button', { name: 'Claim handle' }).click();
+  await expect(page).toHaveURL(`/${user.handle}`, NAV);
+
+  await context.clearCookies();
+  await page.goto(`/${user.handle}`);
+
+  await expect(page.getByRole('heading', { name: user.handle })).toBeVisible();
+  await expect(profileSignOut(page)).toHaveCount(0);
 });
