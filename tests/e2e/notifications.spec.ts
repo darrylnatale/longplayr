@@ -265,3 +265,72 @@ test('the list paginates without repeating a notification', async ({ page }) => 
   const secondPage = await page.getByRole('listitem').count();
   expect(secondPage).toBe(1);
 });
+
+/**
+ * The mobile route in, and the reason these tests set a viewport at all.
+ *
+ * The header's notifications link lives in a `hidden md:flex` container and the
+ * tab bar has four locked tabs, so below 768px the unread dot on "You" pointed
+ * at a destination with no way to reach it. 390x844 follows the precedent in
+ * `collection.spec.ts`; the profile link is always addressed through `main`,
+ * because the header's own link stays in the DOM at every width and would
+ * otherwise satisfy the same accessible name.
+ */
+const PHONE = { width: 390, height: 844 };
+
+/** The profile's own notifications link, never the header's. */
+const profileNotificationsLink = (page: Page) =>
+  page.getByRole('main').getByRole('link', { name: 'Notifications' });
+
+test('at phone width the owner reaches notifications from their own profile', async ({ page }) => {
+  await page.setViewportSize(PHONE);
+
+  const me = await signUp(page);
+  await page.goto(`/${me.handle}`);
+
+  // The header route is genuinely gone at this width — not merely unused. This
+  // is what makes the click below load-bearing rather than incidental.
+  await expect(page.getByRole('banner').getByRole('link', { name: 'Notifications' })).toBeHidden();
+
+  await profileNotificationsLink(page).click();
+
+  await expect(page).toHaveURL('/notifications', NAV);
+  await expect(page.getByText('Nothing here yet.')).toBeVisible();
+});
+
+test('at phone width a visitor sees no notifications link on someone else’s profile', async ({
+  page,
+}) => {
+  await page.setViewportSize(PHONE);
+
+  const other = await createAccount('Nadia Okonkwo');
+  await signUp(page);
+
+  await page.goto(`/${other.handle}`);
+
+  // Signed in, but not the owner: the gate is ownership, not authentication.
+  await expect(profileNotificationsLink(page)).toHaveCount(0);
+});
+
+test('at phone width a signed-out visitor sees no notifications link', async ({ page }) => {
+  await page.setViewportSize(PHONE);
+
+  const owner = await createAccount('Sam Delacroix');
+
+  await page.goto(`/${owner.handle}`);
+
+  await expect(profileNotificationsLink(page)).toHaveCount(0);
+});
+
+test('at desktop width both routes are present and the header one still shows', async ({
+  page,
+}) => {
+  const me = await signUp(page);
+  await page.goto(`/${me.handle}`);
+
+  // The header's responsive behaviour is undisturbed by the profile addition —
+  // the only way this change could affect desktop. Navigation through the
+  // header is deliberately not asserted: this cycle does not change it.
+  await expect(page.getByRole('banner').getByRole('link', { name: 'Notifications' })).toBeVisible();
+  await expect(profileNotificationsLink(page)).toBeVisible();
+});

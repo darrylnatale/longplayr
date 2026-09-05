@@ -180,6 +180,28 @@ export default async function ProfilePage({ params }: PageProps<'/[handle]'>) {
             />
 
             <p className="mt-2 text-xs text-text-faint">Joined {joinedLabel(profile.created_at)}</p>
+
+            {/*
+             * The mobile route to notifications, and the only one there is.
+             *
+             * The header's notifications link sits in a `hidden md:flex`
+             * container and the tab bar has four locked tabs, so below 768px
+             * the unread dot on "You" pointed at a destination with no way in.
+             * `architecture.md` §16.3 already decided notifications are reached
+             * on mobile through the personal surface; it never said where on
+             * it, and nothing was built. This is that location.
+             *
+             * **No responsive class, deliberately.** A second affordance hidden
+             * behind a breakpoint is the exact defect being repaired here.
+             */}
+            {isOwnProfile && (
+              <Link
+                href="/notifications"
+                className="mt-2 inline-block text-xs text-text-muted transition-colors hover:text-text"
+              >
+                Notifications
+              </Link>
+            )}
           </div>
         </div>
 
