@@ -1,0 +1,30 @@
+-- longplayr — the fifth activity type
+--
+-- **This migration adds one enum label and nothing else, and the separation is
+-- required rather than tidy.** Postgres refuses to *use* a new enum value in the
+-- transaction that added it:
+--
+--   ERROR:  unsafe use of new value "list_created" of enum type activity_type
+--   HINT:   New enum values must be committed before they can be used.
+--
+-- Supabase runs each migration file in its own transaction, so the label is
+-- committed here and the `CHECK` that references it lives in the next migration.
+-- The same split was verified by execution for `list_liked` in
+-- `20260904170000_add_list_liked_notification_type.sql`.
+--
+-- **`list_created` was deferred in Phase 3, not rejected.** `create_activity.sql`
+-- says so directly: "`list_created` and `list_updated` arrive with Phase 4, and
+-- their `list_id` column cannot even be written yet because `lists` does not
+-- exist." Slice 1 built that table; this discharges half of that deferral.
+--
+-- **`list_updated` is deliberately NOT added.** Phase 4 slice 3 was narrowed to
+-- creation-only: what a list update should communicate, and how often, is
+-- unresolved, and an enum label cannot be taken back. Adding it now would be a
+-- permanent commitment to a semantic nobody has decided. See
+-- `architecture.md` §16.6.
+--
+-- **Rollback is asymmetric, and this is the last reversible point before
+-- deployment.** Postgres cannot remove an enum label. Everything in the next
+-- migration drops cleanly; this label would remain, unused and harmless.
+
+alter type public.activity_type add value 'list_created';

@@ -114,7 +114,17 @@ function ActorLink({ item }: { item: Item }) {
   );
 }
 
-function AlbumLink({ item }: { item: Item }) {
+/**
+ * The album-bearing half of the union.
+ *
+ * Four of the five event types resolve to an album; `list_created` does not.
+ * Naming the narrowed type once keeps every album renderer honest without each
+ * one repeating the exclusion.
+ */
+type AlbumItem = Extract<Item, { album: unknown }>;
+type ListItem = Extract<Item, { type: 'list_created' }>;
+
+function AlbumLink({ item }: { item: AlbumItem }) {
   return (
     <Link
       href={`/albums/${item.album.mbid}`}
@@ -134,7 +144,7 @@ function Time({ iso }: { iso: string }) {
   );
 }
 
-function Compact({ item }: { item: Item }) {
+function Compact({ item }: { item: AlbumItem }) {
   const { verb, trailing } = compactCopy(item.type as 'listened' | 'rated' | 'relistened');
 
   return (
@@ -162,7 +172,7 @@ function Compact({ item }: { item: Item }) {
   );
 }
 
-function Full({ item }: { item: Item }) {
+function Full({ item }: { item: AlbumItem }) {
   return (
     <li className="flex gap-4 border-b border-border py-4">
       <Link href={`/albums/${item.album.mbid}`} className="w-16 shrink-0">
@@ -203,8 +213,61 @@ function Full({ item }: { item: Item }) {
   );
 }
 
+/**
+ * A made list, in the compact tier.
+ *
+ * **Only creation is an event, and the item reads the list's live state**, so
+ * the title shown is whatever the list is called when the follower sees it. No
+ * cover: a list has no single artwork, and inventing one from its first album
+ * would make the row claim something about that album instead.
+ */
+function ListCreated({ item }: { item: ListItem }) {
+  return (
+    <li className="flex items-center gap-3 border-b border-border py-3">
+      <Avatar
+        handle={item.actor.handle}
+        displayName={item.actor.displayName}
+        url={item.actor.avatarUrl}
+        px={40}
+      />
+
+      <p className="min-w-0 flex-1 text-sm leading-snug text-text-secondary">
+        <ActorLink item={item} /> made a list{' '}
+        <Link
+          href={`/lists/${item.list.id}`}
+          className="text-text transition-colors hover:text-accent"
+        >
+          {item.list.title}
+        </Link>
+      </p>
+
+      <Time iso={item.createdAt} />
+    </li>
+  );
+}
+
+/**
+ * **Exhaustive by construction.** A sixth event type will fail to compile here
+ * rather than rendering as a silent blank row, which is the same guard
+ * `NotificationItem` uses for its own union.
+ */
+function assertNever(value: never): never {
+  throw new Error(`Unhandled feed item: ${JSON.stringify(value)}`);
+}
+
 export function FeedItem({ item }: { item: Item }) {
-  return item.type === 'reviewed' ? <Full item={item} /> : <Compact item={item} />;
+  switch (item.type) {
+    case 'reviewed':
+      return <Full item={item} />;
+    case 'listened':
+    case 'rated':
+    case 'relistened':
+      return <Compact item={item} />;
+    case 'list_created':
+      return <ListCreated item={item} />;
+    default:
+      return assertNever(item);
+  }
 }
 
 export function FeedList({ items }: { items: Item[] }) {

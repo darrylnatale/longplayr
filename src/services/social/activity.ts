@@ -67,6 +67,7 @@ async function record(
     collectionEntryId?: string;
     relistenEventId?: string;
     reviewId?: string;
+    listId?: string;
   },
 ): Promise<void> {
   const supabase = await createClient();
@@ -77,6 +78,7 @@ async function record(
     collection_entry_id: subject.collectionEntryId ?? null,
     relisten_event_id: subject.relistenEventId ?? null,
     review_id: subject.reviewId ?? null,
+    list_id: subject.listId ?? null,
   });
 
   if (error && error.code !== UNIQUE_VIOLATION) throw error;
@@ -148,4 +150,22 @@ export function recordRelistened(actorId: string, relistenEventId: string): Prom
  */
 export function recordReviewed(actorId: string, reviewId: string): Promise<void> {
   return record(actorId, 'reviewed', { reviewId });
+}
+
+/**
+ * A user made a list.
+ *
+ * **Creation is the only list activity in this slice, and the omissions are
+ * deliberate rather than pending.** Editing the title, adding an album, removing
+ * one and reordering all write nothing. Events read live data, so the feed item
+ * already shows the list's current title, albums and order — those mutations
+ * improve the existing item rather than needing one of their own, and twenty
+ * reorders are one act of curation.
+ *
+ * **`list_updated` does not exist, and its enum label is deliberately not
+ * added.** What a list update should communicate, and how often it may speak, is
+ * unresolved; an enum label cannot be taken back. See `architecture.md` §16.6.
+ */
+export function recordListCreated(actorId: string, listId: string): Promise<void> {
+  return record(actorId, 'list_created', { listId });
 }

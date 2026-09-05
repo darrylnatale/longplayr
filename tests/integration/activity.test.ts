@@ -80,6 +80,33 @@ async function addToCollection(userId: string, albumId: string, listenedOn?: str
   return entry;
 }
 
+/** `createList`'s two statements: insert the list, then record the event. */
+async function createList(userId: string, title: string): Promise<string> {
+  const { data, error } = await admin
+    .from('lists')
+    .insert({ user_id: userId, title })
+    .select('id')
+    .single();
+  if (error) throw error;
+
+  const { error: eventError } = await admin
+    .from('activity')
+    .insert({ actor_id: userId, type: 'list_created', list_id: data.id });
+  if (eventError) throw eventError;
+
+  return data.id;
+}
+
+/** Like `activityFor`, but carrying the fourth subject column. */
+async function listActivityFor(userId: string) {
+  const { data, error } = await admin
+    .from('activity')
+    .select('type, list_id, collection_entry_id, relisten_event_id, review_id')
+    .eq('actor_id', userId);
+  if (error) throw error;
+  return data ?? [];
+}
+
 async function activityFor(userId: string) {
   const { data, error } = await admin
     .from('activity')
@@ -445,5 +472,155 @@ describe('authorisation', () => {
 
     expect(error).toBeNull();
     expect(data).toHaveLength(1);
+  });
+});
+
+describe('list activity — creation only', () => {
+  it('creating a list writes exactly one list_created event', async () => {
+    const user = await createUser();
+    const listId = await createList(user.id, 'Long drive records');
+
+    const rows = await listActivityFor(user.id);
+
+    expect(rows).toEqual([
+      {
+        type: 'list_created',
+        list_id: listId,
+        collection_entry_id: null,
+        relisten_event_id: null,
+        review_id: null,
+      },
+    ]);
+  });
+
+  it('deleting the list removes its event, by cascade', async () => {
+    const user = await createUser();
+    const listId = await createList(user.id, 'Undone');
+    expect(await listActivityFor(user.id)).toHaveLength(1);
+
+    await admin.from('lists').delete().eq('id', listId);
+
+    expect(await listActivityFor(user.id)).toEqual([]);
+  });
+
+  /**
+   * **The constraint used to fail open, and these are what prove it no longer
+   * does.** The original `CASE` had no `ELSE`: an unmatched type returns NULL,
+   * and a CHECK with a NULL result passes. Every combination below would have
+   * been accepted before the rewrite.
+   */
+  describe('the subject constraint rejects every wrong shape', () => {
+    it('rejects a list_created row with no list_id', async () => {
+      const user = await createUser();
+
+      const { error } = await admin
+        .from('activity')
+        .insert({ actor_id: user.id, type: 'list_created' });
+
+      expect(error).not.toBeNull();
+      expect(await listActivityFor(user.id)).toEqual([]);
+    });
+
+    it('rejects a list_created row that also names another subject', async () => {
+      const user = await createUser();
+      const listId = await createList(user.id, 'Mixed subject');
+      const entry = await ensureEntry(user.id, albumA);
+
+      const { error } = await admin.from('activity').insert({
+        actor_id: user.id,
+        type: 'list_created',
+        list_id: listId,
+        collection_entry_id: entry.id,
+      });
+
+      expect(error).not.toBeNull();
+    });
+
+    it('rejects each existing type carrying a stray list_id', async () => {
+      const user = await createUser();
+      const listId = await createList(user.id, 'Stray reference');
+      const entry = await ensureEntry(user.id, albumA);
+
+      // Each type needs its own valid subject, so the row is rejected for the
+      // stray `list_id` and not for missing the subject its type requires.
+      const { data: relisten } = await admin
+        .from('relisten_events')
+        .insert({ collection_entry_id: entry.id })
+        .select('id')
+        .single();
+      const { data: review } = await admin
+        .from('reviews')
+        .upsert(
+          { collection_entry_id: entry.id, body: 'A body long enough to be a review.' },
+          { onConflict: 'collection_entry_id' },
+        )
+        .select('id')
+        .single();
+
+      const cases = [
+        { type: 'listened' as const, subject: { collection_entry_id: entry.id } },
+        { type: 'rated' as const, subject: { collection_entry_id: entry.id } },
+        { type: 'relistened' as const, subject: { relisten_event_id: relisten!.id } },
+        { type: 'reviewed' as const, subject: { review_id: review!.id } },
+      ];
+
+      for (const { type, subject } of cases) {
+        const { error } = await admin.from('activity').insert({
+          actor_id: user.id,
+          type,
+          ...subject,
+          list_id: listId,
+        });
+        expect(error, `${type} must reject a stray list_id`).not.toBeNull();
+      }
+
+      // Nothing was written: the constraint refused all four.
+      expect(await listActivityFor(user.id)).toHaveLength(1);
+    });
+  });
+
+  /**
+   * **The anti-burst boundary, asserted as silence rather than as a bound.**
+   * There is no `list_updated` event in this slice, so repeated editing must
+   * produce no additional rows at all — a stronger property than an index that
+   * collapses many events into one.
+   */
+  it('editing, adding, removing and reordering write nothing', async () => {
+    const user = await createUser();
+    const listId = await createList(user.id, 'Rapidly edited');
+
+    for (let i = 0; i < 5; i++) {
+      await admin
+        .from('lists')
+        .update({ title: `Rapidly edited ${i}` })
+        .eq('id', listId);
+
+      const { error: addError } = await admin.rpc('add_list_item', {
+        p_list_id: listId,
+        p_album_id: albumA,
+      });
+      if (addError && addError.code !== '23505') throw addError;
+
+      const { data: item } = await admin
+        .from('list_items')
+        .select('id')
+        .eq('list_id', listId)
+        .maybeSingle();
+      if (item) {
+        const { error: reorderError } = await admin.rpc('reorder_list_item', {
+          p_item_id: item.id,
+          p_to_position: 1,
+        });
+        if (reorderError) throw reorderError;
+      }
+
+      const { error: removeError } = await admin.rpc('remove_list_item', {
+        p_list_id: listId,
+        p_album_id: albumA,
+      });
+      if (removeError) throw removeError;
+    }
+
+    expect(await listActivityFor(user.id)).toHaveLength(1);
   });
 });

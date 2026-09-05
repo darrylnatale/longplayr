@@ -28,16 +28,34 @@ type FeedRow = Database['public']['Functions']['feed_activity']['Returns'][numbe
 
 export type FeedActivityType = Database['public']['Enums']['activity_type'];
 
-/** One item as the feed renders it. */
-export type FeedItem = {
+/** What every feed item carries, whatever its subject. */
+type FeedItemBase = {
   id: string;
-  type: FeedActivityType;
   createdAt: string;
   actor: { handle: string; displayName: string | null; avatarUrl: string | null };
-  album: { mbid: string; title: string; credit: string; hasArtwork: boolean };
-  score: number | null;
-  reviewBody: string | null;
 };
+
+/**
+ * One item as the feed renders it.
+ *
+ * **A discriminated union, so the album contract is preserved rather than
+ * weakened.** Four of the five event types resolve to an album and carry a
+ * non-nullable one; `list_created` resolves to a list and carries no album at
+ * all. Making that a union rather than adding nullable fields means TypeScript
+ * forces every consumer to say which case it is handling, instead of every
+ * consumer defending against a null that only one type can produce.
+ */
+export type FeedItem =
+  | (FeedItemBase & {
+      type: 'listened' | 'relistened' | 'rated' | 'reviewed';
+      album: { mbid: string; title: string; credit: string; hasArtwork: boolean };
+      score: number | null;
+      reviewBody: string | null;
+    })
+  | (FeedItemBase & {
+      type: 'list_created';
+      list: { id: string; title: string };
+    });
 
 /**
  * The position of the last item on a page.
@@ -126,20 +144,37 @@ export async function listFeed(
  * Returns an array so callers can `flatMap`, matching the two mappers above.
  */
 export function toFeedItem(row: FeedRow): FeedItem[] {
+  const base: FeedItemBase = {
+    id: row.id,
+    createdAt: row.created_at,
+    actor: {
+      handle: row.actor_handle,
+      // Generated types cannot express nullability on a function's result
+      // columns, so both of these arrive typed as `string` and are genuinely
+      // nullable. Normalised here rather than defended against in every
+      // component.
+      displayName: row.actor_display_name ?? null,
+      avatarUrl: row.actor_avatar_url ?? null,
+    },
+  };
+
+  // **Branch on the type, never on whether a column looks null.** The generated
+  // types claim every result column is non-nullable — `album_mbid` included —
+  // and after this slice that is wrong for whichever half of the row does not
+  // apply. The discriminator is the only trustworthy signal.
+  if (row.type === 'list_created') {
+    // The query drops a `list_created` row whose list is unreadable, so this is
+    // defence against a shape that should not arrive rather than an expected
+    // path. Returning nothing keeps the existing unmappable-row behaviour.
+    if (row.list_id === null || row.list_id === undefined) return [];
+
+    return [{ ...base, type: 'list_created', list: { id: row.list_id, title: row.list_title } }];
+  }
+
   return [
     {
-      id: row.id,
+      ...base,
       type: row.type,
-      createdAt: row.created_at,
-      actor: {
-        handle: row.actor_handle,
-        // Generated types cannot express nullability on a function's result
-        // columns, so both of these arrive typed as `string` and are genuinely
-        // nullable. Normalised here rather than defended against in every
-        // component.
-        displayName: row.actor_display_name ?? null,
-        avatarUrl: row.actor_avatar_url ?? null,
-      },
       album: {
         mbid: row.album_mbid,
         title: row.album_title,

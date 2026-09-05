@@ -4,15 +4,23 @@ import type { Database } from '@/lib/supabase/database.types';
 import type { AlbumSummary } from '../catalogue/queries';
 
 import { countRows, COUNT_ONLY } from '../count';
+import { recordListCreated } from '../social/activity';
 import { getCurrentProfile } from '../profiles';
 import { err, ok, type Result } from '../result';
 
 /**
  * Lists — user-curated collections of albums.
  *
- * **Phase 4, slice 1: identity and surfaces only.** No likes, no activity
- * events, no notifications, no feed integration. Those are slices 2 and 3, and
- * nothing here should be written as though they exist (`architecture.md` §16.4).
+ * **Creating a list writes one feed event; nothing else here writes any.**
+ * `createList` records `list_created` and that is the whole of this module's
+ * activity surface — editing, adding, removing and reordering are deliberately
+ * silent, because events read live data and the feed item already shows the
+ * list's current title, albums and order (`architecture.md` §16.6).
+ *
+ * **Still absent, and nothing here should be written as though they exist**:
+ * likes and notifications, which live in `src/services/social/`, and
+ * `list_updated`, whose semantics are unresolved and whose enum label is
+ * deliberately not added (`architecture.md` §16.4 and §16.6).
  *
  * **`position` is always stored and always maintained contiguous, on every list,
  * ranked or not.** `is_ranked` decides whether that order is meaningful *to the
@@ -169,6 +177,10 @@ export async function createList(input: {
     .single();
 
   if (error) throw error;
+
+  // **The only list mutation that writes activity.** Editing, adding, removing
+  // and reordering are deliberately silent — see `recordListCreated`.
+  await recordListCreated(profile.id, data.id);
 
   return ok({ id: data.id });
 }

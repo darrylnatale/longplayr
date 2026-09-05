@@ -40,6 +40,7 @@ export type Database = {
           collection_entry_id: string | null
           created_at: string
           id: string
+          list_id: string | null
           relisten_event_id: string | null
           review_id: string | null
           type: Database["public"]["Enums"]["activity_type"]
@@ -49,6 +50,7 @@ export type Database = {
           collection_entry_id?: string | null
           created_at?: string
           id?: string
+          list_id?: string | null
           relisten_event_id?: string | null
           review_id?: string | null
           type: Database["public"]["Enums"]["activity_type"]
@@ -58,6 +60,7 @@ export type Database = {
           collection_entry_id?: string | null
           created_at?: string
           id?: string
+          list_id?: string | null
           relisten_event_id?: string | null
           review_id?: string | null
           type?: Database["public"]["Enums"]["activity_type"]
@@ -75,6 +78,13 @@ export type Database = {
             columns: ["collection_entry_id"]
             isOneToOne: false
             referencedRelation: "collection_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activity_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "lists"
             referencedColumns: ["id"]
           },
           {
@@ -985,6 +995,8 @@ export type Database = {
           album_title: string
           created_at: string
           id: string
+          list_id: string
+          list_title: string
           rating: number
           review_body: string
           type: Database["public"]["Enums"]["activity_type"]
@@ -1029,7 +1041,12 @@ export type Database = {
       show_trgm: { Args: { "": string }; Returns: string[] }
     }
     Enums: {
-      activity_type: "listened" | "relistened" | "rated" | "reviewed"
+      activity_type:
+        | "listened"
+        | "relistened"
+        | "rated"
+        | "reviewed"
+        | "list_created"
       album_secondary_type:
         | "compilation"
         | "soundtrack"
@@ -1186,7 +1203,13 @@ export const Constants = {
   },
   public: {
     Enums: {
-      activity_type: ["listened", "relistened", "rated", "reviewed"],
+      activity_type: [
+        "listened",
+        "relistened",
+        "rated",
+        "reviewed",
+        "list_created",
+      ],
       album_secondary_type: [
         "compilation",
         "soundtrack",

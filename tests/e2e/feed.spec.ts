@@ -148,6 +148,25 @@ async function follow(followerId: string, followeeId: string) {
  * the same RPC the application uses, so the collection state is the product's
  * own rather than an approximation of it.
  */
+/** `createList`'s two statements: insert the list, then record the event. */
+async function createList(userId: string, title: string): Promise<string> {
+  const admin = adminClient();
+
+  const { data, error } = await admin
+    .from('lists')
+    .insert({ user_id: userId, title })
+    .select('id')
+    .single();
+  if (error) throw error;
+
+  const { error: eventError } = await admin
+    .from('activity')
+    .insert({ actor_id: userId, type: 'list_created', list_id: data.id });
+  if (eventError) throw eventError;
+
+  return data.id as string;
+}
+
 async function fourEvents(userId: string) {
   const admin = adminClient();
   const ids = await albumIds();
@@ -201,7 +220,15 @@ async function fourEvents(userId: string) {
     .insert({ actor_id: userId, type: 'reviewed', review_id: review!.id });
 
   // Postconditions, so a silent failure cannot pass as an empty feed.
-  const { data: written } = await admin.from('activity').select('type').eq('actor_id', userId);
+  // Scoped with `list_id is null` to the four events this helper actually
+  // writes. A `list_created` event from the same actor is somebody else's
+  // postcondition, and asserting over it would make this helper fail for a
+  // reason that has nothing to do with what it did.
+  const { data: written } = await admin
+    .from('activity')
+    .select('type')
+    .eq('actor_id', userId)
+    .is('list_id', null);
   expect((written ?? []).map((r) => r.type).sort()).toEqual([
     'listened',
     'rated',
@@ -233,7 +260,7 @@ test('the feed distinguishes following nobody from following quiet people', asyn
   await expect(page.getByText('You aren’t following anyone yet.')).toHaveCount(0);
 });
 
-test('all four event types appear, and a silent backfill adds nothing', async ({ page }) => {
+test('all five event types appear, and a silent backfill adds nothing', async ({ page }) => {
   const actor = await createAccount('Nadia Okonkwo');
   const me = await signUp(page);
 
@@ -241,6 +268,13 @@ test('all four event types appear, and a silent backfill adds nothing', async ({
   const { data: mine } = await admin.from('profiles').select('id').eq('handle', me.handle).single();
 
   await follow(mine!.id, actor.id);
+
+  // **Phase 4's definition of done, in one line**: a followed account creates a
+  // list, and the follower sees its creation in their feed. Written before the
+  // four album events so the review still lands last and the newest-first
+  // assertion below keeps testing what it always did.
+  const listId = await createList(actor.id, 'Long drive records');
+
   await fourEvents(actor.id);
 
   await page.goto('/feed');
@@ -249,7 +283,7 @@ test('all four event types appear, and a silent backfill adds nothing', async ({
   // and an unscoped listitem count would silently include it.
   const list = page.getByRole('list', { name: 'Feed' });
   const items = list.getByRole('listitem');
-  await expect(items).toHaveCount(4);
+  await expect(items).toHaveCount(5);
 
   // The compact tier. "added … to their collection", never "listened to" — a
   // collection is not a diary.
@@ -267,6 +301,13 @@ test('all four event types appear, and a silent backfill adds nothing', async ({
   // A relisten never advertises a count, so no ×N marker reaches the feed.
   await expect(list).not.toContainText('×');
 
+  // **The list event, and it links through to the list itself.**
+  await expect(list).toContainText('made a list');
+  await expect(list.getByRole('link', { name: 'Long drive records' })).toHaveAttribute(
+    'href',
+    `/lists/${listId}`,
+  );
+
   // **The anti-flood half.** Forty entries through the creation path — what an
   // import or backfill uses — generate nothing, so the feed is unchanged.
   const ids = await albumIds();
@@ -280,7 +321,7 @@ test('all four event types appear, and a silent backfill adds nothing', async ({
   }
 
   await page.goto('/feed');
-  await expect(page.getByRole('list', { name: 'Feed' }).getByRole('listitem')).toHaveCount(4);
+  await expect(page.getByRole('list', { name: 'Feed' }).getByRole('listitem')).toHaveCount(5);
 
   /**
    * **Running out of feed is not an empty feed.**

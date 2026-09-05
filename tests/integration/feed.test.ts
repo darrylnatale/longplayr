@@ -146,6 +146,27 @@ async function follow(followerId: string, followeeId: string) {
   if (error) throw error;
 }
 
+/** `createList`'s two statements: insert the list, then record the event. */
+async function createList(
+  userId: string,
+  title: string,
+  status: 'live' | 'removed' = 'live',
+): Promise<string> {
+  const { data, error } = await admin
+    .from('lists')
+    .insert({ user_id: userId, title, status })
+    .select('id')
+    .single();
+  if (error) throw error;
+
+  const { error: eventError } = await admin
+    .from('activity')
+    .insert({ actor_id: userId, type: 'list_created', list_id: data.id });
+  if (eventError) throw eventError;
+
+  return data.id;
+}
+
 type FeedRow = Database['public']['Functions']['feed_activity']['Returns'][number];
 
 async function feedFor(
@@ -184,7 +205,7 @@ afterAll(async () => {
 });
 
 describe('what the feed contains', () => {
-  it('returns all four event types from a followed account', async () => {
+  it('returns all five event types from a followed account', async () => {
     const viewer = await createUser();
     const actor = await createUser();
     await follow(viewer.id, actor.id);
@@ -193,11 +214,44 @@ describe('what the feed contains', () => {
     await rateAlbum(actor.id, albumB, 9.6);
     await markRelisten(actor.id, albumA);
     await saveReview(actor.id, albumB, 'A considered paragraph about this record.');
+    await createList(actor.id, 'Long drive records');
 
     const client = await signedInAs(viewer.email);
     const rows = await feedFor(client, viewer.id);
 
-    expect(rows.map((r) => r.type).sort()).toEqual(['listened', 'rated', 'relistened', 'reviewed']);
+    expect(rows.map((r) => r.type).sort()).toEqual([
+      'list_created',
+      'listened',
+      'rated',
+      'relistened',
+      'reviewed',
+    ]);
+  });
+
+  /**
+   * **The album path had to become a LEFT join for list events to survive, so
+   * this asserts both halves of that change.** A list row carries its list and
+   * no album; an album row is unchanged and still carries no list.
+   */
+  it('carries list-shaped data, and leaves album rows album-shaped', async () => {
+    const viewer = await createUser();
+    const actor = await createUser();
+    await follow(viewer.id, actor.id);
+
+    const listId = await createList(actor.id, 'A named list');
+    await rateAlbum(actor.id, albumA, 7.5);
+
+    const client = await signedInAs(viewer.email);
+    const rows = await feedFor(client, viewer.id);
+
+    const list = rows.find((r) => r.type === 'list_created')!;
+    expect(list.list_id).toBe(listId);
+    expect(list.list_title).toBe('A named list');
+    expect(list.album_mbid).toBeNull();
+
+    const rated = rows.find((r) => r.type === 'rated')!;
+    expect(rated.album_mbid).toBeTruthy();
+    expect(rated.list_id).toBeNull();
   });
 
   it('carries the joined payload in one call, with no second query', async () => {
@@ -446,5 +500,74 @@ describe('the anti-flood invariant, read from the feed', () => {
 
     const client = await signedInAs(viewer.email);
     expect(await feedFor(client, viewer.id)).toHaveLength(0);
+  });
+});
+
+describe('list events and what they depend on', () => {
+  it('omits a list the viewer may not read', async () => {
+    const viewer = await createUser();
+    const actor = await createUser();
+    await follow(viewer.id, actor.id);
+    await createList(actor.id, 'Moderated away', 'removed');
+
+    const client = await signedInAs(viewer.email);
+
+    expect(await feedFor(client, viewer.id)).toEqual([]);
+  });
+
+  it('keeps the same list visible to its owner, which is what proves RLS did it', async () => {
+    const actor = await createUser();
+    const viewer = await createUser();
+    await follow(viewer.id, actor.id);
+    await createList(actor.id, 'Moderated away', 'removed');
+
+    // The owner follows nobody, so this reads their own row directly rather
+    // than through the feed — the point is that the list still exists and is
+    // readable by them, so the feed's omission above is RLS and not deletion.
+    const ownerClient = await signedInAs(actor.email);
+    const { data } = await ownerClient.from('lists').select('id').eq('user_id', actor.id);
+
+    expect(data).toHaveLength(1);
+  });
+
+  it('drops the event when the list is deleted', async () => {
+    const viewer = await createUser();
+    const actor = await createUser();
+    await follow(viewer.id, actor.id);
+    const listId = await createList(actor.id, 'Deleted later');
+
+    const client = await signedInAs(viewer.email);
+    expect(await feedFor(client, viewer.id)).toHaveLength(1);
+
+    await admin.from('lists').delete().eq('id', listId);
+
+    expect(await feedFor(client, viewer.id)).toEqual([]);
+  });
+
+  it('pages deterministically when album and list events share a timestamp', async () => {
+    const viewer = await createUser();
+    const actor = await createUser();
+    await follow(viewer.id, actor.id);
+
+    await addToCollection(actor.id, albumA);
+    await createList(actor.id, 'Same instant one');
+    await rateAlbum(actor.id, albumB, 4.2);
+    await createList(actor.id, 'Same instant two');
+
+    const stamp = new Date().toISOString();
+    await admin.from('activity').update({ created_at: stamp }).eq('actor_id', actor.id);
+
+    const client = await signedInAs(viewer.email);
+    const first = await feedFor(client, viewer.id, { limit: 2 });
+    const last = first[first.length - 1];
+    const second = await feedFor(client, viewer.id, {
+      limit: 2,
+      before: last.created_at,
+      beforeId: last.id,
+    });
+
+    const ids = [...first, ...second].map((r) => r.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toHaveLength(4);
   });
 });
