@@ -141,6 +141,7 @@ test('the like reaches the owner as a notification that opens the list', async (
   // Sign out, then in as the owner, to read what was directed at them.
   await page.goto('/');
   await page.getByRole('button', { name: 'Sign out' }).click();
+  await expect(page.getByRole('banner').getByRole('link', { name: 'Sign in' })).toBeVisible(NAV);
   await page.goto('/login');
   await page.getByLabel('Email').fill(owner.email);
   await page.getByLabel('Password').fill(owner.password);
@@ -167,6 +168,7 @@ test('unliking removes the notification it created', async ({ page }) => {
 
   await page.goto('/');
   await page.getByRole('button', { name: 'Sign out' }).click();
+  await expect(page.getByRole('banner').getByRole('link', { name: 'Sign in' })).toBeVisible(NAV);
   await page.goto('/login');
   await page.getByLabel('Email').fill(owner.email);
   await page.getByLabel('Password').fill(owner.password);
