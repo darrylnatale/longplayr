@@ -136,7 +136,9 @@ test('a collection appears on the profile, newest addition first', async ({ page
 });
 
 test('artwork carries a state line, and never a caption', async ({ page }) => {
-  const user = await signUp(page);
+  const admin = adminClient();
+  const user = await createUserViaApi(admin);
+  await signIn(page, user);
 
   await rate(page, WATCH_THE_THRONE, '8.5');
 
@@ -172,7 +174,9 @@ test('artwork carries a state line, and never a caption', async ({ page }) => {
 test('a relisten count of one is not drawn', async ({ page }) => {
   // ×1 is noise: an entry is not itself a relisten, so the marker only earns
   // its place above one. The fixture profile leans on this too.
-  const user = await signUp(page);
+  const admin = adminClient();
+  const user = await createUserViaApi(admin);
+  await signIn(page, user);
 
   await page.goto(`/albums/${IN_RAINBOWS}`);
   await page.getByRole('button', { name: 'Relisten', exact: true }).click();
@@ -187,7 +191,9 @@ test('a relisten count of one is not drawn', async ({ page }) => {
 test('a score of 0.0 is drawn as a score, not as unrated', async ({ page }) => {
   // The lowest score in the product is falsy, and every plausible shortcut in
   // the mapping turns it into "never rated".
-  const user = await signUp(page);
+  const admin = adminClient();
+  const user = await createUserViaApi(admin);
+  await signIn(page, user);
 
   await rate(page, IN_RAINBOWS, '0.0');
   await page.goto(`/${user.handle}`);
@@ -200,7 +206,9 @@ test('a tile links through to the album page, from both surfaces', async ({ page
   // `AlbumGrid` wraps every cell in one — so albums were reachable from the
   // artist page and Browse but not from the two surfaces where someone looks
   // at their own collection.
-  const user = await signUp(page);
+  const admin = adminClient();
+  const user = await createUserViaApi(admin);
+  await signIn(page, user);
   await collect(page, IN_RAINBOWS);
 
   await page.goto(`/${user.handle}`);
@@ -215,7 +223,9 @@ test('a tile links through to the album page, from both surfaces', async ({ page
 });
 
 test('an album with no state draws no line at all', async ({ page }) => {
-  const user = await signUp(page);
+  const admin = adminClient();
+  const user = await createUserViaApi(admin);
+  await signIn(page, user);
 
   await collect(page, IN_RAINBOWS);
   await page.goto(`/${user.handle}`);
@@ -230,7 +240,9 @@ test('the count does not link when the overview already shows everything', async
   // Seven fixture albums is under the preview limit, so the destination would
   // show exactly the same covers. An affordance that promises more and delivers
   // the same thing is worse than no affordance.
-  const user = await signUp(page);
+  const admin = adminClient();
+  const user = await createUserViaApi(admin);
+  await signIn(page, user);
 
   await collect(page, IN_RAINBOWS);
   await collect(page, WATCH_THE_THRONE);
@@ -242,7 +254,9 @@ test('the count does not link when the overview already shows everything', async
 });
 
 test('the collection destination renders, and matches the profile count', async ({ page }) => {
-  const user = await signUp(page);
+  const admin = adminClient();
+  const user = await createUserViaApi(admin);
+  await signIn(page, user);
 
   await rate(page, WATCH_THE_THRONE, '9.1');
   await collect(page, IN_RAINBOWS);
@@ -264,7 +278,9 @@ test('the collection destination renders, and matches the profile count', async 
 });
 
 test('pagination is absent on a single page, and a page past the end 404s', async ({ page }) => {
-  const user = await signUp(page);
+  const admin = adminClient();
+  const user = await createUserViaApi(admin);
+  await signIn(page, user);
   await collect(page, IN_RAINBOWS);
 
   await page.goto(`/${user.handle}/collection`);
@@ -284,7 +300,9 @@ test('pagination is absent on a single page, and a page past the end 404s', asyn
 });
 
 test('an empty collection has its own destination state', async ({ page }) => {
-  const user = await signUp(page);
+  const admin = adminClient();
+  const user = await createUserViaApi(admin);
+  await signIn(page, user);
 
   await page.goto(`/${user.handle}/collection`);
 
@@ -293,7 +311,9 @@ test('an empty collection has its own destination state', async ({ page }) => {
 });
 
 test('a signed-out visitor sees the public collection', async ({ page, context }) => {
-  const user = await signUp(page);
+  const admin = adminClient();
+  const user = await createUserViaApi(admin);
+  await signIn(page, user);
   await rate(page, WATCH_THE_THRONE, '7.2');
 
   // Everything user-generated is public, verified from a session with no
@@ -355,6 +375,16 @@ async function createUserViaApi(admin: SupabaseClient): Promise<ApiUser> {
     .from('profiles')
     .insert({ id: data.user.id, handle: user.handle });
   if (profileError) throw profileError;
+
+  // The insert throws on error but proves nothing about the row existing. An
+  // API fixture has no self-verification, and the first conversion in this file
+  // shipped a vacuous one — see `architecture.md` §12.
+  const { data: written } = await admin
+    .from('profiles')
+    .select('id, handle')
+    .eq('id', data.user.id)
+    .single();
+  expect(written?.handle).toBe(user.handle);
 
   return { ...user, id: data.user.id };
 }

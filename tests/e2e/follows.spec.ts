@@ -5,11 +5,11 @@ import { expect, test, type Page } from '@playwright/test';
 /**
  * Following and unfollowing, from a profile.
  *
- * **One account signs up through the browser; the other is built through the
- * API.** A follow needs two people, and only one of them is the subject of any
- * assertion here — the second exists to be followed and to own a profile page.
- * Signing both up through the UI would double the slowest operation in the
- * suite to establish a fixture, which is exactly the cost
+ * **Both accounts are built through the API; the subject then signs in through
+ * the real login form.** A follow needs two people, and only one of them is the
+ * subject of any assertion here — the second exists to be followed and to own a
+ * profile page. Building either through the UI would spend the slowest
+ * operation in the suite on a fixture, which is exactly the cost
  * `architecture.md` §12 records as avoidable. Signup itself is asserted as a
  * subject in `auth.spec.ts`.
  *
@@ -65,23 +65,6 @@ test.afterAll(async () => {
   }
 });
 
-async function signUp(page: Page) {
-  const user = uniqueUser();
-  createdEmails.push(user.email);
-
-  await page.goto('/signup');
-  await page.getByLabel('Email').fill(user.email);
-  await page.getByLabel('Password').fill(user.password);
-  await page.getByRole('button', { name: 'Create account' }).click();
-
-  await expect(page).toHaveURL('/onboarding', NAV);
-  await page.getByLabel('Handle').fill(user.handle);
-  await page.getByRole('button', { name: 'Claim handle' }).click();
-  await expect(page).toHaveURL(`/${user.handle}`, NAV);
-
-  return user;
-}
-
 /**
  * A second account, built through the API.
  *
@@ -117,6 +100,21 @@ async function createAccount(displayName?: string) {
   return { ...user, id: data.user!.id };
 }
 
+/**
+ * Signs an existing user in through the real login form.
+ *
+ * Copied from `profile-collection.spec.ts` rather than extracted, so the two
+ * files stay recognisably the same. The parameter is structural because this
+ * file has no `ApiUser` type and does not need one.
+ */
+async function signIn(page: Page, user: { email: string; password: string }) {
+  await page.goto('/login');
+  await page.getByLabel('Email').fill(user.email);
+  await page.getByLabel('Password').fill(user.password);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page).toHaveURL('/', NAV);
+}
+
 /** The toggle, found by its accessible name in either state. */
 const followButton = (page: Page) => page.getByRole('button', { name: /^Follow(ing)?$/ });
 
@@ -137,7 +135,8 @@ const statLink = (page: Page, label: 'following' | 'followers') =>
 
 test('follow and unfollow from a profile, and the counts follow', async ({ page }) => {
   const other = await createAccount('Nadia Okonkwo');
-  const me = await signUp(page);
+  const me = await createAccount();
+  await signIn(page, me);
 
   await page.goto(`/${other.handle}`);
 
@@ -171,7 +170,8 @@ test('follow and unfollow from a profile, and the counts follow', async ({ page 
 
 test('following twice in a row settles on one follow', async ({ page }) => {
   const other = await createAccount();
-  await signUp(page);
+  const me = await createAccount();
+  await signIn(page, me);
 
   await page.goto(`/${other.handle}`);
   await followButton(page).click();
@@ -186,7 +186,8 @@ test('following twice in a row settles on one follow', async ({ page }) => {
 
 test('the relationship lists hold each side of the follow', async ({ page }) => {
   const other = await createAccount('Nadia Okonkwo');
-  const me = await signUp(page);
+  const me = await createAccount();
+  await signIn(page, me);
 
   await page.goto(`/${other.handle}`);
   await followButton(page).click();
@@ -214,7 +215,8 @@ test('the relationship lists hold each side of the follow', async ({ page }) => 
 
 test('a relationship list is reachable and correct signed out', async ({ page, browser }) => {
   const other = await createAccount();
-  const me = await signUp(page);
+  const me = await createAccount();
+  await signIn(page, me);
 
   await page.goto(`/${other.handle}`);
   await followButton(page).click();
@@ -241,7 +243,8 @@ test('a relationship list is reachable and correct signed out', async ({ page, b
 });
 
 test('your own profile offers no follow control', async ({ page }) => {
-  const me = await signUp(page);
+  const me = await createAccount();
+  await signIn(page, me);
 
   await page.goto(`/${me.handle}`);
 
@@ -256,7 +259,8 @@ test('your own profile offers no follow control', async ({ page }) => {
 test('an empty relationship list states the absence rather than showing nothing', async ({
   page,
 }) => {
-  const me = await signUp(page);
+  const me = await createAccount();
+  await signIn(page, me);
 
   await page.goto(`/${me.handle}/following`);
   await expect(page.getByText(/isn’t following anyone yet/)).toBeVisible();
@@ -266,7 +270,8 @@ test('an empty relationship list states the absence rather than showing nothing'
 });
 
 test('a page past the end of a relationship list is a 404', async ({ page }) => {
-  const me = await signUp(page);
+  const me = await createAccount();
+  await signIn(page, me);
 
   const response = await page.goto(`/${me.handle}/followers?page=9`);
 
