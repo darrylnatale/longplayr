@@ -26,7 +26,7 @@ import type { AlbumSummary } from '@/services/catalogue/queries';
 
 export type GridDensity = 'standard' | 'dense' | 'relaxed';
 
-const DENSITY: Record<GridDensity, string> = {
+export const DENSITY: Record<GridDensity, string> = {
   // The default shelf: 3 → 4 → 5 → 7 → 9 → 11 → 12.
   standard:
     'grid-cols-3 gap-2 min-[480px]:grid-cols-4 sm:grid-cols-5 sm:gap-3 md:grid-cols-7 lg:grid-cols-9 lg:gap-4 xl:grid-cols-11 2xl:grid-cols-12',
@@ -55,6 +55,27 @@ const DENSITY: Record<GridDensity, string> = {
  */
 const SOURCE = { standard: 250, dense: 250, relaxed: 500 } as const;
 const RENDER_PX: Record<GridDensity, number> = { standard: 160, dense: 120, relaxed: 240 };
+
+/**
+ * How many leading cells load eagerly — one row at the narrowest breakpoint.
+ *
+ * **These are the base column counts of the ramp above**, the unprefixed
+ * `grid-cols-N` that opens each string, which is by definition the narrowest
+ * width because every other entry carries a `min-width` prefix. `priority`
+ * exists to mark the LCP element, and the first cell is top-left at every
+ * breakpoint, so a small leading set covers it everywhere. Marking a first row
+ * at the *widest* breakpoint instead would over-mark on a phone, where only the
+ * opening row is visible and the connection is slowest — and a browser
+ * deprioritises when everything is high (`design-reference.md` §11.10).
+ *
+ * **Stated a second time rather than computed, and that is a constraint rather
+ * than a preference.** Tailwind only generates classes it can see literally, so
+ * an interpolated `grid-cols-${n}` would never be emitted and the grid would
+ * silently lose its columns. The number therefore cannot be derived from the
+ * string in production — `AlbumGrid.test.ts` pins the two together instead, so
+ * moving the ramp without moving this fails rather than drifts.
+ */
+export const BASE_COLUMNS: Record<GridDensity, number> = { standard: 3, dense: 4, relaxed: 2 };
 
 /** Bare grid shell. Takes any tile, so collection tiles can reuse the geometry. */
 export function AlbumGridShell({
@@ -115,7 +136,7 @@ export function AlbumGrid({
 
   return (
     <AlbumGridShell density={density}>
-      {albums.map((album) => (
+      {albums.map((album, index) => (
         <li key={album.id}>
           <Link href={`/albums/${album.mbid}`} className="group block">
             <AlbumCover
@@ -124,6 +145,7 @@ export function AlbumGrid({
               hasArtwork={album.artwork_status === 'found'}
               px={RENDER_PX[density]}
               size={SOURCE[density]}
+              priority={index < BASE_COLUMNS[density]}
             />
             {showCaptions && (
               <>
