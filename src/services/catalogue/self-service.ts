@@ -62,16 +62,39 @@ function renderCredit(group: MbReleaseGroup): string {
 }
 
 /**
+ * How many release groups the upstream search asks MusicBrainz for.
+ *
+ * **Deliberately independent of the caller's display limit**, which used to
+ * derive it as `limit * 2`. Two filters run between this fetch and anything
+ * being shown — the scope filter, then the removal of everything the catalogue
+ * already holds — so the pool has to be large enough to survive both. Ten was
+ * not: a page of singles and already-held records could empty it entirely, and
+ * the held filter removes a growing share of a fixed pool as the catalogue
+ * deepens.
+ *
+ * **Depth is free here.** The rate limiter serialises *requests*, not results,
+ * so twenty-five rows and ten rows are the same single request against the
+ * one-per-second ceiling. Twenty-five is MusicBrainz's own default limit, which
+ * is why it was chosen — it assumes nothing about the API's maximum.
+ *
+ * `product-spec.md` §8.10, `[DECIDED 2026-09-06]`.
+ */
+const UPSTREAM_FETCH_DEPTH = 25;
+
+/**
  * Searches MusicBrainz for records we do not hold.
  *
  * Returns an empty list rather than throwing when MusicBrainz is unreachable —
  * including when the contact guard is blocking calls. A missing fallback should
  * quietly leave local results as they are, not break the search page.
+ *
+ * `limit` caps how many *survivors* come back and has no bearing on how many
+ * candidates are fetched.
  */
 export async function searchUpstream(query: string, limit = 10): Promise<UpstreamCandidate[]> {
   let result: Awaited<ReturnType<typeof searchReleaseGroups>>;
   try {
-    result = await searchReleaseGroups(query, limit * 2);
+    result = await searchReleaseGroups(query, UPSTREAM_FETCH_DEPTH);
   } catch {
     return [];
   }

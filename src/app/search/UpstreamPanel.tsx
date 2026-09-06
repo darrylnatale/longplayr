@@ -30,6 +30,21 @@ import { AddFromUpstream } from './AddFromUpstream';
 const ROW = 'border-b border-border/50 last:border-0';
 
 /**
+ * How many upstream candidates the panel shows.
+ *
+ * **A display limit, and nothing more.** It no longer sets how deep the
+ * upstream search fetches — `searchUpstream` owns that, and the two are
+ * deliberately independent (`product-spec.md` §8.10). This number answers only
+ * how much of the surviving set belongs on the page.
+ *
+ * Ten rather than the five it was: the panel is **deliberately subordinate** to
+ * the catalogue results above it, which return up to twenty albums, so it stays
+ * well short of them while giving a record that survived both filters a real
+ * chance of appearing.
+ */
+const UPSTREAM_RESULTS = 10;
+
+/**
  * Stands in for the cover an upstream candidate does not have.
  *
  * Keeps the row aligned with catalogue results without impersonating one: a
@@ -79,7 +94,7 @@ export async function UpstreamPanel({
   query: string;
   nothingLocal: boolean;
 }) {
-  const candidates = await searchUpstream(query, 5);
+  const candidates = await searchUpstream(query, UPSTREAM_RESULTS);
 
   if (candidates.length === 0) {
     // Nothing upstream either. When the catalogue also held nothing, this is
