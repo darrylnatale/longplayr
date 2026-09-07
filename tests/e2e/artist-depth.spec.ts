@@ -1,0 +1,160 @@
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { config } from 'dotenv';
+import { expect, test } from '@playwright/test';
+
+/**
+ * On-demand artist depth — the trigger, in a browser.
+ *
+ * **This is the only layer that can prove the trigger.** The page is an async
+ * server component whose enqueue happens in `after()`, and the eligibility rule
+ * underneath it is already covered by `artist-depth.test.ts`. That the *page*
+ * asks — once, at background priority, without waiting — is observable only
+ * here.
+ *
+ * **What is deliberately not proved.** The expansion itself never runs to
+ * completion: `MUSICBRAINZ_CONTACT` is a placeholder in this environment, so
+ * `assertIdentifiable()` throws inside the drained job and no release group is
+ * ever fetched. That is the same condition the search fallback runs under, and
+ * it is why every assertion below is about **rows and rendering**, never about
+ * job status — which would race against the drain and its retries.
+ *
+ * `discoverAndIngestArtist` is covered in `curated-recovery.test.ts` and is not
+ * exercised here.
+ *
+ * Albums come from the local fixture catalogue and are never modified.
+ */
+
+config({ path: '.env.test.local', quiet: true });
+config({ path: '.env.local', quiet: true });
+
+/** Seeded by `npm run db:seed:fixtures`, and holding a single release. */
+const RADIOHEAD = 'a74b1b7f-71a5-4011-9441-d0b5e4122711';
+
+const NAV = { timeout: 15_000 };
+
+function adminClient(): SupabaseClient {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } },
+  );
+}
+
+/** Every discovery job recorded for one artist, whatever its status. */
+async function discoveryJobs(admin: SupabaseClient, mbid: string) {
+  const { data } = await admin
+    .from('ingestion_jobs')
+    .select('id, priority, status')
+    .eq('kind', 'discover_curated_artist')
+    .eq('target_mbid', mbid);
+  return data ?? [];
+}
+
+async function clearDiscoveryJobs(admin: SupabaseClient) {
+  await admin.from('ingestion_jobs').delete().eq('kind', 'discover_curated_artist');
+}
+
+/**
+ * The enqueue happens in `after()`, so it lands *after* the response the test
+ * already has. Polled rather than slept on, and bounded.
+ */
+async function waitForJobs(admin: SupabaseClient, mbid: string, expected: number) {
+  await expect
+    .poll(async () => (await discoveryJobs(admin, mbid)).length, { timeout: 15_000 })
+    .toBe(expected);
+}
+
+test.beforeEach(async () => {
+  await clearDiscoveryJobs(adminClient());
+});
+
+test.afterAll(async () => {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!url || !process.env.SUPABASE_SERVICE_ROLE_KEY) return;
+  await clearDiscoveryJobs(adminClient());
+});
+
+test('a first view queues exactly one expansion, and says it is doing so', async ({ page }) => {
+  const admin = adminClient();
+
+  await page.goto(`/artists/${RADIOHEAD}`);
+
+  // The discography is on the page before anything upstream has been asked
+  // for — the whole point of enqueueing rather than awaiting.
+  await expect(page.getByRole('heading', { name: 'Discography' })).toBeVisible(NAV);
+  await expect(page.getByRole('link', { name: /In Rainbows/ }).first()).toBeVisible();
+  await expect(page.getByTestId('discography-pending')).toBeVisible();
+
+  await waitForJobs(admin, RADIOHEAD, 1);
+
+  // Background, not interactive: the claim orders `priority asc`, so this must
+  // sit behind a reader's own add or tracklist fetch.
+  const [job] = await discoveryJobs(admin, RADIOHEAD);
+  expect(job.priority).toBeGreaterThan(10);
+});
+
+test('a terminally failed attempt still stops a second one', async ({ page }) => {
+  /*
+   * **This is the assertion that proves the rule rather than the index.**
+   *
+   * A view against a *pending* job would pass either way: the partial unique
+   * index covers `pending` and `running`, so a page that had lost its
+   * eligibility check entirely would still write only one row. `failed` is
+   * outside that index, so a second enqueue would succeed — and the only thing
+   * that can prevent it is the durable-attempt rule reading job history.
+   *
+   * It also covers the decision that a terminally failed expansion is settled:
+   * the queue owns retry, and a page view does not restart it.
+   */
+  const admin = adminClient();
+  const { error } = await admin.from('ingestion_jobs').insert({
+    kind: 'discover_curated_artist',
+    target_mbid: RADIOHEAD,
+    status: 'failed',
+  });
+  if (error) throw error;
+
+  await page.goto(`/artists/${RADIOHEAD}`);
+  await expect(page.getByRole('heading', { name: 'Discography' })).toBeVisible(NAV);
+  await expect(page.getByTestId('discography-pending')).toHaveCount(0);
+
+  // Settled after a window rather than immediately, so an enqueue arriving
+  // late through `after()` would still be caught.
+  await page.waitForTimeout(2_000);
+  expect(await discoveryJobs(admin, RADIOHEAD)).toHaveLength(1);
+});
+
+test('a repeat view while one is outstanding queues nothing further', async ({ page }) => {
+  // The weaker of the two, and kept because it is the real user path: the
+  // first view's row is still outstanding when the second arrives.
+  const admin = adminClient();
+
+  await page.goto(`/artists/${RADIOHEAD}`);
+  await waitForJobs(admin, RADIOHEAD, 1);
+
+  await page.goto(`/artists/${RADIOHEAD}?sort=oldest`);
+  await expect(page.getByRole('heading', { name: 'Discography' })).toBeVisible(NAV);
+
+  await page.waitForTimeout(2_000);
+  expect(await discoveryJobs(admin, RADIOHEAD)).toHaveLength(1);
+});
+
+test('a settled artist shows no status line', async ({ page }) => {
+  // Written straight to `succeeded` so the page sees a finished attempt without
+  // the drain having to succeed — which it cannot here, by design.
+  const admin = adminClient();
+  const { error } = await admin.from('ingestion_jobs').insert({
+    kind: 'discover_curated_artist',
+    target_mbid: RADIOHEAD,
+    status: 'succeeded',
+  });
+  if (error) throw error;
+
+  await page.goto(`/artists/${RADIOHEAD}`);
+
+  await expect(page.getByRole('heading', { name: 'Discography' })).toBeVisible(NAV);
+  await expect(page.getByTestId('discography-pending')).toHaveCount(0);
+
+  // And nothing new was queued behind it.
+  expect(await discoveryJobs(admin, RADIOHEAD)).toHaveLength(1);
+});

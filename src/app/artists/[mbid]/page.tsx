@@ -1,9 +1,13 @@
+import { after } from 'next/server';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { AlbumGrid } from '@/components/AlbumGrid';
 import { Container } from '@/components/Container';
 import { SectionHeader } from '@/components/SectionHeader';
+import { expansionStateFor } from '@/services/catalogue/artist-depth';
+import { drainJobs } from '@/services/catalogue/jobs';
+import { enqueueJob, DEFAULT_JOB_PRIORITY } from '@/services/catalogue/queue';
 import { getArtistByMbid, type DiscographySort } from '@/services/catalogue/queries';
 
 /**
@@ -102,6 +106,50 @@ export default async function ArtistPage({ params, searchParams }: PageProps<'/a
 
   if (!artist) notFound();
 
+  /*
+   * On-demand depth (`product-spec.md` §8.9, `[DECIDED 2026-09-07]`).
+   *
+   * 62.5% of artists held exactly one album, against a Phase 1 criterion that
+   * promises browsing a discography. Opening an artist longplayr has not
+   * expanded enqueues one — **once per artist, ever**. The state is derived
+   * from job history rather than a column, because `artists` has none and this
+   * slice adds no migration.
+   *
+   * **Never awaited.** A browse costs a rate-limited request per hundred
+   * release groups, and the page renders from what is already held; the rest
+   * arrives on a later view. Same shape as the album page's hydration trigger.
+   */
+  const expansion = await expansionStateFor(mbid);
+
+  if (expansion === 'start') {
+    after(async () => {
+      try {
+        /*
+         * **Background priority, and that is the one deliberate difference
+         * from the album page.** A tracklist is wanted on the page being read
+         * now; a discography benefits a *later* view, so it must never be
+         * claimed ahead of interactive work — the claim orders `priority asc`,
+         * and interactive is 10 against this 100.
+         *
+         * Draining anyway is what makes "a later view" mean minutes rather
+         * than tomorrow: the cron runs daily on this plan. Because the claim
+         * is priority-ordered, this unit of capacity may well execute someone
+         * else's interactive job first, which is the correct outcome.
+         *
+         * Safe under concurrent first views: the partial unique index on
+         * (kind, target_mbid) rejects the second insert and `enqueueJob`
+         * treats that rejection as success.
+         */
+        await enqueueJob('discover_curated_artist', mbid, { priority: DEFAULT_JOB_PRIORITY });
+        await drainJobs(1);
+      } catch {
+        // Swallowed, exactly as the album page swallows its own: the reader
+        // never asked for this work, and failing here would turn a rendered
+        // page into an error. `ingestion_jobs` owns retry and error state.
+      }
+    });
+  }
+
   const count = artist.albums.length;
   const span = activeSpan(artist.albums.map((a) => a.first_release_date));
 
@@ -154,6 +202,22 @@ export default async function ArtistPage({ params, searchParams }: PageProps<'/a
           creditFor={artist.name}
           emptyMessage="No releases in the catalogue yet."
         />
+
+        {/*
+         * An intentional state, not an empty one — the same reasoning the album
+         * page gives for its pending tracklist. A discography shown without
+         * comment claims that this is the artist's body of work, which is a
+         * fact longplayr has not established while an expansion is in flight.
+         *
+         * One line, and deliberately nothing more: no spinner, no skeleton, no
+         * count, no "load more". A progress indicator would promise a finish
+         * time the one-request-per-second ceiling cannot honour.
+         */}
+        {expansion !== 'settled' && (
+          <p className="mt-6 text-sm text-text-muted" data-testid="discography-pending">
+            Fetching the rest of this discography from MusicBrainz. Look again in a moment.
+          </p>
+        )}
       </section>
     </Container>
   );
