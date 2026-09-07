@@ -15,6 +15,7 @@ import { ingestReleaseGroupPayload } from '@/services/catalogue/ingest';
 import * as artwork from '@/services/catalogue/artwork';
 import { ARTWORK_BUCKET } from '@/services/catalogue/artwork';
 import { sleep } from '@/services/catalogue/rate-limiter';
+import { BULK_ARTWORK_PRIORITY, INTERACTIVE_JOB_PRIORITY } from '@/services/catalogue/queue';
 
 /**
  * Job queue against the real database.
@@ -1086,5 +1087,101 @@ describe('late worker fencing', () => {
     expect(summary.succeeded).toBe(1);
     expect(summary.superseded).toBe(0);
     expect(summary.reclaimed).toBe(0);
+  });
+});
+
+/**
+ * Priority bands, and the property that actually matters.
+ *
+ * `architecture.md` §7, *Queue fairness*. Bulk artwork sharing a band with
+ * rate-limited metadata let one successful discography expansion enqueue
+ * roughly eight artwork rows that outranked the next artist's discovery job on
+ * `id` alone, so the queue diverged rather than drained.
+ *
+ * **Reading `priority` back proves almost nothing on its own** — it restates
+ * the constant. The claim-ordering case below is the regression test: it goes
+ * through the real `claim_ingestion_jobs` and fails if the band is removed.
+ */
+describe('the bulk artwork band', () => {
+  async function priorityOf(mbid: string) {
+    const { data } = await admin
+      .from('ingestion_jobs')
+      .select('priority')
+      .eq('kind', 'fetch_artwork')
+      .eq('target_mbid', mbid)
+      .single();
+    return data?.priority;
+  }
+
+  it('claims a later-queued discovery job ahead of earlier bulk artwork', async () => {
+    // **The artwork jobs are queued through production code, not with the
+    // constant passed in.** Asserting the ordering against an explicitly
+    // prioritised row would pass even if every enqueue site reverted to the
+    // background band — it would only be testing the claim function. Going
+    // through the sweep means this fails if the default moves back.
+    await ingestReleaseGroupPayload(singleArtistAlbum, admin);
+    await ingestReleaseGroupPayload(yearOnlyAlbum, admin);
+    await admin
+      .from('albums')
+      .update({ artwork_status: 'pending' })
+      .in('mbid', [singleArtistAlbum.id, yearOnlyAlbum.id]);
+    await enqueueMissingArtwork({ admin });
+
+    // Queued last, so it holds the highest id and loses every tie on id alone.
+    await enqueueJob('discover_curated_artist', MBID_B, { admin });
+
+    const { data, error } = await admin.rpc('claim_ingestion_jobs', { batch_size: 1 });
+    if (error) throw error;
+
+    expect(data).toHaveLength(1);
+    expect(data![0].kind).toBe('discover_curated_artist');
+  });
+
+  it('sweeps missing artwork into the bulk band by default', async () => {
+    await ingestReleaseGroupPayload(singleArtistAlbum, admin);
+    await admin
+      .from('albums')
+      .update({ artwork_status: 'pending' })
+      .eq('mbid', singleArtistAlbum.id);
+
+    await enqueueMissingArtwork({ admin });
+
+    expect(await priorityOf(singleArtistAlbum.id)).toBe(BULK_ARTWORK_PRIORITY);
+  });
+
+  it('still lets a caller override the sweep default', async () => {
+    await ingestReleaseGroupPayload(singleArtistAlbum, admin);
+    await admin
+      .from('albums')
+      .update({ artwork_status: 'pending' })
+      .eq('mbid', singleArtistAlbum.id);
+
+    await enqueueMissingArtwork({ admin, priority: INTERACTIVE_JOB_PRIORITY });
+
+    expect(await priorityOf(singleArtistAlbum.id)).toBe(INTERACTIVE_JOB_PRIORITY);
+  });
+
+  it('sends artwork from a background ingest to the bulk band', async () => {
+    await enqueueJob('ingest_release_group', MBID_A, { admin });
+    stubIngestSuccess();
+
+    await drainJobs(1, admin);
+
+    expect(await priorityOf(MBID_A)).toBe(BULK_ARTWORK_PRIORITY);
+  });
+
+  it('lets artwork inherit the urgency of an interactive ingest', async () => {
+    // The album page enqueues `ingest_release_group` at this priority when a
+    // reader opens an unhydrated album. Demoting its artwork would have made
+    // that cover arrive later than before the band existed.
+    await enqueueJob('ingest_release_group', MBID_A, {
+      admin,
+      priority: INTERACTIVE_JOB_PRIORITY,
+    });
+    stubIngestSuccess();
+
+    await drainJobs(1, admin);
+
+    expect(await priorityOf(MBID_A)).toBe(INTERACTIVE_JOB_PRIORITY);
   });
 });

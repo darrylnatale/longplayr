@@ -11,7 +11,7 @@ import {
   browseAllReleaseGroupsByArtist,
   type MbReleaseGroup,
 } from './musicbrainz';
-import { enqueueJob } from './queue';
+import { BULK_ARTWORK_PRIORITY, enqueueJob } from './queue';
 
 import type { Database } from '@/lib/supabase/database.types';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -291,7 +291,7 @@ export async function discoverAndIngestArtist(
 
     await createMinimalAlbum(group, admin);
     created += 1;
-    await enqueueJob('fetch_artwork', group.id, { admin });
+    await enqueueJob('fetch_artwork', group.id, { admin, priority: BULK_ARTWORK_PRIORITY });
   }
 
   return {

@@ -8,7 +8,7 @@ import type { Database } from '@/lib/supabase/database.types';
 import { CoverArtUnavailableError, fetchAndStoreArtwork } from './artwork';
 import { discoverAndIngestArtist } from './curated-tranche';
 import { ingestReleaseGroup } from './ingest';
-import { enqueueJob } from './queue';
+import { BULK_ARTWORK_PRIORITY, DEFAULT_JOB_PRIORITY, enqueueJob } from './queue';
 import { heldPayloadIds } from './payloads';
 import { fetchAndStoreTracklist, TracklistUnavailableError } from './tracklist';
 
@@ -170,7 +170,14 @@ export async function enqueueMissingArtwork(
   let queued = 0;
   for (const mbid of mbids) {
     if (outstanding.has(mbid)) continue;
-    await enqueueJob('fetch_artwork', mbid, { admin, priority: options.priority });
+    await enqueueJob('fetch_artwork', mbid, {
+      admin,
+      // Bulk by default. The only caller passes no priority and its default mode
+      // queues without draining — up to 500 rows — so leaving this at the
+      // background band would let the recovery tool recreate the starvation the
+      // bulk band exists to prevent. An explicit priority still wins.
+      priority: options.priority ?? BULK_ARTWORK_PRIORITY,
+    });
     queued += 1;
   }
 
@@ -316,7 +323,18 @@ async function runJob(job: Job, admin: Admin): Promise<void> {
       if (result.status === 'out_of_scope') return;
       // Artwork is a separate job so a Cover Art Archive problem never fails
       // the metadata ingest that succeeded.
-      await enqueueJob('fetch_artwork', job.target_mbid, { admin });
+      //
+      // **The priority is inherited, not fixed.** This same case serves two
+      // callers with opposite urgency: a bulk backfill, and the album page,
+      // which enqueues `ingest_release_group` at INTERACTIVE_JOB_PRIORITY when
+      // a reader opens an unhydrated album. Sending both to the bulk band would
+      // make a just-opened album's cover arrive later than it used to. A parent
+      // more urgent than background passes that urgency on; anything at or
+      // below background yields bulk artwork.
+      await enqueueJob('fetch_artwork', job.target_mbid, {
+        admin,
+        priority: job.priority < DEFAULT_JOB_PRIORITY ? job.priority : BULK_ARTWORK_PRIORITY,
+      });
       return;
     }
     case 'fetch_artwork': {
@@ -578,9 +596,16 @@ async function releaseClaims(
  * claiming can now reach it. That is an approved consequence of this design
  * rather than a separate decision: preventing it would need a high-water mark
  * inside the RPC. So `maxJobs` bounds the jobs this invocation actually
- * processes, not only those pending when it began. In production a follow-up
- * carries `DEFAULT_JOB_PRIORITY` and the highest `id`, so ordering puts it
- * behind the existing backlog; on a near-empty queue it is claimed immediately.
+ * processes, not only those pending when it began.
+ *
+ * **Where a follow-up lands is no longer one answer. [2026-09-07]** This
+ * previously read that a follow-up carries `DEFAULT_JOB_PRIORITY` and the
+ * highest `id`, so ordering puts it behind the existing backlog. Since the
+ * bulk artwork band that is wrong in both directions: artwork queued by bulk
+ * work carries `BULK_ARTWORK_PRIORITY` and sorts behind even the backlog,
+ * while artwork queued by interactive work inherits that urgency and is
+ * claimed *ahead* of it. A tracklist retry still carries the background band.
+ * On a near-empty queue any of them is claimed immediately.
  *
  * Jobs still run sequentially. The MusicBrainz rate limiter serialises requests
  * anyway, so concurrency here would buy nothing and only make failures harder

@@ -10,6 +10,7 @@ import type { PopularityRange } from '../discovery/popularity';
 import { artworkCoverage, fetchAndStoreArtwork } from './artwork';
 import { findHeldAlbum, ingestReleaseGroup, reconcileCredits } from './ingest';
 import { enqueueJob } from './jobs';
+import { BULK_ARTWORK_PRIORITY } from './queue';
 import { OutOfScopeError } from './map';
 import { selectSeedCandidates } from './seed-selection';
 import { NotFoundError } from './musicbrainz';
@@ -336,7 +337,10 @@ export async function seedCatalogue(options: SeedOptions = {}): Promise<SeedRepo
           // nowhere else. The first seed did exactly that: 68 covers failed,
           // the report listed them, and nothing was scheduled to try again.
           // Idempotent — the partial unique index collapses duplicates.
-          await enqueueJob('fetch_artwork', entry.mbid, { admin });
+          await enqueueJob('fetch_artwork', entry.mbid, {
+            admin,
+            priority: BULK_ARTWORK_PRIORITY,
+          });
         }
       }
     } catch (error) {

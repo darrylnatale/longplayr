@@ -38,6 +38,7 @@ vi.mock('@/services/catalogue/musicbrainz', async (importOriginal) => {
 const { curatedTrancheStatus, discoverAndIngestArtist, enqueueCuratedTranche } =
   await import('@/services/catalogue/curated-tranche');
 const { drainJobs } = await import('@/services/catalogue/jobs');
+const { BULK_ARTWORK_PRIORITY } = await import('@/services/catalogue/queue');
 
 const admin: SupabaseClient<Database> = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -413,5 +414,48 @@ describe('an album held without its credits is repaired, not skipped', () => {
     expect(second.reconciled).toBe(0);
     expect(second.unreconciled).toBe(0);
     expect(await stamp()).toBe(before);
+  });
+});
+
+/**
+ * The artwork a successful expansion leaves behind.
+ *
+ * **This is the site F-030 actually measured**, and until this test existed it
+ * was the one enqueue site with no coverage: reverting the single line that
+ * fixes the reported defect left the whole suite green. One expansion creates
+ * an album and queues its cover, and sharing a band with `discover_curated_artist`
+ * is what let those covers outrank the next artist's discovery job on `id`
+ * alone. See `architecture.md` §7, *Queue fairness*.
+ */
+describe('artwork queued by a discography expansion', () => {
+  // The album the module-level browse fixture gives ARTIST_A.
+  const ALBUM_A = '11111111-0000-4000-8000-000000000001';
+
+  it('lands in the bulk band, below the discovery work that created it', async () => {
+    const result = await discoverAndIngestArtist(ARTIST_A, admin);
+    expect(result.created).toBe(1);
+
+    const { data } = await admin
+      .from('ingestion_jobs')
+      .select('priority')
+      .eq('kind', 'fetch_artwork')
+      .eq('target_mbid', ALBUM_A)
+      .single();
+
+    expect(data?.priority).toBe(BULK_ARTWORK_PRIORITY);
+  });
+
+  it('is claimed after a discovery job queued later', async () => {
+    // The measured divergence, at its smallest reproducible size: the cover
+    // exists first and holds the lower id, so `priority asc, id asc` would
+    // hand it back first if both sat in the same band.
+    await discoverAndIngestArtist(ARTIST_A, admin);
+    await enqueueCuratedTranche({ admin, artists: [ARTISTS[1]] });
+
+    const { data, error } = await admin.rpc('claim_ingestion_jobs', { batch_size: 1 });
+    if (error) throw error;
+
+    expect(data).toHaveLength(1);
+    expect(data![0].kind).toBe('discover_curated_artist');
   });
 });

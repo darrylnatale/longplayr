@@ -43,6 +43,23 @@ export const DEFAULT_JOB_PRIORITY = 100;
  */
 export const INTERACTIVE_JOB_PRIORITY = 10;
 
+/**
+ * Artwork nobody is waiting for.
+ *
+ * **A higher number than `DEFAULT_JOB_PRIORITY`, so it is claimed later — and
+ * that is the whole point.** Cover Art Archive imposes no rate limit, so bulk
+ * artwork is cheap to fetch and endless to queue: one successful discography
+ * expansion creates roughly eight rows. Sharing the background band with
+ * rate-limited metadata let those rows outrank the very work that produced
+ * them, by `id` alone, so the queue diverged — success generated the backlog
+ * that starved the next success.
+ *
+ * **This is not "artwork is background work".** Artwork a reader is waiting on
+ * — a self-service add, or an album page being opened — keeps its urgency. See
+ * `architecture.md` §7, *Queue fairness*.
+ */
+export const BULK_ARTWORK_PRIORITY = 200;
+
 export async function enqueueJob(
   kind: JobKind,
   targetMbid: string,
