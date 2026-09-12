@@ -118,10 +118,18 @@ export default async function ArtistPage({ params, searchParams }: PageProps<'/a
    * **Never awaited.** A browse costs a rate-limited request per hundred
    * release groups, and the page renders from what is already held; the rest
    * arrives on a later view. Same shape as the album page's hydration trigger.
+   *
+   * **Any view drains, not only the first.** This block was gated on `start`,
+   * so every later view did nothing at all and refreshing could not help by
+   * construction — a job that had failed its attempts, or that sat behind
+   * others, waited for a *different* artist's first view or for the daily
+   * cron. The album page has always run on **every** view of a pending album;
+   * the artist page was the outlier, and that was not deliberate.
+   * `architecture.md` §7, *A later view drains too*.
    */
   const expansion = await expansionStateFor(mbid);
 
-  if (expansion === 'start') {
+  if (expansion !== 'settled') {
     after(async () => {
       try {
         /*
@@ -136,9 +144,17 @@ export default async function ArtistPage({ params, searchParams }: PageProps<'/a
          * is priority-ordered, this unit of capacity may well execute someone
          * else's interactive job first, which is the correct outcome.
          *
-         * Safe under concurrent first views: the partial unique index on
-         * (kind, target_mbid) rejects the second insert and `enqueueJob`
-         * treats that rejection as success.
+         * Safe under concurrent first views, **and on every later view**: the
+         * partial unique index on (kind, target_mbid) rejects the second
+         * insert and `enqueueJob` treats that rejection as success. So the
+         * enqueue needs no second condition — one path serves both states,
+         * which is how the album page is written too.
+         *
+         * **The drain is the part a later view is here for**, and it claims
+         * the *oldest* ready job rather than this artist's: the claim has no
+         * target filter. A reader behind a backlog therefore refreshes more
+         * than once. A target-filtered claim is the recorded escalation and
+         * costs a migration.
          */
         await enqueueJob('discover_curated_artist', mbid, { priority: DEFAULT_JOB_PRIORITY });
         await drainJobs(1);

@@ -44,7 +44,7 @@ function adminClient(): SupabaseClient {
 async function discoveryJobs(admin: SupabaseClient, mbid: string) {
   const { data } = await admin
     .from('ingestion_jobs')
-    .select('id, priority, status')
+    .select('id, priority, status, attempts, run_after')
     .eq('kind', 'discover_curated_artist')
     .eq('target_mbid', mbid);
   return data ?? [];
@@ -52,6 +52,22 @@ async function discoveryJobs(admin: SupabaseClient, mbid: string) {
 
 async function clearDiscoveryJobs(admin: SupabaseClient) {
   await admin.from('ingestion_jobs').delete().eq('kind', 'discover_curated_artist');
+}
+
+/**
+ * Makes an outstanding job claimable now.
+ *
+ * A first view drains its own job, which fails here because
+ * `MUSICBRAINZ_CONTACT` is a placeholder, so `markFailed` parks it behind 30
+ * seconds of real backoff. That backoff is correct behaviour and untestable
+ * in-process without saying "later" out loud.
+ */
+async function makeClaimable(admin: SupabaseClient, mbid: string) {
+  await admin
+    .from('ingestion_jobs')
+    .update({ run_after: new Date(Date.now() - 60_000).toISOString() })
+    .eq('kind', 'discover_curated_artist')
+    .eq('target_mbid', mbid);
 }
 
 /**
@@ -156,5 +172,36 @@ test('a settled artist shows no status line', async ({ page }) => {
   await expect(page.getByTestId('discography-pending')).toHaveCount(0);
 
   // And nothing new was queued behind it.
+  expect(await discoveryJobs(admin, RADIOHEAD)).toHaveLength(1);
+});
+
+test('a later view drains, so refreshing moves an outstanding expansion along', async ({
+  page,
+}) => {
+  const admin = adminClient();
+
+  // First view: the job is created and drained. The drain fails, because the
+  // placeholder contact makes `assertIdentifiable()` throw inside the job, so
+  // the row lands back on `pending` with one attempt spent.
+  await page.goto(`/artists/${RADIOHEAD}`);
+  await expect(page.getByRole('heading', { name: 'Discography' })).toBeVisible(NAV);
+  await waitForJobs(admin, RADIOHEAD, 1);
+  await expect
+    .poll(async () => (await discoveryJobs(admin, RADIOHEAD))[0]?.attempts, { timeout: 15_000 })
+    .toBe(1);
+
+  await makeClaimable(admin, RADIOHEAD);
+
+  // The property under test. Before this behaviour existed the block was gated
+  // on the `start` state, so a reload did nothing whatever and `attempts`
+  // stayed at 1 — refreshing could not help by construction.
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Discography' })).toBeVisible(NAV);
+
+  await expect
+    .poll(async () => (await discoveryJobs(admin, RADIOHEAD))[0]?.attempts, { timeout: 15_000 })
+    .toBe(2);
+
+  // Still one row: the enqueue on a later view is a no-op, not a duplicate.
   expect(await discoveryJobs(admin, RADIOHEAD)).toHaveLength(1);
 });
