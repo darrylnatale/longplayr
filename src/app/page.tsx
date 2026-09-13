@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { AlbumGrid } from '@/components/AlbumGrid';
 import { Container } from '@/components/Container';
 import { SectionHeader } from '@/components/SectionHeader';
-import { getPopularAlbums } from '@/services/discovery';
+import { getRecentAlbums } from '@/services/catalogue/queries';
 import { getCurrentProfile, getCurrentUser } from '@/services/profiles';
 
 /**
@@ -13,7 +13,7 @@ import { getCurrentProfile, getCurrentUser } from '@/services/profiles';
  * none deliberately, on the reasoning that Browse owns the catalogue wall and a
  * second grid here would put two answers to "what is in longplayr" on two pages
  * that would then drift apart. That reasoning is answered rather than abandoned:
- * the section below reads **the same `getPopularAlbums` result Browse reads**, at
+ * the section below reads **the same query Browse leads with** — Recently added — at
  * a smaller caller limit, so the two cannot disagree. Home stays an orientation
  * surface — one section, no Recently added, no catalogue-size line, no
  * pagination, sorting or filtering.
@@ -48,13 +48,20 @@ const SECONDARY =
 /**
  * How many albums the front door shows.
  *
- * **A caller limit, not the chart's floor.** `product-spec.md` §8.3 sets a floor
- * of 20 on the chart itself and a consumer's limit is independent of it — Browse
- * passes its own larger number and gets the same leading albums in the same
- * order. Twelve is fewer than Browse deliberately: this is a selection, not a
- * wall.
+ * Twelve is fewer than Browse deliberately: this is a selection, not a wall.
+ *
+ * **It reads Recently added, not Popular, and that is a decision rather than a
+ * detail.** `design-reference.md` §11.11: the section carrying mostly-external
+ * popularity fill is no longer the lead on Browse, and the front door must not
+ * lead with what Browse has demoted — otherwise the two surfaces disagree about
+ * what matters. Slice 3's reasoning was that two grids on two pages must not
+ * drift apart; **agreeing on the lead is the stronger form of that.**
+ *
+ * The paragraph this replaces explained the limit against §8.3's chart floor.
+ * That reasoning was sound and no longer applies here, because this query is not
+ * the chart.
  */
-const HOME_POPULAR_LIMIT = 12;
+const HOME_SECTION_LIMIT = 12;
 
 export default async function HomePage() {
   const user = await getCurrentUser();
@@ -68,7 +75,7 @@ export default async function HomePage() {
    * catalogue request at all.
    */
   const showsDiscovery = !user || profile !== null;
-  const popular = showsDiscovery ? await getPopularAlbums(HOME_POPULAR_LIMIT) : [];
+  const albums = showsDiscovery ? await getRecentAlbums(HOME_SECTION_LIMIT) : [];
 
   return (
     <>
@@ -92,7 +99,7 @@ export default async function HomePage() {
          */}
         <div
           className={`flex flex-col justify-center py-10 sm:py-16 ${
-            popular.length > 0 ? '' : 'min-h-[calc(100dvh-12rem)]'
+            albums.length > 0 ? '' : 'min-h-[calc(100dvh-12rem)]'
           }`}
         >
           {/*
@@ -177,11 +184,11 @@ export default async function HomePage() {
        * that is a fact about you, while an absent chart is a fact about the
        * catalogue.
        */}
-      {popular.length > 0 && (
+      {albums.length > 0 && (
         <Container variant="wide">
           <section className="pb-4">
-            <SectionHeader>Popular this week</SectionHeader>
-            <AlbumGrid albums={popular} density="relaxed" showCaptions />
+            <SectionHeader>Recently added</SectionHeader>
+            <AlbumGrid albums={albums} density="relaxed" showCaptions />
             {/*
              * Onward into the catalogue, which Phase 5's definition of done
              * requires rather than leaves optional — a discovery surface that

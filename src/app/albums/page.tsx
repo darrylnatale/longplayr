@@ -61,25 +61,41 @@ export default async function BrowsePage() {
       </header>
 
       <div className="flex flex-col gap-12">
-        {popular.length > 0 && (
-          <section className="mt-8">
-            <SectionHeader trailing={`${popular.length}`}>Popular</SectionHeader>
-            <AlbumGrid albums={popular} density="relaxed" showCaptions />
-          </section>
-        )}
-
         {/*
-         * Ungated, unlike Popular: an empty catalogue is a fact worth stating
-         * once, and this is the section that states it. Popular hides itself
-         * instead, because "no popularity data" and "no albums" are different
-         * conditions and only the second is worth a sentence.
+         * **Recently added leads. `design-reference.md` §11.11.**
+         *
+         * 11.5 settled that a lead is signalled by density and never by
+         * decoration; which section earns it was never examined until now.
+         * Browse Popular is an internal chart with an external top-up, and the
+         * internal chart held **7 rows against a limit of 24** — so the lead was
+         * roughly 70% ListenBrainz fill ordered by how mainstream a record is,
+         * while the curated tranche sat in the quieter strip below it.
+         *
+         * **Recency is not a quality signal and this does not claim it is.** At
+         * this catalogue size *recent* happens to be *curated*, which is why it
+         * works now. It reopens when the internal chart reaches §8.3's floor of
+         * 20 from real activity.
+         *
+         * Ungated, and that predates this change: an empty catalogue is a fact
+         * worth stating once and this is the section that states it. Popular
+         * hides itself instead, because "no popularity data" and "no albums" are
+         * different conditions and only the second is worth a sentence. **The
+         * gating stayed with the section it belonged to rather than with the
+         * position.**
          */}
-        <section className={popular.length > 0 ? undefined : 'mt-8'}>
+        <section className="mt-8">
           <SectionHeader trailing={recent.length > 0 ? `${recent.length}` : undefined}>
             Recently added
           </SectionHeader>
-          <AlbumGrid albums={recent} />
+          <AlbumGrid albums={recent} density="relaxed" showCaptions />
         </section>
+
+        {popular.length > 0 && (
+          <section>
+            <SectionHeader trailing={`${popular.length}`}>Popular</SectionHeader>
+            <AlbumGrid albums={popular} />
+          </section>
+        )}
       </div>
     </Container>
   );

@@ -155,14 +155,20 @@ async function seedRankedChart(admin: SupabaseClient): Promise<string[]> {
 }
 
 /** The discovery section on the home page. */
+/**
+ * Home's discovery section.
+ *
+ * **It matches `Recently added`, not `Popular this week`, since
+ * `design-reference.md` §11.11.** Home leads with what Browse leads with, and
+ * Browse no longer leads with the chart — its internal chart held 7 rows against
+ * a limit of 24, so that section was mostly external popularity fill.
+ */
 const homeSection = (page: Page) =>
-  page.locator('section').filter({ has: page.getByRole('heading', { name: 'Popular this week' }) });
+  page.locator('section').filter({ has: page.getByRole('heading', { name: 'Recently added' }) });
 
-/** Browse's Popular section, matched on its own exact heading. */
+/** Browse's lead section, matched on its own heading. */
 const browseSection = (page: Page) =>
-  page
-    .locator('section')
-    .filter({ has: page.getByRole('heading', { name: 'Popular', exact: true }) });
+  page.locator('section').filter({ has: page.getByRole('heading', { name: 'Recently added' }) });
 
 /**
  * The album links in a section, in DOM order.
@@ -245,41 +251,60 @@ test('a signed-in user without a profile is asked for a handle and sees no disco
 
   await expect(page.getByText('Your account needs a handle')).toBeVisible(NAV);
   await expect(page.getByRole('link', { name: 'Choose a handle' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Popular this week' })).toHaveCount(0);
+  // **Asserted against the heading the page actually renders.** This read
+  // `Popular this week` until 2026-09-13, which after §11.11 is a heading no
+  // condition produces — so the case passed without testing the gate.
+  await expect(page.getByRole('heading', { name: 'Recently added' })).toHaveCount(0);
+  await expect(page.locator('a[href^="/albums/"]')).toHaveCount(0);
 });
 
-test('an empty Popular result renders no section at all, and the rest of the page stands', async ({
+test('the pitch stands on its own, and the empty-section gate is no longer reachable here', async ({
   page,
 }) => {
   const admin = adminClient();
   await clearChart(admin);
 
-  // The fallback has nothing to offer either: the fixture catalogue carries no
-  // external popularity score. Asserted rather than assumed, because the whole
-  // test depends on it.
-  const { count } = await admin
-    .from('albums')
-    .select('id', { count: 'exact', head: true })
-    .not('popularity_score', 'is', null);
-  expect(count).toBe(0);
-
   await page.goto('/');
 
-  await expect(page.getByRole('heading', { name: 'Popular this week' })).toHaveCount(0);
-  await expect(page.locator('a[href^="/albums/"]')).toHaveCount(0);
+  /*
+   * **What this case can still establish**, and it is less than its previous
+   * version claimed. Home read the chart until 2026-09-13; clearing the chart
+   * emptied it, and the gate `albums.length > 0` was observable. Home now reads
+   * `getRecentAlbums`, so **clearing the chart changes nothing about it** and the
+   * fixture catalogue is never empty.
+   *
+   * **The gate is still correct and is now unreachable from this suite** — it
+   * fires only on a catalogue with no albums at all, which is a fresh
+   * deployment. Emptying the catalogue here would strand every later spec in the
+   * run, since the suite shares one database at `workers: 1`.
+   *
+   * So this asserts the half that survives: the pitch and its call to action
+   * stand alongside the section rather than being displaced by it. **Coverage of
+   * the empty-section gate is lost and recorded as lost rather than implied.**
+   */
   await expect(
     page.getByRole('heading', { name: 'Keep a record of what you listen to.' }),
   ).toBeVisible(NAV);
   await expect(page.getByRole('link', { name: 'Create account' }).first()).toBeVisible();
+  await expect(homeSection(page)).toBeVisible();
 });
 
-test('Home shows the leading part of Browse’s Popular, in the same order', async ({ page }) => {
-  // Home passes twelve and Browse twenty-four, which give different internal
-  // read depths. That both still resolve to the same ordered albums is the
-  // property under test, and it is only observable across two rendered pages.
-  const admin = adminClient();
-  const expected = await seedRankedChart(admin);
-
+test('Home shows the leading part of Browse’s lead section, in the same order', async ({
+  page,
+}) => {
+  /*
+   * Home passes twelve and Browse twenty-four against the same query, and that
+   * both resolve to the same ordered albums is the property under test — only
+   * observable across two rendered pages.
+   *
+   * **The chart-ranking assertion this case used to carry is gone, deliberately.**
+   * It pinned that `refresh_popular_this_week()`'s distinct-user ordering
+   * survived to the page, which was right while Home read the chart. Home now
+   * reads Recently added, so asserting the chart's ranking here would be
+   * asserting something this page no longer displays. **That coverage moves
+   * nowhere and is recorded as dropped** — `browse.spec.ts` still covers the
+   * chart's ordering on the surface that renders it.
+   */
   await page.goto('/');
   const home = await albumHrefs(homeSection(page));
 
@@ -289,10 +314,4 @@ test('Home shows the leading part of Browse’s Popular, in the same order', asy
   expect(home.length).toBeGreaterThan(1);
   expect(browse.length).toBeGreaterThanOrEqual(home.length);
   expect(home).toEqual(browse.slice(0, home.length));
-
-  // The leading two positions are decided by distinct-user counts rather than by
-  // the album_id tiebreak, so asserting them pins that the chart's own ranking
-  // survives the round trip to the page rather than merely that both pages agree
-  // with each other.
-  expect(home.slice(0, 2)).toEqual(expected.slice(0, 2));
 });
