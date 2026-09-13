@@ -32,8 +32,32 @@ export class CoverArtUnavailableError extends Error {
   }
 }
 
-/** Sizes Cover Art Archive offers. 500 is our display size; 1200 is for detail. */
-export const ARTWORK_SIZES = [250, 500, 1200] as const;
+/**
+ * Sizes we fetch and store. **Only the ones something actually serves.**
+ *
+ * `250` is the dominant size — the grid at `standard` and `dense`, collection
+ * tiles, feed items, search results and the list page. `500` serves the album
+ * page, favourites and the grid at `relaxed`. **`1200` served nothing**: the
+ * comment this replaces said it was "for detail", but the album page, the one
+ * surface where a detail size would live, asks for 500 explicitly.
+ *
+ * Each size costs a Cover Art Archive fetch — which `307`-redirects to
+ * archive.org, so two round trips — plus a separate upload, and the loop below
+ * is sequential. Three sizes was about ten seconds a job against the cron's
+ * 45-second budget, or four covers a night while 22.6% of the catalogue had
+ * none. Two is about seven.
+ *
+ * **Dropping a size defers it rather than forecloses it.** Artwork is
+ * re-fetchable from Cover Art Archive whenever we want it: the catalogue is
+ * read-only downstream, CAA is canonical and imposes no rate limit, and
+ * `enqueueMissingArtwork` already sweeps everything. Wiring up a detail size
+ * later costs one sweep.
+ *
+ * `ArtworkSize` derives from this array, so asking for a size we do not store
+ * is a compile error rather than a 404. `architecture.md` §7, *Store only the
+ * sizes that are served*.
+ */
+export const ARTWORK_SIZES = [250, 500] as const;
 export type ArtworkSize = (typeof ARTWORK_SIZES)[number];
 
 export const ARTWORK_BUCKET = 'artwork';

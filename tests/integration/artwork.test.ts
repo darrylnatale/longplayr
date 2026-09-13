@@ -78,7 +78,7 @@ describe('fetchAndStoreArtwork', () => {
 
     const result = await fetchAndStoreArtwork(singleArtistAlbum.id, admin);
 
-    expect(result).toEqual({ status: 'found', sizes: [250, 500, 1200] });
+    expect(result).toEqual({ status: 'found', sizes: [250, 500] });
 
     const { data: album } = await admin
       .from('albums')
@@ -89,7 +89,9 @@ describe('fetchAndStoreArtwork', () => {
     expect(album?.artwork_updated_at).not.toBeNull();
 
     const { data: files } = await admin.storage.from(ARTWORK_BUCKET).list(singleArtistAlbum.id);
-    expect(files?.map((f) => f.name).sort()).toEqual(['1200.jpg', '250.jpg', '500.jpg']);
+    // The regression test for the sizing decision: it reads the bucket rather
+    // than the constant, so restoring 1200 fails here.
+    expect(files?.map((f) => f.name).sort()).toEqual(['250.jpg', '500.jpg']);
   });
 
   it('marks an album absent when Cover Art Archive has nothing', async () => {
