@@ -827,12 +827,20 @@ export async function drainJobs(
  * Whether a job of one kind has ever been queued for one target, and where it
  * got to.
  *
- * **Three states, because two would lose the distinction that matters.**
+ * **Four states, because three lost a distinction that turned out to matter.**
  * `none` means no row has ever existed; `outstanding` means one is `pending` or
- * `running`; `settled` means every row for this target has finished, whether it
- * succeeded or failed terminally.
+ * `running`; `succeeded` means at least one finished successfully; `failed`
+ * means every row finished and none of them succeeded.
  *
- * **Failed counts as settled deliberately.** The queue owns retry — three
+ * **This was three until 2026-09-13, collapsing `succeeded` and `failed` into
+ * one `settled` value** — which made the artist page silent about an artist
+ * whose expansion had terminally failed, so a discography truncated by a
+ * transient upstream error presented itself as complete. `product-spec.md` §6.
+ *
+ * **Failure must still never re-enqueue from a page view**, which is what the
+ * collapse was protecting and what the split must not undo.
+ *
+ * The queue owns retry — three
  * attempts behind 30s, 5min and 30min — so a row that reached `failed` has
  * already exhausted it. Treating that as "never attempted" would restart the
  * whole policy from a page view.
@@ -842,7 +850,7 @@ export async function drainJobs(
  * covers only `pending` and `running` and deliberately lets completed work be
  * requeued later, so it cannot answer this question and is not asked to.
  */
-export type AttemptState = 'none' | 'outstanding' | 'settled';
+export type AttemptState = 'none' | 'outstanding' | 'succeeded' | 'failed';
 
 export async function attemptStateFor(
   kind: JobKind,
@@ -859,7 +867,11 @@ export async function attemptStateFor(
   if (!data || data.length === 0) return 'none';
 
   const outstanding = data.some((row) => row.status === 'pending' || row.status === 'running');
-  return outstanding ? 'outstanding' : 'settled';
+  if (outstanding) return 'outstanding';
+
+  // Every row has finished. One success is enough — an artist whose first
+  // attempt failed and whose second succeeded is expanded, not failed.
+  return data.some((row) => row.status === 'succeeded') ? 'succeeded' : 'failed';
 }
 
 export async function queueDepth(admin: Admin = createAdminClient()) {

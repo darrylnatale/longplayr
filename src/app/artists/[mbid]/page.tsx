@@ -129,7 +129,14 @@ export default async function ArtistPage({ params, searchParams }: PageProps<'/a
    */
   const expansion = await expansionStateFor(mbid);
 
-  if (expansion !== 'settled') {
+  /*
+   * **Enqueue on `start` and `outstanding` only — never on `failed`.**
+   * Re-enqueueing a terminally failed expansion from a page view would restart
+   * the three-attempt retry policy on every visit; the recovery sweep owns that
+   * retry, behind a 24-hour cooling-off. The status line below *does* speak for
+   * `failed`, and that divergence is deliberate — `artist-depth.ts`.
+   */
+  if (expansion === 'start' || expansion === 'outstanding') {
     after(async () => {
       try {
         /*
@@ -229,10 +236,40 @@ export default async function ArtistPage({ params, searchParams }: PageProps<'/a
          * count, no "load more". A progress indicator would promise a finish
          * time the one-request-per-second ceiling cannot honour.
          */}
-        {expansion !== 'settled' && (
-          <p className="mt-6 text-sm text-text-muted" data-testid="discography-pending">
-            Fetching the rest of this discography from MusicBrainz. Look again in a moment.
+        {/*
+         * **Three renderings from four states. `product-spec.md` §6.**
+         *
+         * `start`, `outstanding` and a sweep-re-queued expansion all say the
+         * same thing because **the reader's action is identical** — come back.
+         * `failed` differs in kind: more is coming, but not soon. It said
+         * *nothing* until 2026-09-13, so a discography truncated by a transient
+         * upstream error presented itself as complete.
+         *
+         * **"Look again in a moment" earns its horizon and the failure line has
+         * none.** A later view drains a job, so looking again genuinely helps;
+         * the sweep's timing is not promisable, and an unhonourable horizon is
+         * the defect being fixed here rather than one to repeat.
+         *
+         * The error itself is never shown — it is operator text, and lives on
+         * the queue view in `architecture.md` §17a.
+         */}
+        {expansion === 'failed' ? (
+          <p className="mt-6 text-sm text-text-muted" data-testid="discography-failed">
+            Couldn&rsquo;t finish fetching this discography from MusicBrainz. It will be retried.
           </p>
+        ) : (
+          /*
+           * **Enumerated rather than `!== 'settled'`, and that is the lesson of
+           * this change rather than a style choice.** A negated condition lets a
+           * future state fall silently into this branch and claim work is in
+           * progress — which is the shape of the defect being fixed here: a
+           * state nobody enumerated, quietly taking someone else's treatment.
+           */
+          (expansion === 'start' || expansion === 'outstanding') && (
+            <p className="mt-6 text-sm text-text-muted" data-testid="discography-pending">
+              Fetching the rest of this discography from MusicBrainz. Look again in a moment.
+            </p>
+          )
         )}
       </section>
     </Container>

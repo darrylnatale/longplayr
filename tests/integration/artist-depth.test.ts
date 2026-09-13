@@ -74,22 +74,37 @@ describe('attempt state over job history', () => {
     expect(await attemptStateFor('discover_curated_artist', mbid, admin)).toBe('outstanding');
   });
 
-  it('is settled once a job has succeeded', async () => {
+  it('is succeeded once a job has succeeded', async () => {
     const mbid = artistMbid('a4');
     await seedJob(mbid, 'succeeded');
 
-    expect(await attemptStateFor('discover_curated_artist', mbid, admin)).toBe('settled');
+    expect(await attemptStateFor('discover_curated_artist', mbid, admin)).toBe('succeeded');
   });
 
-  it('is settled once a job has failed terminally', async () => {
-    // **Failed is settled on purpose.** The queue owns retry — three attempts
-    // behind 30s, 5min and 30min — so a row that reached `failed` has already
-    // spent it. Reading that as "never attempted" would restart the policy
-    // from a page view, which the approved rule does not do.
+  it('is failed — distinctly from succeeded — once a job has failed terminally', async () => {
+    // **This returned `settled` until 2026-09-13**, collapsing failure into
+    // success, which is why the artist page said nothing about an artist whose
+    // expansion had terminally failed.
+    //
+    // **Failure is still not `none`, and that part has not changed.** The queue
+    // owns retry — three attempts behind 30s, 5min and 30min — so a row that
+    // reached `failed` has already spent it, and reading that as "never
+    // attempted" would restart the policy from a page view. The recovery sweep
+    // owns the retry instead.
     const mbid = artistMbid('a5');
     await seedJob(mbid, 'failed');
 
-    expect(await attemptStateFor('discover_curated_artist', mbid, admin)).toBe('settled');
+    expect(await attemptStateFor('discover_curated_artist', mbid, admin)).toBe('failed');
+  });
+
+  it('is succeeded when one attempt failed and a later one succeeded', async () => {
+    // One success is enough. An artist repaired by the sweep is expanded, not
+    // failed, and must stop showing a failure line.
+    const mbid = artistMbid('a9');
+    await seedJob(mbid, 'failed');
+    await seedJob(mbid, 'succeeded');
+
+    expect(await attemptStateFor('discover_curated_artist', mbid, admin)).toBe('succeeded');
   });
 
   it('does not confuse one target with another', async () => {
@@ -113,11 +128,39 @@ describe('expansion eligibility', () => {
     expect(await expansionStateFor(mbid, admin)).toBe('outstanding');
   });
 
-  it('is settled once attempted, so an artist is expanded at most once', async () => {
+  it('is settled once expanded, so an artist is expanded at most once', async () => {
     const mbid = artistMbid('b3');
     await seedJob(mbid, 'succeeded');
 
     expect(await expansionStateFor(mbid, admin)).toBe('settled');
+  });
+
+  it('is failed — not settled — when every attempt failed', async () => {
+    // The state that renders a message and enqueues nothing. Before this
+    // existed, such an artist was indistinguishable from a completed one and
+    // the page went silent.
+    const mbid = artistMbid('b6');
+    await seedJob(mbid, 'failed');
+
+    expect(await expansionStateFor(mbid, admin)).toBe('failed');
+  });
+
+  it('returns to settled once the sweep has repaired a failed artist', async () => {
+    const mbid = artistMbid('b7');
+    await seedJob(mbid, 'failed');
+    await seedJob(mbid, 'succeeded');
+
+    expect(await expansionStateFor(mbid, admin)).toBe('settled');
+  });
+
+  it('reports an outstanding sweep re-queue as outstanding, not failed', async () => {
+    // What `enqueueFailedExpansions` leaves behind: a failed row plus a fresh
+    // pending one. The reader should be told work is happening.
+    const mbid = artistMbid('b8');
+    await seedJob(mbid, 'failed');
+    await seedJob(mbid, 'pending');
+
+    expect(await expansionStateFor(mbid, admin)).toBe('outstanding');
   });
 
   it('withholds expansion from Various Artists even with no prior attempt', async () => {

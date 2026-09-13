@@ -119,8 +119,13 @@ test('a terminally failed attempt still stops a second one', async ({ page }) =>
    * outside that index, so a second enqueue would succeed — and the only thing
    * that can prevent it is the durable-attempt rule reading job history.
    *
-   * It also covers the decision that a terminally failed expansion is settled:
-   * the queue owns retry, and a page view does not restart it.
+   * **The half about the page saying nothing has inverted, and deliberately.**
+   * This used to assert that a terminally failed artist rendered no line at
+   * all — which is exactly the defect `product-spec.md` §6 now names a lie by
+   * omission, since a truncated discography presented itself as complete. The
+   * page now says so. **What has _not_ changed is the enqueue rule**: a page
+   * view still must not restart the retry policy, and that is what the row
+   * count below protects.
    */
   const admin = adminClient();
   const { error } = await admin.from('ingestion_jobs').insert({
@@ -132,9 +137,13 @@ test('a terminally failed attempt still stops a second one', async ({ page }) =>
 
   await page.goto(`/artists/${RADIOHEAD}`);
   await expect(page.getByRole('heading', { name: 'Discography' })).toBeVisible(NAV);
+  // Says the honest thing rather than nothing…
+  await expect(page.getByTestId('discography-failed')).toBeVisible(NAV);
+  await expect(page.getByTestId('discography-failed')).toContainText('It will be retried');
+  // …and does not claim work is in progress.
   await expect(page.getByTestId('discography-pending')).toHaveCount(0);
 
-  // Settled after a window rather than immediately, so an enqueue arriving
+  // Checked after a window rather than immediately, so an enqueue arriving
   // late through `after()` would still be caught.
   await page.waitForTimeout(2_000);
   expect(await discoveryJobs(admin, RADIOHEAD)).toHaveLength(1);
