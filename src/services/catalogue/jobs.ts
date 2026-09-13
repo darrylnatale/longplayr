@@ -184,6 +184,108 @@ export async function enqueueMissingArtwork(
   return { candidates: mbids.length, queued };
 }
 
+/**
+ * How long a terminally failed expansion rests before it may be re-queued.
+ *
+ * **A cooling-off period rather than an attempt cap, and that is forced rather
+ * than preferred.** Any hard cap on total attempts reintroduces permanent
+ * exclusion — a cap of nine merely postpones it by three cycles — and permanent
+ * exclusion is the behaviour that was ruled a defect. Only a cooling-off period
+ * never excludes an artist for good.
+ *
+ * **Twenty-four hours matches the cron's own cadence**, so a transient upstream
+ * outage is retried the next night rather than in a week. The cost for an artist
+ * that genuinely cannot be expanded is three MusicBrainz requests a night,
+ * against a budget of 86,400 a day. There is deliberately **no ceiling on total
+ * attempts over time.** `architecture.md` §7, *Recovery sweeps*.
+ */
+const EXPANSION_RETRY_AFTER_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Re-queues artist expansions whose attempts were terminally exhausted.
+ *
+ * **Recovery, not refresh, and the distinction is one `where` value.** This
+ * looks at `failed` rows only. Sweeping `succeeded` ones would be a staleness
+ * policy — `product-spec.md` §8.9 records "no staleness rule and no revisit",
+ * and deciding that by widening a filter here is exactly the accident the
+ * open question exists to prevent.
+ *
+ * **State comes from job history because `artists` has no column for it.** The
+ * other two sweeps read `albums.artwork_status` and `releases.tracklist_status`;
+ * there is no expansion equivalent, which is why `expansionStateFor` derives it
+ * the same way. An artist-level column would be cheaper and is deliberately not
+ * introduced here — see `architecture.md` §7 for its triggers.
+ *
+ * A target is a candidate when it has a `failed` row, no `pending`, `running` or
+ * `succeeded` row, and its newest failure is older than the cooling-off period.
+ * The partial unique index covers only `pending` and `running`, so inserting a
+ * fresh job for a failed target is allowed by design.
+ */
+export async function enqueueFailedExpansions(
+  options: { limit?: number; priority?: number; admin?: Admin } = {},
+): Promise<{ candidates: number; queued: number }> {
+  const admin = options.admin ?? createAdminClient();
+  const limit = options.limit ?? 500;
+
+  /*
+   * **Two bounded queries, not one wide read.** An earlier version read every
+   * row for this kind with `limit(limit * 4)` and grouped in memory. Two things
+   * were wrong with it, and the second is the dangerous one: a candidate cap was
+   * setting retrieval depth through a multiplier — the defect §8.10 records — and
+   * the read was **unordered**, so past the page size it could return an
+   * artist's `failed` row while omitting their `succeeded` row and re-queue an
+   * artist that had in fact been expanded. **That would answer the staleness
+   * question by accident through paging**, past the `where` clause the tests
+   * guard. This shape cannot: candidates come from `failed` rows only, and the
+   * exclusion is an explicit lookup over exactly those targets.
+   */
+  const { data: failures, error } = await admin
+    .from('ingestion_jobs')
+    .select('target_mbid, updated_at')
+    .eq('kind', 'discover_curated_artist')
+    .eq('status', 'failed')
+    .order('updated_at', { ascending: true })
+    .limit(limit);
+
+  if (error) throw error;
+
+  // Newest failure per target, because the cooling-off period is measured from
+  // the most recent attempt rather than the first.
+  const newestFailure = new Map<string, string>();
+  for (const row of failures ?? []) {
+    const held = newestFailure.get(row.target_mbid);
+    if (!held || row.updated_at > held) newestFailure.set(row.target_mbid, row.updated_at);
+  }
+  if (newestFailure.size === 0) return { candidates: 0, queued: 0 };
+
+  const { data: settled, error: settledError } = await admin
+    .from('ingestion_jobs')
+    .select('target_mbid')
+    .eq('kind', 'discover_curated_artist')
+    // `pending` and `running` mean work is already outstanding. `succeeded`
+    // means the artist was expanded, which is a staleness question this sweep
+    // deliberately does not answer — `product-spec.md` §8.9 records "no
+    // staleness rule and no revisit".
+    .in('status', ['pending', 'running', 'succeeded'])
+    .in('target_mbid', [...newestFailure.keys()]);
+
+  if (settledError) throw settledError;
+  const settledOtherwise = new Set((settled ?? []).map((row) => row.target_mbid));
+
+  const cutoff = new Date(Date.now() - EXPANSION_RETRY_AFTER_MS).toISOString();
+  const candidates = [...newestFailure.entries()]
+    .filter(([mbid, failedAt]) => !settledOtherwise.has(mbid) && failedAt < cutoff)
+    .map(([mbid]) => mbid);
+
+  let queued = 0;
+  for (const mbid of candidates) {
+    await enqueueJob('discover_curated_artist', mbid, { admin, priority: options.priority });
+    queued += 1;
+  }
+
+  return { candidates: candidates.length, queued };
+}
+
 /** Tracklist states that warrant another attempt. `found` and `absent` are settled. */
 const TRACKLIST_RETRYABLE: Database['public']['Enums']['tracklist_status'][] = [
   'pending',

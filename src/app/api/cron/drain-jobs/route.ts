@@ -1,7 +1,13 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
 import { authoriseCronRequest } from '@/services/catalogue/cron-auth';
-import { drainJobs, queueDepth } from '@/services/catalogue/jobs';
+import {
+  drainJobs,
+  enqueueFailedExpansions,
+  enqueueMissingArtwork,
+  enqueueMissingTracklists,
+  queueDepth,
+} from '@/services/catalogue/jobs';
 
 /**
  * Drains the ingestion queue.
@@ -68,12 +74,34 @@ export async function GET(request: NextRequest) {
   const batchSize = Number(request.nextUrl.searchParams.get('batch') ?? DEFAULT_BATCH_SIZE);
 
   try {
+    /*
+     * **Sweeps first, then the drain.** Three sweeps existed and nothing called
+     * any of them, which is not a theoretical gap: five `fetch_artwork` jobs sat
+     * `failed` from August until this shipped, recoverable the whole time by a
+     * command nobody ran. A sweep nobody calls is how a recovery path silently
+     * stops being one.
+     *
+     * **They run before the drain so newly swept work can be drained in the same
+     * invocation**, and they are sub-second database queries — they do not
+     * compete meaningfully for the budget below. Measured on deployed data at
+     * the time of writing: about nine artwork jobs and one expansion.
+     *
+     * **Failures are not swallowed.** If a sweep throws, the whole route returns
+     * 500, for the same reason the drain does: ingestion failing silently is the
+     * most likely way this system breaks without anyone noticing.
+     */
+    const swept = {
+      artwork: await enqueueMissingArtwork(),
+      tracklists: await enqueueMissingTracklists(),
+      expansions: await enqueueFailedExpansions(),
+    };
+
     const summary = await drainJobs(
       Number.isFinite(batchSize) && batchSize > 0 ? Math.min(batchSize, 50) : DEFAULT_BATCH_SIZE,
       undefined,
       { budgetMs: DRAIN_BUDGET_MS },
     );
-    return NextResponse.json({ ...summary, depth: await queueDepth() });
+    return NextResponse.json({ ...summary, swept, depth: await queueDepth() });
   } catch (error) {
     // Ingestion failing silently is the most likely way this system breaks
     // without anyone noticing, so surface it rather than returning 200.

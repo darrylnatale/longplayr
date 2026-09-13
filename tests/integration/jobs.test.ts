@@ -6,6 +6,7 @@ import { singleArtistAlbum, yearOnlyAlbum } from '@/services/catalogue/fixtures'
 import {
   drainJobs,
   enqueueJob,
+  enqueueFailedExpansions,
   enqueueMissingArtwork,
   queueDepth,
   reclaimStaleJobs,
@@ -15,7 +16,11 @@ import { ingestReleaseGroupPayload } from '@/services/catalogue/ingest';
 import * as artwork from '@/services/catalogue/artwork';
 import { ARTWORK_BUCKET } from '@/services/catalogue/artwork';
 import { sleep } from '@/services/catalogue/rate-limiter';
-import { BULK_ARTWORK_PRIORITY, INTERACTIVE_JOB_PRIORITY } from '@/services/catalogue/queue';
+import {
+  BULK_ARTWORK_PRIORITY,
+  DEFAULT_JOB_PRIORITY,
+  INTERACTIVE_JOB_PRIORITY,
+} from '@/services/catalogue/queue';
 
 /**
  * Job queue against the real database.
@@ -1183,5 +1188,122 @@ describe('the bulk artwork band', () => {
     await drainJobs(1, admin);
 
     expect(await priorityOf(MBID_A)).toBe(INTERACTIVE_JOB_PRIORITY);
+  });
+});
+
+/**
+ * Re-queueing expansions whose attempts were exhausted.
+ *
+ * `architecture.md` §7, *Recovery sweeps*. A terminally failed expansion reads as
+ * `settled`, so the artist page shows no status line and nothing retries — an
+ * artist was permanently capped by a transient MusicBrainz 503, which was ruled
+ * a defect.
+ *
+ * **The two cases that carry the decision are the cooling-off boundary and the
+ * `succeeded` exclusion.** The first is the bound that replaces an attempt cap;
+ * the second is the single `where` value that keeps a staleness policy
+ * undecided, and without a test it is one character from being answered by
+ * accident.
+ */
+describe('enqueueFailedExpansions', () => {
+  const A = '0b0e4f1e-1111-4000-8000-0000000000a1';
+  const B = '0b0e4f1e-1111-4000-8000-0000000000a2';
+
+  /**
+   * **`updated_at` is set at insert, not by a later update, and that is forced.**
+   * `ingestion_jobs_set_updated_at` fires `before update`, so writing an old
+   * timestamp in a second statement is immediately overwritten with `now()` —
+   * which silently made every cooling-off case look fresh. Insert-time values
+   * survive because the trigger has no `before insert` counterpart.
+   *
+   * In production this column means what the sweep reads it as: `markFailed`
+   * updates the row, the trigger stamps it, so a `failed` row's `updated_at` is
+   * when it failed.
+   */
+  async function seed(
+    mbid: string,
+    status: Database['public']['Enums']['job_status'],
+    agoMs: number,
+  ) {
+    const { error } = await admin.from('ingestion_jobs').insert({
+      kind: 'discover_curated_artist',
+      target_mbid: mbid,
+      status,
+      updated_at: new Date(Date.now() - agoMs).toISOString(),
+    });
+    if (error) throw error;
+  }
+
+  const DAY = 24 * 60 * 60 * 1000;
+
+  async function jobsFor(mbid: string) {
+    const { data } = await admin
+      .from('ingestion_jobs')
+      .select('status')
+      .eq('kind', 'discover_curated_artist')
+      .eq('target_mbid', mbid);
+    return data ?? [];
+  }
+
+  it('re-queues a failure older than the cooling-off period', async () => {
+    await seed(A, 'failed', DAY + 60 * 60 * 1000);
+
+    expect(await enqueueFailedExpansions({ admin })).toMatchObject({ candidates: 1, queued: 1 });
+    expect((await jobsFor(A)).map((j) => j.status).sort()).toEqual(['failed', 'pending']);
+  });
+
+  it('leaves a failure inside the cooling-off period alone', async () => {
+    // 23 hours. The boundary is what makes this a bound rather than a gesture.
+    await seed(A, 'failed', 23 * 60 * 60 * 1000);
+
+    expect(await enqueueFailedExpansions({ admin })).toMatchObject({ candidates: 0, queued: 0 });
+    expect(await jobsFor(A)).toHaveLength(1);
+  });
+
+  it('never touches an artist whose expansion succeeded', async () => {
+    // The F-029 guard. Sweeping `succeeded` rows would be a staleness policy,
+    // which `product-spec.md` §8.9 leaves explicitly undecided.
+    await seed(A, 'succeeded', 30 * DAY);
+
+    expect(await enqueueFailedExpansions({ admin })).toMatchObject({ candidates: 0, queued: 0 });
+    expect(await jobsFor(A)).toHaveLength(1);
+  });
+
+  it('skips an artist that failed once but has since succeeded', async () => {
+    await seed(A, 'failed', 10 * DAY);
+    await seed(A, 'succeeded', 9 * DAY);
+
+    expect(await enqueueFailedExpansions({ admin })).toMatchObject({ candidates: 0, queued: 0 });
+    expect(await jobsFor(A)).toHaveLength(2);
+  });
+
+  it('skips an artist with work already outstanding', async () => {
+    await seed(A, 'failed', 10 * DAY);
+    await seed(A, 'pending', 0);
+
+    expect(await enqueueFailedExpansions({ admin })).toMatchObject({ candidates: 0, queued: 0 });
+  });
+
+  it('sweeps several artists in one pass, and is idempotent', async () => {
+    await seed(A, 'failed', 10 * DAY);
+    await seed(B, 'failed', 10 * DAY);
+
+    expect(await enqueueFailedExpansions({ admin })).toMatchObject({ candidates: 2, queued: 2 });
+    // The second pass finds nothing: both now have a pending row.
+    expect(await enqueueFailedExpansions({ admin })).toMatchObject({ candidates: 0, queued: 0 });
+  });
+
+  it('honours an explicit priority, and defaults to the background band', async () => {
+    await seed(A, 'failed', 10 * DAY);
+    await enqueueFailedExpansions({ admin });
+
+    const { data } = await admin
+      .from('ingestion_jobs')
+      .select('priority')
+      .eq('kind', 'discover_curated_artist')
+      .eq('target_mbid', A)
+      .eq('status', 'pending')
+      .single();
+    expect(data?.priority).toBe(DEFAULT_JOB_PRIORITY);
   });
 });
