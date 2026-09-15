@@ -206,3 +206,44 @@ test('searching mutates nothing', async ({ page }) => {
 
   expect(user.handle).toBeTruthy();
 });
+
+/**
+ * Artist links on a search result (`product-spec.md` §6).
+ *
+ * **Search was the last surface printing a plain-text credit**, deliberately
+ * deferred for one cycle while the grid work settled. This closes it, and the
+ * assertion is the navigation rather than the markup.
+ */
+test('a credit on a search result reaches the artist page', async ({ page }) => {
+  await search(page, A_HELD_ALBUM);
+
+  const albums = page.locator('section').filter({
+    has: page.getByRole('heading', { name: 'Albums' }),
+  });
+  await expect(albums).toBeVisible();
+
+  // Scoped to the Albums section on purpose: the page has a separate Artists
+  // section that has always rendered artist links, so an unscoped locator would
+  // pass whether or not the credit became one.
+  await albums.getByRole('link', { name: A_HELD_CREDIT, exact: true }).first().click();
+
+  await expect(page).toHaveURL(/\/artists\//);
+  await expect(page.getByRole('heading', { name: A_HELD_CREDIT }).first()).toBeVisible();
+});
+
+test('the album title and the credit on one row go to different places', async ({ page }) => {
+  // The row used to be a single anchor wrapping both. If it were still one, the
+  // credit link could not exist at all — an `<a>` inside an `<a>` is invalid.
+  await search(page, A_HELD_ALBUM);
+
+  const albums = page.locator('section').filter({
+    has: page.getByRole('heading', { name: 'Albums' }),
+  });
+
+  await expect(
+    albums.getByRole('link', { name: new RegExp(A_HELD_ALBUM) }).first(),
+  ).toHaveAttribute('href', /\/albums\//);
+  await expect(
+    albums.getByRole('link', { name: A_HELD_CREDIT, exact: true }).first(),
+  ).toHaveAttribute('href', /\/artists\//);
+});
