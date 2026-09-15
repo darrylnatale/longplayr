@@ -1,7 +1,10 @@
 import { createClient } from '@/lib/supabase/server';
 import type { Database } from '@/lib/supabase/database.types';
 
+import { toCreditedArtists } from './credit';
 import { formatPartialDate } from './scope';
+
+import type { AlbumArtistRow, CreditedArtist } from './credit';
 
 /**
  * Catalogue reads.
@@ -23,7 +26,7 @@ export type AlbumDetail = Album & {
 };
 
 export type ArtistDetail = Artist & {
-  albums: AlbumSummary[];
+  albums: AlbumSummaryWithArtists[];
 };
 
 export type AlbumSummary = Pick<
@@ -35,8 +38,24 @@ export type AlbumSummary = Pick<
   releaseYear: string | null;
 };
 
+/**
+ * An `AlbumSummary` that can render a linked credit.
+ *
+ * **A separate type rather than a widening, and that is the whole point.**
+ * `AlbumSummary` is consumed by surfaces that print no credit at all — the
+ * collection grid carries none by `design-reference.md` §11.9, and Browse's
+ * *Popular* section passes no captions — so adding the embed to the base type
+ * would make every consumer pay a join for a value most never render, on the
+ * busiest reads in the product. `architecture.md` §16.7.
+ *
+ * **`AlbumGrid` requires this type whenever captions are on**, so a future
+ * captioned surface fails to compile rather than silently rendering a credit
+ * nobody can click.
+ */
+export type AlbumSummaryWithArtists = AlbumSummary & { artists: CreditedArtist[] };
+
 const ALBUM_SUMMARY_COLUMNS =
-  'id, mbid, title, display_credit, primary_type, artwork_status, first_release_date, first_release_date_precision';
+  'id, mbid, title, display_credit, primary_type, artwork_status, first_release_date, first_release_date_precision, album_artists(position, artists(id, mbid, name))';
 
 function toSummary(row: {
   id: string;
@@ -47,10 +66,14 @@ function toSummary(row: {
   artwork_status: Database['public']['Enums']['artwork_status'];
   first_release_date: string | null;
   first_release_date_precision: Database['public']['Enums']['date_precision'] | null;
-}): AlbumSummary {
+  album_artists: AlbumArtistRow[] | null;
+}): AlbumSummaryWithArtists {
+  const { album_artists, ...album } = row;
+
   return {
-    ...row,
+    ...album,
     releaseYear: row.first_release_date?.slice(0, 4) ?? null,
+    artists: toCreditedArtists(album_artists),
   };
 }
 
@@ -175,7 +198,7 @@ export async function getArtistByMbid(
 }
 
 /** Recently added albums. A placeholder browse surface until discovery lands. */
-export async function getRecentAlbums(limit = 24): Promise<AlbumSummary[]> {
+export async function getRecentAlbums(limit = 24): Promise<AlbumSummaryWithArtists[]> {
   const supabase = await createClient();
 
   const { data, error } = await supabase

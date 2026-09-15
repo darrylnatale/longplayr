@@ -2,7 +2,10 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { AlbumCover } from '@/components/AlbumCover';
-import type { AlbumSummary } from '@/services/catalogue/queries';
+import { ArtistCredit } from '@/components/ArtistCredit';
+import { creditIsSolely } from '@/services/catalogue/credit';
+
+import type { AlbumSummary, AlbumSummaryWithArtists } from '@/services/catalogue/queries';
 
 /**
  * The square artwork grid — the product's signature surface.
@@ -88,90 +91,151 @@ export function AlbumGridShell({
   return <ul className={`grid ${DENSITY[density]}`}>{children}</ul>;
 }
 
+/**
+ * Captions and artists travel together, enforced by the type.
+ *
+ * **`showCaptions` accepts only the artist-bearing summary**, so a surface that
+ * turns captions on without widening its query fails to compile rather than
+ * rendering a credit nobody can click. `design-reference.md` §11.11's trigger
+ * may yet make Browse's *Popular* section the captioned lead again; when it
+ * does, this is what stops that landing silently. `architecture.md` §16.7.
+ *
+ * This is the same failure shape `artist-depth.ts` corrected once already — a
+ * state nobody enumerated quietly taking another's treatment — closed here by
+ * construction instead of by review.
+ */
 type Props = {
-  albums: AlbumSummary[];
   density?: GridDensity;
-  /**
-   * Titles beneath each cover.
-   *
-   * Off by default: the reference's grid is caption-free, and at this density
-   * recognition beats reading. Catalogue browse surfaces turn it on while the
-   * catalogue is still unfamiliar.
-   */
-  showCaptions?: boolean;
-  /**
-   * The artist whose page this grid is on.
-   *
-   * Suppresses the credit line when it equals this name — printing "Radiohead"
-   * under every Radiohead album is noise; printing a credit only when it
-   * changes is signal. Leaving it unset means there is no artist context to
-   * suppress against, so the credit always shows: on browse or search surfaces
-   * a caption without an artist is barely a caption at all.
-   *
-   * Two different things trip it, and both are worth showing:
-   *
-   *  - **Collaborations.** Watch the Throne appears on both Jay-Z's and Kanye
-   *    West's pages via `album_artists`, and without the credit it would look
-   *    like a solo record on each.
-   *  - **Renames.** MusicBrainz has renamed Kanye West to Ye, while the cached
-   *    `display_credit` still reads as released. Every album on that page
-   *    therefore carries a credit line. That is correct: the record really was
-   *    credited to Kanye West, and the catalogue is read-only downstream of
-   *    MusicBrainz, so the two names legitimately differ.
-   */
-  creditFor?: string;
   emptyMessage?: string;
-};
+} & (
+  | {
+      showCaptions: true;
+      albums: AlbumSummaryWithArtists[];
+      /**
+       * The artist whose page this grid is on, by MBID.
+       *
+       * Suppresses the credit line when the album is credited to this artist
+       * and nobody else — printing "Radiohead" under every Radiohead album is
+       * noise; printing a credit only when it changes is signal. Leaving it
+       * unset means there is no artist context to suppress against, so the
+       * credit always shows: on a browse surface a caption without an artist is
+       * barely a caption at all.
+       *
+       * **Compared by identity, not by name, and that changed what it does.**
+       * The rule used to compare the cached `display_credit` against the
+       * artist's current name, so a **rename** produced a credit line as a side
+       * effect of the two strings disagreeing — MusicBrainz renaming Kanye West
+       * to Ye made every album on that page carry one. That now resolves to the
+       * same artist and is suppressed, **taking the as-released name with it.**
+       * That loss was put to the maintainer with the alternative beside it and
+       * accepted; `product-spec.md` §6 records the decision and its price.
+       *
+       * **Collaborations still show**, which is the case that matters most
+       * here: Watch the Throne appears on both JAY-Z's and Kanye West's pages
+       * via `album_artists`, and without the credit it would look like a solo
+       * record on each — now with the collaborator one click away.
+       */
+      creditForArtistMbid?: string;
+    }
+  | {
+      showCaptions?: false;
+      albums: AlbumSummary[];
+      creditForArtistMbid?: never;
+    }
+);
 
-export function AlbumGrid({
-  albums,
-  density = 'standard',
-  showCaptions = false,
-  creditFor,
-  emptyMessage = 'Nothing here yet.',
-}: Props) {
-  if (albums.length === 0) {
+/**
+ * The cover, and the title when captions are on.
+ *
+ * **Everything inside the album anchor lives here**, so the two render paths
+ * below cannot drift on what is and is not clickable — the property
+ * `design-reference.md` §11.12 had to be careful about in the first place.
+ */
+function CoverLink({
+  album,
+  density,
+  index,
+  showTitle,
+}: {
+  album: AlbumSummary;
+  density: GridDensity;
+  index: number;
+  showTitle?: boolean;
+}) {
+  return (
+    <Link href={`/albums/${album.mbid}`} className="group block">
+      <AlbumCover
+        mbid={album.mbid}
+        title={album.title}
+        hasArtwork={album.artwork_status === 'found'}
+        px={RENDER_PX[density]}
+        size={SOURCE[density]}
+        priority={index < BASE_COLUMNS[density]}
+      />
+      {showTitle && (
+        <p className="mt-2 truncate text-xs leading-snug group-hover:underline" title={album.title}>
+          {album.title}
+        </p>
+      )}
+    </Link>
+  );
+}
+
+export function AlbumGrid(props: Props) {
+  const { density = 'standard', emptyMessage = 'Nothing here yet.' } = props;
+
+  if (props.albums.length === 0) {
     return <p className="py-12 text-center text-sm text-text-muted">{emptyMessage}</p>;
+  }
+
+  /*
+   * **Two render paths, because the caption changed what a cell contains.**
+   * The anchor now stops at the title and the credit sits outside it — an `<a>`
+   * inside an `<a>` is invalid HTML, so a linked credit could not be nested
+   * inside a tile-wide album link (`design-reference.md` §11.12).
+   *
+   * The cost: a captioned cell is no longer clickable anywhere, since the
+   * credit strip goes somewhere else now. That is a deliberate partial retreat
+   * from "the whole tile is a link", not a regression to repair. A caption-free
+   * cell is unchanged and still clickable throughout.
+   *
+   * **They are split rather than branched inline so the narrowing is real.**
+   * `albums` only carries artists on the captioned side, and the type says so.
+   */
+  if (props.showCaptions) {
+    const { albums, creditForArtistMbid } = props;
+
+    return (
+      <AlbumGridShell density={density}>
+        {albums.map((album, index) => (
+          <li key={album.id}>
+            <CoverLink album={album} density={density} index={index} showTitle />
+
+            {!(creditForArtistMbid && creditIsSolely(album.artists, creditForArtistMbid)) && (
+              <ArtistCredit
+                artists={album.artists}
+                fallback={album.display_credit}
+                className="block truncate text-[0.7rem] leading-snug text-text-secondary"
+              />
+            )}
+
+            {album.releaseYear && (
+              <p className="tabular text-[0.7rem] leading-snug text-text-muted">
+                {album.releaseYear}
+                {album.primary_type === 'ep' && ' · EP'}
+              </p>
+            )}
+          </li>
+        ))}
+      </AlbumGridShell>
+    );
   }
 
   return (
     <AlbumGridShell density={density}>
-      {albums.map((album, index) => (
+      {props.albums.map((album, index) => (
         <li key={album.id}>
-          <Link href={`/albums/${album.mbid}`} className="group block">
-            <AlbumCover
-              mbid={album.mbid}
-              title={album.title}
-              hasArtwork={album.artwork_status === 'found'}
-              px={RENDER_PX[density]}
-              size={SOURCE[density]}
-              priority={index < BASE_COLUMNS[density]}
-            />
-            {showCaptions && (
-              <>
-                <p
-                  className="mt-2 truncate text-xs leading-snug group-hover:underline"
-                  title={album.title}
-                >
-                  {album.title}
-                </p>
-                {album.display_credit !== creditFor && (
-                  <p
-                    className="truncate text-[0.7rem] leading-snug text-text-secondary"
-                    title={album.display_credit}
-                  >
-                    {album.display_credit}
-                  </p>
-                )}
-                {album.releaseYear && (
-                  <p className="tabular text-[0.7rem] leading-snug text-text-muted">
-                    {album.releaseYear}
-                    {album.primary_type === 'ep' && ' · EP'}
-                  </p>
-                )}
-              </>
-            )}
-          </Link>
+          <CoverLink album={album} density={density} index={index} />
         </li>
       ))}
     </AlbumGridShell>

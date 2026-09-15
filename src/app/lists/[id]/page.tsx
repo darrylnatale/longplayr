@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 
 import { AlbumCover } from '@/components/AlbumCover';
 import { AlbumGrid } from '@/components/AlbumGrid';
+import { ArtistCredit } from '@/components/ArtistCredit';
 import { Container } from '@/components/Container';
 import { EditListForm } from '@/components/EditListForm';
 import { getList } from '@/services/lists';
@@ -144,9 +145,18 @@ export default async function ListPage({ params }: PageProps<'/lists/[id]'>) {
                 >
                   {item.album.title}
                 </Link>
-                <span className="block truncate text-sm text-text-secondary">
-                  {item.album.display_credit}
-                </span>
+                {/*
+                 * **No restructuring needed here, unlike the grid.** This
+                 * credit already sits outside the title's anchor, so a link
+                 * nests inside nothing — the invalid-HTML problem
+                 * `design-reference.md` §11.12 solves for `AlbumGrid` never
+                 * existed on this surface.
+                 */}
+                <ArtistCredit
+                  artists={item.album.artists}
+                  fallback={item.album.display_credit}
+                  className="block truncate text-sm text-text-secondary"
+                />
               </span>
 
               {isOwner && (
