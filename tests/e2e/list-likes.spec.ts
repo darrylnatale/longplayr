@@ -67,7 +67,8 @@ async function signUp(page: Page) {
 
   await page.goto('/signup');
   await page.getByLabel('Email').fill(user.email);
-  await page.getByLabel('Password').fill(user.password);
+  await page.getByLabel('Password', { exact: true }).fill(user.password);
+  await page.getByLabel('Confirm password').fill(user.password);
   await page.getByRole('button', { name: 'Create account' }).click();
 
   await expect(page).toHaveURL('/onboarding', NAV);
@@ -144,7 +145,7 @@ test('the like reaches the owner as a notification that opens the list', async (
   await expect(page.getByRole('banner').getByRole('link', { name: 'Sign in' })).toBeVisible(NAV);
   await page.goto('/login');
   await page.getByLabel('Email').fill(owner.email);
-  await page.getByLabel('Password').fill(owner.password);
+  await page.getByLabel('Password', { exact: true }).fill(owner.password);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).toHaveURL('/', NAV);
 
@@ -171,7 +172,7 @@ test('unliking removes the notification it created', async ({ page }) => {
   await expect(page.getByRole('banner').getByRole('link', { name: 'Sign in' })).toBeVisible(NAV);
   await page.goto('/login');
   await page.getByLabel('Email').fill(owner.email);
-  await page.getByLabel('Password').fill(owner.password);
+  await page.getByLabel('Password', { exact: true }).fill(owner.password);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).toHaveURL('/', NAV);
 
@@ -184,7 +185,7 @@ test('the owner is offered no like control on their own list', async ({ page }) 
 
   await page.goto('/login');
   await page.getByLabel('Email').fill(owner.email);
-  await page.getByLabel('Password').fill(owner.password);
+  await page.getByLabel('Password', { exact: true }).fill(owner.password);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).toHaveURL('/', NAV);
 

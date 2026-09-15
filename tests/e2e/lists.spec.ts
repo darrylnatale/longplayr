@@ -64,7 +64,8 @@ async function signUp(page: Page) {
 
   await page.goto('/signup');
   await page.getByLabel('Email').fill(user.email);
-  await page.getByLabel('Password').fill(user.password);
+  await page.getByLabel('Password', { exact: true }).fill(user.password);
+  await page.getByLabel('Confirm password').fill(user.password);
   await page.getByRole('button', { name: 'Create account' }).click();
 
   await expect(page).toHaveURL('/onboarding', NAV);

@@ -71,7 +71,8 @@ test('sign up, choose a handle, sign out, sign back in', async ({ page }) => {
 
   await page.goto('/signup');
   await page.getByLabel('Email').fill(user.email);
-  await page.getByLabel('Password').fill(user.password);
+  await page.getByLabel('Password', { exact: true }).fill(user.password);
+  await page.getByLabel('Confirm password').fill(user.password);
   await page.getByRole('button', { name: 'Create account' }).click();
 
   await expect(page).toHaveURL('/onboarding', NAV);
@@ -97,7 +98,7 @@ test('sign up, choose a handle, sign out, sign back in', async ({ page }) => {
 
   await page.goto('/login');
   await page.getByLabel('Email').fill(user.email);
-  await page.getByLabel('Password').fill(user.password);
+  await page.getByLabel('Password', { exact: true }).fill(user.password);
   await page.getByRole('button', { name: 'Sign in' }).click();
 
   await expect(page).toHaveURL('/', NAV);
@@ -110,7 +111,8 @@ test('a profile is publicly visible when signed out', async ({ page, context }) 
 
   await page.goto('/signup');
   await page.getByLabel('Email').fill(user.email);
-  await page.getByLabel('Password').fill(user.password);
+  await page.getByLabel('Password', { exact: true }).fill(user.password);
+  await page.getByLabel('Confirm password').fill(user.password);
   await page.getByRole('button', { name: 'Create account' }).click();
   await page.getByLabel('Handle').fill(user.handle);
   await page.getByRole('button', { name: 'Claim handle' }).click();
@@ -135,7 +137,8 @@ test('reserved handles are rejected', async ({ page }) => {
 
   await page.goto('/signup');
   await page.getByLabel('Email').fill(user.email);
-  await page.getByLabel('Password').fill(user.password);
+  await page.getByLabel('Password', { exact: true }).fill(user.password);
+  await page.getByLabel('Confirm password').fill(user.password);
   await page.getByRole('button', { name: 'Create account' }).click();
   await expect(page).toHaveURL('/onboarding', NAV);
 
@@ -170,7 +173,8 @@ test('at phone width the owner signs out from their own profile', async ({ page 
 
   await page.goto('/signup');
   await page.getByLabel('Email').fill(user.email);
-  await page.getByLabel('Password').fill(user.password);
+  await page.getByLabel('Password', { exact: true }).fill(user.password);
+  await page.getByLabel('Confirm password').fill(user.password);
   await page.getByRole('button', { name: 'Create account' }).click();
   await expect(page).toHaveURL('/onboarding', NAV);
   await page.getByLabel('Handle').fill(user.handle);
@@ -208,7 +212,8 @@ test('at phone width a visitor sees no sign-out control on someone else’s prof
   createdEmails.push(owner.email);
   await page.goto('/signup');
   await page.getByLabel('Email').fill(owner.email);
-  await page.getByLabel('Password').fill(owner.password);
+  await page.getByLabel('Password', { exact: true }).fill(owner.password);
+  await page.getByLabel('Confirm password').fill(owner.password);
   await page.getByRole('button', { name: 'Create account' }).click();
   await page.getByLabel('Handle').fill(owner.handle);
   await page.getByRole('button', { name: 'Claim handle' }).click();
@@ -221,7 +226,8 @@ test('at phone width a visitor sees no sign-out control on someone else’s prof
   createdEmails.push(visitor.email);
   await page.goto('/signup');
   await page.getByLabel('Email').fill(visitor.email);
-  await page.getByLabel('Password').fill(visitor.password);
+  await page.getByLabel('Password', { exact: true }).fill(visitor.password);
+  await page.getByLabel('Confirm password').fill(visitor.password);
   await page.getByRole('button', { name: 'Create account' }).click();
   await page.getByLabel('Handle').fill(visitor.handle);
   await page.getByRole('button', { name: 'Claim handle' }).click();
@@ -242,7 +248,8 @@ test('at phone width a signed-out visitor sees no sign-out control', async ({ pa
   createdEmails.push(user.email);
   await page.goto('/signup');
   await page.getByLabel('Email').fill(user.email);
-  await page.getByLabel('Password').fill(user.password);
+  await page.getByLabel('Password', { exact: true }).fill(user.password);
+  await page.getByLabel('Confirm password').fill(user.password);
   await page.getByRole('button', { name: 'Create account' }).click();
   await page.getByLabel('Handle').fill(user.handle);
   await page.getByRole('button', { name: 'Claim handle' }).click();

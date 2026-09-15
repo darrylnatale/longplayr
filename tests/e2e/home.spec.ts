@@ -88,7 +88,7 @@ async function createAccount(admin: SupabaseClient, withProfile = true): Promise
 async function signIn(page: Page, account: Account) {
   await page.goto('/login');
   await page.getByLabel('Email').fill(account.email);
-  await page.getByLabel('Password').fill(account.password);
+  await page.getByLabel('Password', { exact: true }).fill(account.password);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).toHaveURL('/', NAV);
 }
