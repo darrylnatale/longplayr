@@ -1,3 +1,4 @@
+import { PASSWORD_HINT } from '@/services/auth/password-policy';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
@@ -28,11 +29,7 @@ export default async function SignUpPage() {
         </>
       }
     >
-      <AuthForm
-        action={signUp}
-        submitLabel="Create account"
-        passwordHint="At least 8 characters."
-      />
+      <AuthForm action={signUp} submitLabel="Create account" passwordHint={PASSWORD_HINT} />
     </AuthShell>
   );
 }

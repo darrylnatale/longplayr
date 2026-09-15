@@ -85,7 +85,8 @@ async function signUp(page: Page) {
 
   await page.goto('/signup');
   await page.getByLabel('Email').fill(user.email);
-  await page.getByLabel('Password').fill(user.password);
+  await page.getByLabel('Password', { exact: true }).fill(user.password);
+  await page.getByLabel('Confirm password').fill(user.password);
   await page.getByRole('button', { name: 'Create account' }).click();
 
   await expect(page).toHaveURL('/onboarding', NAV);
@@ -207,7 +208,7 @@ test('the review author is offered no like control on their own review', async (
 
   await page.goto('/login');
   await page.getByLabel('Email').fill(author.email);
-  await page.getByLabel('Password').fill(author.password);
+  await page.getByLabel('Password', { exact: true }).fill(author.password);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).toHaveURL('/', NAV);
 

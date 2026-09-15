@@ -77,6 +77,33 @@ export function AuthForm({
       </Field>
 
       {/*
+       * **Signup only.** A second password box on a sign-in form is a usability
+       * defect, not a safety measure: there is nothing to confirm when the
+       * password already exists. `architecture.md` §6.
+       */}
+      {isSignUp && (
+        <Field
+          id="confirmPassword"
+          label="Confirm password"
+          error={state.fieldErrors?.confirmPassword}
+        >
+          <div className={INPUT_SHELL}>
+            <input
+              id="confirmPassword"
+              name="confirmPassword"
+              type="password"
+              autoComplete="new-password"
+              required
+              aria-describedby={
+                state.fieldErrors?.confirmPassword ? 'confirmPassword-error' : undefined
+              }
+              className={`${BARE_INPUT} pl-3`}
+            />
+          </div>
+        </Field>
+      )}
+
+      {/*
        * Form-level failure — a rejected credential rather than a malformed
        * field. Given its own panel so it reads as a state of the form rather
        * than as a note about whichever input happens to sit above it.
