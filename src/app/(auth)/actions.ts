@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 import { signInWithPassword, signOutCurrentUser, signUpWithPassword } from '@/services/auth';
 import { MIN_PASSWORD_LENGTH } from '@/services/auth/password-policy';
+import { signUpDestination } from '@/services/auth/signup-destination';
 
 export type AuthFormState = {
   error?: string;
@@ -97,10 +98,29 @@ export async function signUp(
 
   revalidatePath('/', 'layout');
 
-  // A new account has no profile yet, so onboarding is the only sensible
-  // destination. When email confirmation is on there is no session, and
-  // /onboarding sends them back to sign in.
-  redirect('/onboarding');
+  /*
+   * **Two destinations, because there are two outcomes.**
+   *
+   * `signUpWithPassword` already reported whether a session was issued, and
+   * this action used to discard it and redirect to `/onboarding` regardless.
+   * With confirmation enabled there is no session, so `/onboarding` bounced the
+   * new account to a sign-in form — **asking somebody who has just registered to
+   * sign in, with no mention of an email and no explanation.**
+   *
+   * **The switch is off everywhere today**, so this branch does not fire yet.
+   * That is deliberate: `enable_confirmations` lives in version-controlled
+   * config and roughly sixteen end-to-end specs sign up expecting a session.
+   * Making the code correct for both states means enabling confirmation later is
+   * a deployment change rather than a code change. `architecture.md` §6.
+   */
+  // The rule lives in the service layer so it can be tested directly — this
+  // function ends in `redirect()`, which throws by design.
+  redirect(
+    signUpDestination({
+      needsEmailConfirmation: result.data.needsEmailConfirmation,
+      email: parsed.data.email,
+    }),
+  );
 }
 
 export async function signIn(
