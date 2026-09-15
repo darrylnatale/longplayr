@@ -15,7 +15,12 @@ export default defineConfig({
         test: {
           name: 'unit',
           environment: 'node',
-          include: ['src/**/*.test.ts'],
+          // `scripts/` is build tooling rather than app code, and had no tests
+          // at all until the pre-push migration warning needed one — a guard
+          // whose wording, left stale, causes the outage it exists to prevent
+          // (`architecture.md` §11.1). `.mts` because the scripts are ESM and
+          // `tsconfig.json` already includes that extension.
+          include: ['src/**/*.test.ts', 'scripts/**/*.test.mts'],
         },
       },
       {

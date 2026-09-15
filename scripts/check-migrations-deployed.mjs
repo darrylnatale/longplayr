@@ -2,12 +2,25 @@
 /**
  * Refuses a push that would deploy code ahead of its migrations.
  *
- * **This exists because the failure has happened twice.** Vercel deploys on
- * push, so pushing *is* deploying — but a migration only reaches the database
- * when someone runs `supabase db push`. Push code first and the deployed app
- * queries tables that do not exist yet. `docs/current-state.md` §42 and §46 both
- * record the outage: the second one took every profile page down for every
- * visitor, and was found by opening the site rather than by any check.
+ * **This exists because the failure has happened twice.** A migration only
+ * reaches the database when someone runs `supabase db push`. Deploy code first
+ * and the deployed app queries tables that do not exist yet.
+ * `docs/current-state.md` §42 and §46 both record the outage: the second one
+ * took every profile page down for every visitor, and was found by opening the
+ * site rather than by any check.
+ *
+ * **[CORRECTED 2026-09-15 — this said "Vercel deploys on push, so pushing *is*
+ * deploying".]** That holds for `main` and is false for a branch, which is
+ * where all work now happens. The message it produced told the developer to
+ * apply the migration *before* pushing — which would put schema on the deployed
+ * database **before CI had ever parsed it**, the exact ordering `CLAUDE.md`
+ * reversed when it moved that step to **STEP J**. The wording now depends on
+ * where the push is going; see `scripts/migration-warning.mjs` and
+ * `docs/architecture.md` §11.1.
+ *
+ * **What this can no longer do, stated plainly.** Under the branch model the
+ * deploy happens at merge time on GitHub, which no local hook observes. This is
+ * a **reminder**, not a gate — the gate is STEP J's ordering.
  *
  * **CI cannot catch it.** CI applies migrations to a fresh database and passes.
  * A green run says nothing about the deployed schema. `verify:full`, CI and the
@@ -24,7 +37,44 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
+import { buildBlockedMessage, parsePushTarget } from './migration-warning.mjs';
+
 const run = promisify(execFile);
+
+/**
+ * The refs git hands a `pre-push` hook on stdin, or `''` when there are none.
+ *
+ * **Guarded against hanging, which would be worse than the bug being fixed.**
+ * `npm run db:pending` runs this same check by hand, where stdin is a terminal
+ * nobody will ever close — reading it to EOF there would lock up a diagnostic
+ * command forever. A TTY is treated as no input, and any other stdin is raced
+ * against a short timeout so an unexpected environment degrades to `unknown`
+ * rather than stalling.
+ */
+async function readPushRefs() {
+  if (process.stdin.isTTY) return '';
+
+  return await new Promise((resolve) => {
+    let data = '';
+    const done = (value) => {
+      clearTimeout(timer);
+      process.stdin.removeAllListeners('data');
+      process.stdin.removeAllListeners('end');
+      resolve(value);
+    };
+
+    const timer = setTimeout(() => done(data), 200);
+
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (chunk) => {
+      data += chunk;
+    });
+    process.stdin.on('end', () => done(data));
+    process.stdin.on('error', () => done(''));
+  });
+}
+
+const pushTarget = parsePushTarget(await readPushRefs());
 
 const BOLD = '[1m';
 const RED = '[31m';
@@ -81,17 +131,8 @@ if (pending.length === 0) {
 console.error('');
 console.error(`${RED}${BOLD}✗ Push blocked: the deployed database is behind.${OFF}`);
 console.error('');
-console.error(`  ${pending.length} migration${pending.length === 1 ? '' : 's'} not applied:`);
-for (const id of pending) console.error(`    • ${id}`);
-console.error('');
-console.error('  Vercel deploys on push, so pushing now ships code against a schema');
-console.error('  that does not have these yet. That is what took every profile page');
-console.error('  down on 2026-09-04 (docs/current-state.md §46).');
-console.error('');
-console.error(`  ${BOLD}Apply them first, then push:${OFF}`);
-console.error('    npx supabase db push --linked');
-console.error('');
-console.error('  If you genuinely need to push without deploying them:');
-console.error('    git push --no-verify');
+for (const line of buildBlockedMessage({ pending, target: pushTarget })) {
+  console.error(line ? `  ${line}` : '');
+}
 console.error('');
 process.exit(1);
