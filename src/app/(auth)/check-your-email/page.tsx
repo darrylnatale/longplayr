@@ -2,6 +2,8 @@ import Link from 'next/link';
 
 import { Container } from '@/components/Container';
 
+import { ResendForm } from './ResendForm';
+
 /**
  * Shown after a signup that issued no session, which means email confirmation
  * is enabled and the account is not usable yet. `architecture.md` §6.
@@ -52,6 +54,8 @@ export default async function CheckYourEmailPage({ searchParams }: PageProps<'/c
           <strong className="text-text">Your account isn&rsquo;t usable until you click it.</strong>{' '}
           Signing in before then won&rsquo;t work, and it isn&rsquo;t your password.
         </p>
+
+        <ResendForm address={email} />
 
         <p className="text-sm text-text-muted">
           Once you&rsquo;ve confirmed, you can{' '}

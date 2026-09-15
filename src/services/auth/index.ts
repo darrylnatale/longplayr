@@ -37,6 +37,36 @@ export async function signUpWithPassword(
   return ok({ needsEmailConfirmation: data.session === null });
 }
 
+/**
+ * Resends the signup confirmation email.
+ *
+ * **Deliberately tells the caller almost nothing**, and that is the design
+ * rather than laziness. `architecture.md` §6: the response must be identical
+ * whether or not the address has an account, because *"no account with that
+ * address"* is the more useful sentence **and tells an attacker which addresses
+ * are registered.** longplayr is otherwise an all-public product — but a handle
+ * is public and an email address is not.
+ *
+ * **Rate limiting is Supabase's, not ours, and that is verified rather than
+ * assumed** (`architecture.md` §18, confirmed 2026-09-15): `/auth/v1/resend`
+ * carries a 60-second window per user whatever the email provider. Building an
+ * anonymous-keyed limiter here would duplicate a control the vendor already
+ * applies — and this codebase has none, since §8.4's limits are per *user* and
+ * a resend request comes from someone who is not signed in.
+ *
+ * **A rate-limit rejection is swallowed for the same reason an unknown address
+ * is.** Surfacing "try again in 60 seconds" to one address and nothing to
+ * another would leak exactly what the identical response exists to hide.
+ */
+export async function resendConfirmation(email: string): Promise<void> {
+  const supabase = await createClient();
+
+  // The result is intentionally unused. Nothing the provider reports here may
+  // reach the caller: not "unknown address", not "rate limited", not a
+  // transport failure — each of them distinguishes one address from another.
+  await supabase.auth.resend({ type: 'signup', email });
+}
+
 export async function signInWithPassword(
   credentials: Credentials,
 ): Promise<Result<null, SignInError>> {
