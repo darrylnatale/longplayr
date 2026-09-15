@@ -1,6 +1,10 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { COUNT_ONLY, countRows } from '@/services/count';
 
+import { toUncoveredAlbum, WORKLIST_LIMIT } from './artwork-worklist';
+
+import type { ArtworkWorklist, UncoveredAlbumRow } from './artwork-worklist';
+
 import type { Database } from '@/lib/supabase/database.types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -83,6 +87,7 @@ export type QueueSnapshot = {
   backingOff: InspectedJob[];
   depthByKind: Record<string, number>;
   artwork: Record<string, number>;
+  worklist: ArtworkWorklist;
   /** When a job was last settled — the practical answer to "did a drain run?" */
   lastActivityAt: string | null;
 };
@@ -159,6 +164,11 @@ export async function inspectQueue(
     .limit(1);
   if (latestError) throw latestError;
 
+  const worklist = await listUncoveredAlbums(admin, {
+    absent: artwork.absent ?? 0,
+    failed: artwork.failed ?? 0,
+  });
+
   return {
     takenAt: now.toISOString(),
     next: (ready ?? []).map((job, index) => inspect(job, now, index === 0)),
@@ -167,6 +177,59 @@ export async function inspectQueue(
     backingOff: (waiting ?? []).map((job) => inspect(job, now, false)),
     depthByKind,
     artwork,
+    worklist,
     lastActivityAt: latest?.[0]?.updated_at ?? null,
+  };
+}
+
+/**
+ * Albums a person could put a cover on, and albums whose fetch broke.
+ *
+ * **`architecture.md` §17b.** Two groups rather than one, because they ask
+ * different things: `absent` means Cover Art Archive holds no image and
+ * somebody must upload one; `failed` means **our** fetch broke and the artwork
+ * sweep re-queues it on any drain. Presenting the second as a task would ask
+ * the maintainer to do work the system is still retrying.
+ *
+ * **`pending` is in neither group** — it means not attempted yet, which is not
+ * actionable and not a failure.
+ *
+ * **Reads only.** §17a's service-role client is safe on this page because
+ * authorisation runs before the read and this module contains no write verb.
+ * That second property is the one a future edit could quietly remove.
+ *
+ * **The embed names its foreign key.** `releases.album_id` and
+ * `albums.representative_release_id` are two relationships between the same two
+ * tables, so a bare `releases(...)` embed fails outright.
+ */
+async function listUncoveredAlbums(
+  admin: Admin,
+  totals: { absent: number; failed: number },
+): Promise<ArtworkWorklist> {
+  const select = 'id, mbid, title, display_credit, releases!albums_representative_release_fk(mbid)';
+
+  const [absent, failed] = await Promise.all([
+    admin
+      .from('albums')
+      .select(select)
+      .eq('artwork_status', 'absent')
+      .order('title', { ascending: true })
+      .limit(WORKLIST_LIMIT),
+    admin
+      .from('albums')
+      .select(select)
+      .eq('artwork_status', 'failed')
+      .order('title', { ascending: true })
+      .limit(WORKLIST_LIMIT),
+  ]);
+
+  if (absent.error) throw absent.error;
+  if (failed.error) throw failed.error;
+
+  return {
+    missingUpstream: ((absent.data ?? []) as unknown as UncoveredAlbumRow[]).map(toUncoveredAlbum),
+    fetchFailed: ((failed.data ?? []) as unknown as UncoveredAlbumRow[]).map(toUncoveredAlbum),
+    totals,
+    limit: WORKLIST_LIMIT,
   };
 }
