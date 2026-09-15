@@ -4,7 +4,12 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 
-import { signInWithPassword, signOutCurrentUser, signUpWithPassword } from '@/services/auth';
+import {
+  resendConfirmation,
+  signInWithPassword,
+  signOutCurrentUser,
+  signUpWithPassword,
+} from '@/services/auth';
 import { MIN_PASSWORD_LENGTH } from '@/services/auth/password-policy';
 import { signUpDestination } from '@/services/auth/signup-destination';
 
@@ -121,6 +126,37 @@ export async function signUp(
       email: parsed.data.email,
     }),
   );
+}
+
+export type ResendState = { sent?: boolean; error?: string };
+
+const resendSchema = z.object({ email: z.email('Enter a valid email address.') });
+
+/**
+ * Resend a confirmation email.
+ *
+ * **Reports success for any well-formed address**, including one with no
+ * account. `architecture.md` §6 — a differing response would tell an attacker
+ * which addresses are registered, and an email address is not public in
+ * longplayr even though a handle is.
+ *
+ * **A malformed address is the one thing it does report**, because that is a
+ * property of the input rather than of the account database.
+ */
+export async function resendConfirmationEmail(
+  _prevState: ResendState,
+  formData: FormData,
+): Promise<ResendState> {
+  const parsed = resendSchema.safeParse({ email: String(formData.get('email') ?? '') });
+  if (!parsed.success) {
+    return { error: 'Enter a valid email address.' };
+  }
+
+  await resendConfirmation(parsed.data.email);
+
+  // Unconditional. The service layer deliberately reports nothing, so there is
+  // nothing here to branch on — see its docstring before "improving" this.
+  return { sent: true };
 }
 
 export async function signIn(
