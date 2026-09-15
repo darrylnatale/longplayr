@@ -143,3 +143,65 @@ test('an album with collection activity leads Popular after a refresh', async ({
   await expect(popular).toBeVisible(NAV);
   await expect(popular.getByRole('link', { name: /In Rainbows/ }).first()).toBeVisible();
 });
+
+/**
+ * Artist links from a grid caption (`product-spec.md` §6, *Reaching an artist
+ * from a credit*).
+ *
+ * **This is the surface the entry actually complained about.** Before this,
+ * reaching an artist meant opening one of their albums first and clicking
+ * through from there — the credit under a cover was dead text. The assertion
+ * that matters is the navigation, not the markup, which is why it clicks.
+ */
+test('a credit under a cover reaches the artist page', async ({ page }) => {
+  await page.goto('/albums');
+
+  const recent = page.locator('section').filter({
+    has: page.getByRole('heading', { name: 'Recently added' }),
+  });
+  await expect(recent).toBeVisible(NAV);
+
+  // Radiohead rather than a collaboration: one artist, one link, no ambiguity
+  // about which of them the click resolves to.
+  await recent.getByRole('link', { name: 'Radiohead', exact: true }).first().click();
+
+  await expect(page).toHaveURL(/\/artists\//, NAV);
+  await expect(page.getByRole('heading', { name: 'Radiohead' }).first()).toBeVisible();
+
+  // And having arrived, the credit is suppressed on that artist's own page:
+  // printing "Radiohead" under every Radiohead album is noise. This is the
+  // identity comparison, not the old string one — `product-spec.md` §6.
+  const discography = page.getByRole('main');
+  await expect(discography.getByRole('link', { name: 'In Rainbows' }).first()).toBeVisible();
+  await expect(discography.getByRole('link', { name: 'Radiohead', exact: true })).toHaveCount(0);
+});
+
+test('a collaboration credits both artists, and each is its own link', async ({ page }) => {
+  // The case that carries the cost recorded in `product-spec.md` §6: the caption
+  // renders canonical names from `album_artists` rather than the as-released
+  // `display_credit`, so this asserts the *joined* rendering deliberately.
+  await page.goto('/albums');
+
+  const recent = page.locator('section').filter({
+    has: page.getByRole('heading', { name: 'Recently added' }),
+  });
+  await expect(recent).toBeVisible(NAV);
+
+  await expect(recent.getByRole('link', { name: 'JAY-Z', exact: true }).first()).toBeVisible();
+  await expect(recent.getByRole('link', { name: 'Kanye West', exact: true }).first()).toBeVisible();
+});
+
+test('a Various Artists credit is named but is not a link', async ({ page }) => {
+  // A pseudo-artist is printed and not linked. Dropping it would leave a
+  // compilation credited to nobody; linking it would point many tiles at one
+  // page and sit adjacent to an open question about depth.
+  await page.goto('/albums');
+
+  const recent = page.locator('section').filter({
+    has: page.getByRole('heading', { name: 'Recently added' }),
+  });
+  await expect(recent).toBeVisible(NAV);
+
+  await expect(recent.getByText('Various Artists').first()).toBeVisible();
+  await expect(recent.getByRole('link', { name: 'Various Artists', exact: true })).toHaveCount(0);
+});

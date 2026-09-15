@@ -36,9 +36,25 @@ type Admin = SupabaseClient<Database>;
  */
 const VARIOUS_ARTISTS_MBID = '89ad4ac3-39f7-470e-963a-56509c546377';
 
+/**
+ * Whether this is a pseudo-artist — a catalogue placeholder rather than a
+ * performer.
+ *
+ * **Two concerns read this, and they are deliberately not the same predicate.**
+ * Expansion asks it because a pseudo-artist's discography is unbounded
+ * (`isExcludedFromExpansion` below). Rendering asks it because a credit naming
+ * one is not a route to anybody (`product-spec.md` §6, *Reaching an artist from
+ * a credit*). **The identifier is shared; the questions are not**, and giving
+ * the second caller the first one's name is how the two would later be changed
+ * together by someone who thought they were one rule.
+ */
+export function isPseudoArtist(artistMbid: string): boolean {
+  return artistMbid.toLowerCase() === VARIOUS_ARTISTS_MBID;
+}
+
 /** Whether an artist is withheld from automatic expansion. */
 export function isExcludedFromExpansion(artistMbid: string): boolean {
-  return artistMbid.toLowerCase() === VARIOUS_ARTISTS_MBID;
+  return isPseudoArtist(artistMbid);
 }
 
 /**

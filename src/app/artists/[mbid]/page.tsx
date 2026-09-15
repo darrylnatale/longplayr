@@ -222,7 +222,7 @@ export default async function ArtistPage({ params, searchParams }: PageProps<'/a
           albums={artist.albums}
           density="relaxed"
           showCaptions
-          creditFor={artist.name}
+          creditForArtistMbid={artist.mbid}
           emptyMessage="No releases in the catalogue yet."
         />
 

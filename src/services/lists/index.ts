@@ -1,7 +1,10 @@
 import { createClient } from '@/lib/supabase/server';
 import type { Database } from '@/lib/supabase/database.types';
 
-import type { AlbumSummary } from '../catalogue/queries';
+import { toCreditedArtists } from '../catalogue/credit';
+
+import type { AlbumArtistRow } from '../catalogue/credit';
+import type { AlbumSummaryWithArtists } from '../catalogue/queries';
 
 import { countRows, COUNT_ONLY } from '../count';
 import { recordListCreated } from '../social/activity';
@@ -55,7 +58,7 @@ export type ListSummary = {
 export type ListItem = {
   id: string;
   position: number;
-  album: AlbumSummary;
+  album: AlbumSummaryWithArtists;
 };
 
 export type ListDetail = {
@@ -86,7 +89,7 @@ export type ListError =
  */
 const LIST_ITEM_SELECT = `
   id, position,
-  albums(id, mbid, title, display_credit, primary_type, artwork_status, first_release_date, first_release_date_precision)
+  albums(id, mbid, title, display_credit, primary_type, artwork_status, first_release_date, first_release_date_precision, album_artists(position, artists(id, mbid, name)))
 ` as const;
 
 type ItemRow = {
@@ -101,6 +104,7 @@ type ItemRow = {
     artwork_status: Database['public']['Enums']['artwork_status'];
     first_release_date: string | null;
     first_release_date_precision: Database['public']['Enums']['date_precision'] | null;
+    album_artists: AlbumArtistRow[] | null;
   } | null;
 };
 
@@ -115,11 +119,16 @@ type ItemRow = {
  */
 function toItem(row: ItemRow): ListItem[] {
   if (!row.albums) return [];
+  const { album_artists, ...album } = row.albums;
   return [
     {
       id: row.id,
       position: row.position,
-      album: { ...row.albums, releaseYear: row.albums.first_release_date?.slice(0, 4) ?? null },
+      album: {
+        ...album,
+        releaseYear: row.albums.first_release_date?.slice(0, 4) ?? null,
+        artists: toCreditedArtists(album_artists),
+      },
     },
   ];
 }
