@@ -1,4 +1,8 @@
 import { createClient } from '@/lib/supabase/server';
+
+import { toCreditedArtists } from '../catalogue/credit';
+
+import type { AlbumArtistRow, CreditedArtist } from '../catalogue/credit';
 import type { Database } from '@/lib/supabase/database.types';
 
 /**
@@ -25,6 +29,16 @@ export type AlbumHit = {
   popularity_score: number | null;
   releaseYear: string | null;
   tier: number;
+  /**
+   * Who the result is credited to, as links (`product-spec.md` §6).
+   *
+   * **Search is the one surface that cannot get this from an embed.** It reads
+   * the `search_albums` RPC, whose columns are fixed by a SQL signature, so the
+   * function aggregates the artists itself — returning the **same shape** the
+   * PostgREST embed returns, which is why `toCreditedArtists` serves both
+   * unchanged. `architecture.md` §16.8.
+   */
+  artists: CreditedArtist[];
 };
 
 export type ArtistHit = {
@@ -78,10 +92,22 @@ export async function searchCatalogue(
 
   return {
     query,
-    albums: (albums.data ?? []).map((row) => ({
-      ...row,
-      releaseYear: row.first_release_date?.slice(0, 4) ?? null,
-    })),
+    albums: (albums.data ?? []).map((row) => {
+      const { artists: credited, ...album } = row;
+
+      return {
+        ...album,
+        releaseYear: row.first_release_date?.slice(0, 4) ?? null,
+        /*
+         * **A narrow cast, because `jsonb` generates as `Json`.** The database
+         * types cannot express the aggregate's shape, and the migration is the
+         * only producer of this column. `toCreditedArtists` drops malformed
+         * rows rather than trusting the cast, so a shape change surfaces as a
+         * missing credit rather than as a crash.
+         */
+        artists: toCreditedArtists(credited as unknown as AlbumArtistRow[]),
+      };
+    }),
     artists: artists.data ?? [],
     users: users.data ?? [],
   };

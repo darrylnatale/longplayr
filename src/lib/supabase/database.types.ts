@@ -1049,6 +1049,7 @@ export type Database = {
       search_albums: {
         Args: { max_results?: number; query: string }
         Returns: {
+          artists: Json
           artwork_status: Database["public"]["Enums"]["artwork_status"]
           display_credit: string
           first_release_date: string

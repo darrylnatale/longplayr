@@ -3,6 +3,7 @@ import { Suspense } from 'react';
 import Link from 'next/link';
 
 import { AlbumCover } from '@/components/AlbumCover';
+import { ArtistCredit } from '@/components/ArtistCredit';
 import { Container } from '@/components/Container';
 import { SectionHeader } from '@/components/SectionHeader';
 import { getCurrentUser } from '@/services/profiles';
@@ -155,33 +156,50 @@ export default async function SearchPage({ searchParams }: PageProps<'/search'>)
             ) : (
               <ul className="flex flex-col">
                 {results.albums.map((album) => (
-                  <li key={album.id} className={ROW}>
-                    <Link
-                      href={`/albums/${album.mbid}`}
-                      className="group flex items-center gap-4 py-2.5"
-                    >
-                      <div className="w-12 shrink-0">
-                        <AlbumCover
-                          mbid={album.mbid}
-                          title={album.title}
-                          hasArtwork={album.artwork_status === 'found'}
-                          px={48}
-                          size={250}
-                        />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm text-text group-hover:underline">
-                          {album.title}
-                        </p>
-                        <p className="truncate text-xs text-text-muted">
-                          {album.display_credit}
-                          {album.releaseYear && (
-                            <span className="tabular"> · {album.releaseYear}</span>
-                          )}
-                          {album.primary_type === 'ep' && ' · EP'}
-                        </p>
-                      </div>
+                  <li key={album.id} className={`${ROW} flex items-center gap-4 py-2.5`}>
+                    {/*
+                     * **The row is no longer one anchor, and that is deliberate.**
+                     * It wrapped cover, title and credit together, so a credit
+                     * link would have been an `<a>` inside an `<a>` — invalid
+                     * HTML. Cover and title are now separate links to the album
+                     * and the metadata line sits beside them
+                     * (`design-reference.md` §11.12).
+                     *
+                     * **This row loses clickable-anywhere, and it costs more
+                     * here than in a grid**, because results are scanned and
+                     * clicked more freely than covers. Accepted so that one
+                     * album does not behave differently depending on which
+                     * surface found it.
+                     */}
+                    <Link href={`/albums/${album.mbid}`} className="w-12 shrink-0">
+                      <AlbumCover
+                        mbid={album.mbid}
+                        title={album.title}
+                        hasArtwork={album.artwork_status === 'found'}
+                        px={48}
+                        size={250}
+                      />
                     </Link>
+
+                    <div className="min-w-0 flex-1">
+                      <Link href={`/albums/${album.mbid}`} className="group block">
+                        <span className="block truncate text-sm text-text group-hover:underline">
+                          {album.title}
+                        </span>
+                      </Link>
+
+                      <p className="truncate text-xs text-text-muted">
+                        <ArtistCredit
+                          artists={album.artists}
+                          fallback={album.display_credit}
+                          className="inline"
+                        />
+                        {album.releaseYear && (
+                          <span className="tabular"> · {album.releaseYear}</span>
+                        )}
+                        {album.primary_type === 'ep' && ' · EP'}
+                      </p>
+                    </div>
                   </li>
                 ))}
               </ul>

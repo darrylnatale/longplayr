@@ -328,3 +328,68 @@ describe('search_artists', () => {
     expect((data ?? [])[0]?.name).toBe('The Who');
   });
 });
+
+/**
+ * The credited-artist aggregate (`architecture.md` §16.8).
+ *
+ * **The corpus above deliberately creates no `album_artists` rows** — every
+ * other assertion in this file is about text relevance, which reads only
+ * `albums`. So the aggregate has to build its own links, and the empty case is
+ * genuinely the default rather than a contrived one.
+ *
+ * **What is asserted here is the function's contract, not the product rule.**
+ * Whether a pseudo-artist is linkable is decided in `credit.ts` and tested in
+ * `credit.test.ts`; the database's job is to return every credited artist, in
+ * credit order, in the shape the PostgREST embed also returns.
+ */
+describe('search_albums — credited artists', () => {
+  async function albumIdFor(mbid: string) {
+    const { data } = await admin.from('albums').select('id').eq('mbid', mbid).single();
+    if (!data) throw new Error(`album ${mbid} not seeded`);
+    return data.id;
+  }
+
+  async function artistIdFor(mbid: string) {
+    const { data } = await admin.from('artists').select('id').eq('mbid', mbid).single();
+    if (!data) throw new Error(`artist ${mbid} not seeded`);
+    return data.id;
+  }
+
+  beforeAll(async () => {
+    const kidA = await albumIdFor(A(6));
+    const radiohead = await artistIdFor(A(106));
+    const theWake = await artistIdFor(A(101));
+
+    // Inserted with the later position first, so a passing order assertion
+    // proves the aggregate orders rather than that insertion happened to.
+    const { error } = await admin.from('album_artists').insert([
+      { album_id: kidA, artist_id: theWake, position: 1 },
+      { album_id: kidA, artist_id: radiohead, position: 0 },
+    ]);
+    if (error) throw error;
+  });
+
+  it('returns an empty array for an album with no credited artists', async () => {
+    const [thriller] = await search('Thriller');
+
+    // `[]` and not null: the caller must never have to tell "no rows" apart
+    // from "no column". `display_credit` stays the fallback for this case.
+    expect(thriller.artists).toEqual([]);
+  });
+
+  it('returns credited artists in credit order, not insertion order', async () => {
+    const [kidA] = await search('Kid A');
+    const credited = kidA.artists as { position: number; artists: { name: string } }[];
+
+    expect(credited.map((row) => row.artists.name)).toEqual(['Radiohead', 'The Wake']);
+    expect(credited.map((row) => row.position)).toEqual([0, 1]);
+  });
+
+  it('returns the shape the PostgREST embed returns, so one mapper serves both', async () => {
+    const [kidA] = await search('Kid A');
+    const [first] = kidA.artists as { position: number; artists: Record<string, unknown> }[];
+
+    expect(Object.keys(first).sort()).toEqual(['artists', 'position']);
+    expect(Object.keys(first.artists).sort()).toEqual(['id', 'mbid', 'name']);
+  });
+});
