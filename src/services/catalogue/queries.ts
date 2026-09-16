@@ -2,6 +2,9 @@ import { createClient } from '@/lib/supabase/server';
 import type { Database } from '@/lib/supabase/database.types';
 
 import { toCreditedArtists } from './credit';
+import { recentReadDepth, selectRecent } from './recent-selection';
+
+import type { RecentSelectionOptions } from './recent-selection';
 import { formatPartialDate } from './scope';
 
 import type { AlbumArtistRow, CreditedArtist } from './credit';
@@ -214,15 +217,26 @@ export async function getArtistByMbid(
 }
 
 /** Recently added albums. A placeholder browse surface until discovery lands. */
-export async function getRecentAlbums(limit = 24): Promise<AlbumSummaryWithArtists[]> {
+export async function getRecentAlbums(
+  limit = 24,
+  options: RecentSelectionOptions = {},
+): Promise<AlbumSummaryWithArtists[]> {
   const supabase = await createClient();
 
+  // **Reads deeper than it renders**, because both selection rules remove rows
+  // *after* the read — so reading exactly `limit` guarantees an under-filled
+  // grid the moment either one does anything (`recent-selection.ts`).
   const { data, error } = await supabase
     .from('albums')
     .select(ALBUM_SUMMARY_COLUMNS)
     .order('created_at', { ascending: false })
-    .limit(limit);
+    .limit(recentReadDepth(limit));
 
   if (error) throw error;
-  return (data ?? []).map(toSummary);
+
+  // The narrowing is a pure function so it can be proven directly. **Order is
+  // established here and never re-established there** — deduplication keeps the
+  // first album it sees for an artist, which is their most recent only because
+  // of the `order by` above.
+  return selectRecent((data ?? []).map(toSummary), limit, options);
 }
