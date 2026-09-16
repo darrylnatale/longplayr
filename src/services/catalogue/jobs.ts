@@ -6,6 +6,7 @@ import { countRows, COUNT_ONLY } from '../count';
 import type { Database } from '@/lib/supabase/database.types';
 
 import { CoverArtUnavailableError, fetchAndStoreArtwork } from './artwork';
+import { absentRecheckCutoff } from './artwork-staleness';
 import { discoverAndIngestArtist } from './curated-tranche';
 import { ingestReleaseGroup } from './ingest';
 import { BULK_ARTWORK_PRIORITY, DEFAULT_JOB_PRIORITY, enqueueJob } from './queue';
@@ -111,7 +112,15 @@ export type DrainSummary = {
  */
 const CLAIM_BATCH_SIZE = 1;
 
-/** Artwork states that warrant another attempt. `found` and `absent` are settled. */
+/**
+ * Artwork states that warrant another attempt without qualification.
+ *
+ * **[AMENDED 2026-09-16 — this said "`found` and `absent` are settled".]** Only
+ * `found` is settled now. **`absent` re-enters the sweep behind a staleness
+ * window**, because `product-spec.md` §8.9 invites people to upload a missing
+ * cover and an album never looked at again would make that contribution
+ * permanently invisible. See `artwork-staleness.ts` and `architecture.md` §7.
+ */
 const ARTWORK_RETRYABLE: Database['public']['Enums']['artwork_status'][] = ['pending', 'failed'];
 
 /**
@@ -140,10 +149,25 @@ export async function enqueueMissingArtwork(
   const admin = options.admin ?? createAdminClient();
   const limit = options.limit ?? 500;
 
+  // `absent` is included only once its answer is old enough to be worth
+  // re-asking. Cover Art Archive has no rate limit, so the cost of this is
+  // **drain slots rather than API quota** — which is why the window is long.
+  //
+  // **The absent set grows as discography depth grows**, since deeper catalogues
+  // reach proportionally more remixes, demos and live records, which are exactly
+  // the releases Cover Art Archive tends not to hold. These rows compete for the
+  // same `limit` as first-time fetches, so the window is what keeps that
+  // competition small. Worth re-measuring rather than assuming it stays small.
+  const cutoff = absentRecheckCutoff().toISOString();
+
   const { data: albums, error } = await admin
     .from('albums')
     .select('mbid')
-    .in('artwork_status', ARTWORK_RETRYABLE)
+    .or(
+      `artwork_status.in.(${ARTWORK_RETRYABLE.join(',')}),` +
+        `and(artwork_status.eq.absent,artwork_updated_at.lt.${cutoff}),` +
+        `and(artwork_status.eq.absent,artwork_updated_at.is.null)`,
+    )
     .order('popularity_score', { ascending: false, nullsFirst: false })
     .limit(limit);
 

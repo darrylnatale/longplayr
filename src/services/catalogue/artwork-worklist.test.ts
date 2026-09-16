@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   addCoverArtUrl,
+  coverArtPromptUrl,
   isTruncated,
   toUncoveredAlbum,
   type UncoveredAlbumRow,
@@ -69,5 +70,32 @@ describe('isTruncated', () => {
 
   it('is false when there is nothing to show', () => {
     expect(isTruncated(0, 0)).toBe(false);
+  });
+});
+
+describe('coverArtPromptUrl', () => {
+  it('offers a route when Cover Art Archive holds nothing', () => {
+    expect(coverArtPromptUrl('absent', RELEASE_MBID)).toContain('/add-cover-art');
+  });
+
+  it('offers nothing while the fetch has not run', () => {
+    // `pending` means we have not asked yet — art may well be waiting, and
+    // prompting would ask a person for work the system is about to do.
+    expect(coverArtPromptUrl('pending', RELEASE_MBID)).toBeNull();
+  });
+
+  it('offers nothing when our own fetch failed', () => {
+    // `failed` is our error, and the sweep is already retrying it.
+    expect(coverArtPromptUrl('failed', RELEASE_MBID)).toBeNull();
+  });
+
+  it('offers nothing when the album already has a cover', () => {
+    expect(coverArtPromptUrl('found', RELEASE_MBID)).toBeNull();
+  });
+
+  it('offers nothing when there is no release to send anyone to', () => {
+    // Cover art is uploaded against a release. Without one there is nowhere to
+    // point, and a reader should see no prompt rather than a dead one.
+    expect(coverArtPromptUrl('absent', null)).toBeNull();
   });
 });

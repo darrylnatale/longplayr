@@ -25,6 +25,30 @@ export function addCoverArtUrl(releaseMbid: string): string {
   return `${MUSICBRAINZ_ROOT}/release/${releaseMbid}/add-cover-art`;
 }
 
+/**
+ * Where a reader is sent to add a missing cover, or null if nowhere.
+ *
+ * **The rule, not the markup**, so it is stated once and tested once — the
+ * operator worklist and the album page both ask the same question and must not
+ * answer it differently. `product-spec.md` §8.9.
+ *
+ * **Only `absent` earns a prompt.** `pending` means the fetch has not run and
+ * art may well be waiting; `failed` is our own error and the sweep is already
+ * retrying it. Prompting on either would ask a person for work the system is
+ * about to do itself.
+ *
+ * **No release means no prompt.** Cover art is uploaded against a release, so
+ * without one there is nowhere to send anybody.
+ */
+export function coverArtPromptUrl(
+  artworkStatus: string,
+  representativeReleaseMbid: string | null,
+): string | null {
+  if (artworkStatus !== 'absent') return null;
+  if (!representativeReleaseMbid) return null;
+  return addCoverArtUrl(representativeReleaseMbid);
+}
+
 /** One album on the worklist. */
 export type UncoveredAlbum = {
   id: string;

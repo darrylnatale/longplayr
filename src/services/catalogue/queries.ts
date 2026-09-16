@@ -23,6 +23,19 @@ export type AlbumDetail = Album & {
   tracks: { position: number; medium_position: number; title: string; length_ms: number | null }[];
   editionCount: number;
   releaseDateLabel: string | null;
+  /**
+   * The MBID of the release chosen at ingest, or null when there is none.
+   *
+   * **Exposed because cover art is uploaded against a release**, not a
+   * release-group — a different identifier from the one `artwork.ts` fetches
+   * on. `representative_release_id` is a local id; this is the upstream one the
+   * album page needs to send a reader to the right page
+   * (`product-spec.md` §8.9).
+   *
+   * **Derived rather than fetched.** The editions embed already carries every
+   * release with its MBID, so this costs a lookup and no extra query.
+   */
+  representativeReleaseMbid: string | null;
 };
 
 export type ArtistDetail = Artist & {
@@ -119,6 +132,9 @@ export async function getAlbumByMbid(mbid: string): Promise<AlbumDetail | null> 
     artists,
     tracks,
     editionCount: data.releases?.length ?? 0,
+    representativeReleaseMbid:
+      (data.releases ?? []).find((release) => release.id === data.representative_release_id)
+        ?.mbid ?? null,
     releaseDateLabel: formatPartialDate(data.first_release_date, data.first_release_date_precision),
   };
 }
