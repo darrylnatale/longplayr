@@ -5,6 +5,7 @@ import { after } from 'next/server';
 import { ActionCard, type ActionCardState } from '@/components/ActionCard';
 import { AddToListForm } from '@/components/AddToListForm';
 import { AlbumCover } from '@/components/AlbumCover';
+import { coverArtPromptUrl } from '@/services/catalogue/artwork-worklist';
 import { Container } from '@/components/Container';
 import { ScoreBadge } from '@/components/ScoreBadge';
 import { ReviewLikeButton } from '@/components/ReviewLikeButton';
@@ -131,6 +132,10 @@ export default async function AlbumPage({ params }: PageProps<'/albums/[mbid]'>)
 
   if (!album) notFound();
 
+  // The rule lives in the service, not here — the operator worklist asks the
+  // same question and the two must not answer it differently.
+  const addCoverArtHref = coverArtPromptUrl(album.artwork_status, album.representativeReleaseMbid);
+
   // Progressive hydration: an album created from a browse response holds no
   // releases and therefore no tracklist until its full detail is fetched.
   //
@@ -224,6 +229,37 @@ export default async function AlbumPage({ params }: PageProps<'/albums/[mbid]'>)
             size={500}
             priority
           />
+
+          {/*
+           * **Shown only where Cover Art Archive has answered and holds
+           * nothing.** Not on `pending`, where the fetch has not run and art
+           * may well be waiting; not on `failed`, which is our own error and
+           * is already being retried by the sweep. So every prompt shown is a
+           * real task (`product-spec.md` §8.9).
+           *
+           * **Signed out too.** The work happens at MusicBrainz and needs an
+           * account there, not here, so a longplayr session is not what gates
+           * it and requiring one would turn away help.
+           *
+           * **Nothing is shown when there is no release to send anyone to.**
+           * The operator worklist lists those rows with the reason because a
+           * count that disagrees with its list is an operator's problem; a
+           * reader does not need that, and "no release to link to" is jargon
+           * on an album page.
+           */}
+          {addCoverArtHref && (
+            <p className="mt-3 text-xs leading-relaxed text-text-muted">
+              No cover art yet.{' '}
+              <a
+                href={addCoverArtHref}
+                target="_blank"
+                rel="noreferrer"
+                className="text-accent underline underline-offset-2"
+              >
+                Add one at MusicBrainz ↗
+              </a>
+            </p>
+          )}
         </div>
 
         {/* Title block. */}

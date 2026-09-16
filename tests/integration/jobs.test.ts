@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Database } from '@/lib/supabase/database.types';
+import { ABSENT_RECHECK_DAYS } from '@/services/catalogue/artwork-staleness';
 import { singleArtistAlbum, yearOnlyAlbum } from '@/services/catalogue/fixtures';
 import {
   drainJobs,
@@ -811,13 +812,26 @@ describe('artwork lifecycle end to end', () => {
 });
 
 describe('enqueueMissingArtwork', () => {
+  /**
+   * **`artwork_updated_at` is set alongside the status, because production
+   * always does.** `fetchAndStoreArtwork` stamps it on every attempt including
+   * absence, so an `absent` row with no timestamp is a state the product does
+   * not produce — and since `absent` is now re-checked once its answer goes
+   * stale, leaving it null would make every test album look overdue.
+   */
   async function albumWithStatus(
     payload: typeof singleArtistAlbum,
     status: Database['public']['Enums']['artwork_status'],
+    checkedAt: Date = new Date(),
   ) {
     await ingestReleaseGroupPayload(payload, admin);
-    await admin.from('albums').update({ artwork_status: status }).eq('mbid', payload.id);
+    await admin
+      .from('albums')
+      .update({ artwork_status: status, artwork_updated_at: checkedAt.toISOString() })
+      .eq('mbid', payload.id);
   }
+
+  const daysAgo = (n: number) => new Date(Date.now() - n * 24 * 60 * 60 * 1000);
 
   it('queues the legacy pending rows the seed left behind', async () => {
     await albumWithStatus(singleArtistAlbum, 'pending');
@@ -837,13 +851,39 @@ describe('enqueueMissingArtwork', () => {
   });
 
   it('leaves settled albums alone', async () => {
+    // **Amended 2026-09-16 rather than deleted.** This asserted that `absent`
+    // was settled forever. It is now settled only until its answer goes stale,
+    // because `product-spec.md` §8.9 invites people to upload a missing cover
+    // and an album never looked at again would make that invisible. The
+    // assertion the test was protecting — that a *recent* answer is not
+    // re-asked — is unchanged and is what it now checks.
     await albumWithStatus(singleArtistAlbum, 'found');
-    await albumWithStatus(yearOnlyAlbum, 'absent');
+    await albumWithStatus(yearOnlyAlbum, 'absent', daysAgo(1));
 
     const result = await enqueueMissingArtwork({ admin });
 
-    // Re-fetching a cover we already have, or re-asking a question already
-    // answered, spends requests for nothing.
+    // Re-fetching a cover we already have, or re-asking a question answered
+    // yesterday, spends drain slots a first-time fetch needed.
+    expect(result).toMatchObject({ candidates: 0, queued: 0 });
+  });
+
+  it('re-checks an absent album once its answer is stale', async () => {
+    // The case the cover-art prompt depends on: somebody uploads to Cover Art
+    // Archive, and this is the only thing that ever notices.
+    await albumWithStatus(yearOnlyAlbum, 'absent', daysAgo(ABSENT_RECHECK_DAYS + 1));
+
+    const result = await enqueueMissingArtwork({ admin });
+
+    expect(result).toMatchObject({ candidates: 1, queued: 1 });
+  });
+
+  it('still leaves an album that already has its cover, however old the answer', async () => {
+    // `found` is the one status that is settled permanently. Staleness must not
+    // leak into it — re-fetching artwork we hold buys nothing at any age.
+    await albumWithStatus(singleArtistAlbum, 'found', daysAgo(ABSENT_RECHECK_DAYS * 10));
+
+    const result = await enqueueMissingArtwork({ admin });
+
     expect(result).toMatchObject({ candidates: 0, queued: 0 });
   });
 
