@@ -39,7 +39,7 @@ export type NotificationListItem = {
   createdAt: string;
   /** Null is unread. The list renders the distinction; the count reads it. */
   readAt: string | null;
-  actor: { handle: string; displayName: string | null; avatarUrl: string | null };
+  actor: { id: string; handle: string; displayName: string | null; avatarUrl: string | null };
   /** Present only on `review_liked`. The album whose review was liked. */
   album: { mbid: string; title: string } | null;
   /** Present only on `list_liked`. The list that was liked. */
@@ -72,7 +72,7 @@ export const NOTIFICATIONS_PAGE_SIZE = 20;
  */
 const NOTIFICATION_SELECT = `
   id, type, created_at, read_at,
-  actor:profiles!notifications_actor_id_fkey(handle, display_name, avatar_url),
+  actor:profiles!notifications_actor_id_fkey(id, handle, display_name, avatar_url),
   review_likes(reviews(collection_entries(albums(mbid, title)))),
   list_likes(lists(id, title))
 ` as const;
@@ -82,7 +82,12 @@ type EmbeddedRow = {
   type: NotificationType;
   created_at: string;
   read_at: string | null;
-  actor: { handle: string; display_name: string | null; avatar_url: string | null } | null;
+  actor: {
+    id: string;
+    handle: string;
+    display_name: string | null;
+    avatar_url: string | null;
+  } | null;
   review_likes: {
     reviews: {
       collection_entries: { albums: { mbid: string; title: string } | null } | null;
@@ -111,6 +116,7 @@ function toListItem(row: EmbeddedRow): NotificationListItem[] {
       createdAt: row.created_at,
       readAt: row.read_at,
       actor: {
+        id: row.actor.id,
         handle: row.actor.handle,
         displayName: row.actor.display_name,
         avatarUrl: row.actor.avatar_url,

@@ -207,6 +207,39 @@ export async function unfollowUser(
 }
 
 /**
+ * Which of these profiles the signed-in user already follows.
+ *
+ * **Batched deliberately, because the per-row alternative is a mistake this
+ * codebase has already recorded twice.** `getMyFollow` answers for one subject,
+ * and calling it once per notification would be the N+1 the feed query and the
+ * counting contract both warn against. One query per page.
+ *
+ * **An empty set for a signed-out or profile-less viewer**, matching
+ * `getMyFollow`'s guard — somebody with no profile follows nobody, which is an
+ * answer rather than an error.
+ *
+ * **An empty input never reaches the database.** PostgREST rejects an empty
+ * `in.()` list — the discovery service already guards against exactly that —
+ * and a page carrying no follow notifications would otherwise produce one.
+ */
+export async function followingAmong(followeeIds: string[]): Promise<Set<string>> {
+  if (followeeIds.length === 0) return new Set();
+
+  const profile = await getCurrentProfile();
+  if (!profile) return new Set();
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('follows')
+    .select('followee_id')
+    .eq('follower_id', profile.id)
+    .in('followee_id', followeeIds);
+
+  if (error) throw error;
+  return new Set((data ?? []).map((row) => row.followee_id));
+}
+
+/**
  * The signed-in user's follow of one person, or null.
  *
  * Returns the row rather than a boolean, matching `getMyFavourite` and
