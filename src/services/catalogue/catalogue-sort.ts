@@ -25,6 +25,25 @@ export const CATALOGUE_SORT_OPTIONS: readonly CatalogueSortOption[] = [
 
 export const DEFAULT_CATALOGUE_SORT: CatalogueSort = 'added';
 
+/**
+ * Whether a sort runs the other way from its natural direction.
+ *
+ * **Intent rather than direction, deliberately.** The natural direction differs
+ * by axis — dates default newest first, alphabetical defaults A–Z — so a raw
+ * `asc`/`desc` parameter would mean "the default" on one sort and "reversed" on
+ * another. A boolean says the same thing about every axis.
+ */
+export type CatalogueDirection = { reversed: boolean };
+
+/** `?dir=` is user input; anything but the one recognised value is the default. */
+export function catalogueReversedFrom(value: string | string[] | undefined): boolean {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw === REVERSED_PARAM;
+}
+
+/** The only value `?dir=` ever carries. Its absence is the natural direction. */
+export const REVERSED_PARAM = 'rev';
+
 /** Whether a string is a mode this surface offers. */
 export function isCatalogueSort(value: string | undefined): value is CatalogueSort {
   return CATALOGUE_SORT_OPTIONS.some((option) => option.value === value);
@@ -89,4 +108,32 @@ export function catalogueOrder(sort: CatalogueSort): CatalogueOrderClause[] {
         byAdded,
       ];
   }
+}
+
+/**
+ * Order clauses for one mode, run the other way if asked.
+ *
+ * **Only the leading clause flips, and the two things it leaves alone are the
+ * point.**
+ *
+ * **`nullsFirst` does not flip.** With `nullsFirst: false` an undated release
+ * sorts last under *both* directions, which is exactly how `product-spec.md`
+ * §6's _"undated releases stay last in both directions"_ is satisfied. Flipping
+ * it would put undated albums at the top of an oldest-first run, where they
+ * would read as **the earliest records held** — the specific failure that rule
+ * was written to name.
+ *
+ * **Tiebreakers do not flip.** They are what make the ordering total, and
+ * `range()` pagination depends on totality: two rows that can compare equal may
+ * swap between requests, and an album then appears twice or not at all across a
+ * page boundary. Reversing the artist sort therefore gives artists Z–A while
+ * each artist's own albums still read A–Z — which is also what a reader
+ * reversing *artist* is asking for.
+ */
+export function catalogueOrderFor(sort: CatalogueSort, reversed = false): CatalogueOrderClause[] {
+  const clauses = catalogueOrder(sort);
+  if (!reversed) return clauses;
+
+  const [leading, ...rest] = clauses;
+  return [{ ...leading, ascending: !leading.ascending }, ...rest];
 }

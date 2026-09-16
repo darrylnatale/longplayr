@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation';
 import { AlbumGrid } from '@/components/AlbumGrid';
 import { Container } from '@/components/Container';
 import { Pagination } from '@/components/Pagination';
-import { catalogueSortFrom } from '@/services/catalogue/catalogue-sort';
+import { catalogueReversedFrom, catalogueSortFrom } from '@/services/catalogue/catalogue-sort';
 import { CATALOGUE_PAGE_SIZE, getCatalogueAlbums } from '@/services/catalogue/queries';
 
 import { cataloguePath, pageFrom, sortLinks } from './pagination';
@@ -34,10 +34,12 @@ export const metadata = { title: 'All albums · longplayr' };
 export default async function AllAlbumsPage({ searchParams }: PageProps<'/albums/all'>) {
   const query = await searchParams;
   const sort = catalogueSortFrom(query.sort);
+  const reversed = catalogueReversedFrom(query.dir);
   const page = pageFrom(query.page);
 
   const { albums, total } = await getCatalogueAlbums({
     sort,
+    reversed,
     limit: CATALOGUE_PAGE_SIZE,
     offset: (page - 1) * CATALOGUE_PAGE_SIZE,
   });
@@ -62,8 +64,15 @@ export default async function AllAlbumsPage({ searchParams }: PageProps<'/albums
          * page needs no client JavaScript. Changing the sort returns to page
          * one: page 7 of one ordering has no counterpart in another.
          */}
+        {/*
+         * **Pressing the active sort reverses it**, which is what keeps this a
+         * row of four rather than eight (`product-spec.md` §6). The arrow shows
+         * only on the active sort, because only there does a direction mean
+         * anything — and it is the affordance telling a reader the second press
+         * does something.
+         */}
         <nav aria-label="Sort albums" className="mt-4 flex flex-wrap gap-1">
-          {sortLinks(sort).map((option) => (
+          {sortLinks(sort, reversed).map((option) => (
             <Link
               key={option.value}
               href={option.href}
@@ -75,6 +84,15 @@ export default async function AllAlbumsPage({ searchParams }: PageProps<'/albums
               }
             >
               {option.label}
+              {option.current && (
+                <>
+                  {' '}
+                  <span aria-hidden>{option.reversed ? '↑' : '↓'}</span>
+                  <span className="sr-only">
+                    {option.reversed ? ', reversed. Press to restore' : '. Press to reverse'}
+                  </span>
+                </>
+              )}
             </Link>
           ))}
         </nav>
@@ -100,7 +118,7 @@ export default async function AllAlbumsPage({ searchParams }: PageProps<'/albums
         <Pagination
           page={page}
           totalPages={totalPages}
-          href={(to) => cataloguePath(sort, to)}
+          href={(to) => cataloguePath(sort, to, reversed)}
           label="Catalogue pages"
         />
       </div>

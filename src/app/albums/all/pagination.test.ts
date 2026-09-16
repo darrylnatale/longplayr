@@ -58,3 +58,53 @@ describe('sortLinks', () => {
     }
   });
 });
+
+describe('cataloguePath — direction', () => {
+  it('omits the natural direction, so each ordering keeps one address', () => {
+    expect(cataloguePath('year', 1, false)).toBe('/albums/all?sort=year');
+    expect(cataloguePath('added', 1, false)).toBe('/albums/all');
+  });
+
+  it('names a reversed ordering', () => {
+    expect(cataloguePath('year', 1, true)).toBe('/albums/all?sort=year&dir=rev');
+  });
+
+  it('carries direction across pages', () => {
+    expect(cataloguePath('title', 3, true)).toBe('/albums/all?sort=title&dir=rev&page=3');
+  });
+
+  it('reverses the default sort without naming it', () => {
+    // `added` is the default sort, so only the direction needs saying.
+    expect(cataloguePath('added', 1, true)).toBe('/albums/all?dir=rev');
+  });
+});
+
+describe('sortLinks — direction', () => {
+  it('points the active sort at its own reversal', () => {
+    const active = sortLinks('year', false).find((link) => link.current);
+
+    expect(active?.href).toContain('dir=rev');
+  });
+
+  it('points an already-reversed active sort back to its natural direction', () => {
+    const active = sortLinks('year', true).find((link) => link.current);
+
+    expect(active?.href).not.toContain('dir=');
+  });
+
+  it('never carries the current direction onto another sort', () => {
+    // Direction is a property of an ordering, not of the reader. Landing on
+    // "title, reversed" because the previous sort happened to be reversed is a
+    // state nobody asked for.
+    for (const link of sortLinks('year', true).filter((l) => !l.current)) {
+      expect(link.href).not.toContain('dir=');
+    }
+  });
+
+  it('marks direction only on the active sort', () => {
+    const links = sortLinks('year', true);
+
+    expect(links.filter((link) => link.reversed)).toHaveLength(1);
+    expect(links.find((link) => link.reversed)?.value).toBe('year');
+  });
+});
