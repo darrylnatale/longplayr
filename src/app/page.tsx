@@ -75,7 +75,11 @@ export default async function HomePage() {
    * catalogue request at all.
    */
   const showsDiscovery = !user || profile !== null;
-  const albums = showsDiscovery ? await getRecentAlbums(HOME_SECTION_LIMIT) : [];
+  // Same two rules as Browse, at a smaller count. The surfaces read one query
+  // and §6 holds they must never give different answers about what is recent.
+  const albums = showsDiscovery
+    ? await getRecentAlbums(HOME_SECTION_LIMIT, { onePerArtist: true, requireCover: true })
+    : [];
 
   return (
     <>

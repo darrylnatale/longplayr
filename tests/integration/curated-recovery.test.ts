@@ -15,6 +15,26 @@ import type { MbReleaseGroup } from '@/services/catalogue/musicbrainz';
  * the contact guard is untouched and no request leaves the machine.
  */
 
+/**
+ * **This file drains real queue work and does not fit the default 5s budget.**
+ * Each case enqueues a tranche and drains it to a terminal state, which is many
+ * round trips plus the backoff the retry policy is under test for — and the
+ * mocked browse removes the network, not the pacing.
+ *
+ * **Raised on evidence rather than on suspicion. [2026-09-16]** CI run #121
+ * failed one case here on a 5020ms timeout; an isolated local run failed a
+ * *different* case in the same file with the same signature. Six samples of the
+ * whole file measured **5.6s, 5.7s, 5.9s, 8.4s, 11.5s, 11.8s and 15.7s across
+ * two trees** — a 3× spread on unchanged code, so the slowest cases sit right
+ * against a 5s per-test ceiling and cross it under load.
+ *
+ * **No assertion is weakened and nothing is skipped.** The budget was wrong for
+ * the work, which is why `upstream-search.test.ts` already carries the same
+ * raise for the same reason, with its own note that it belongs on the file so
+ * every other integration file keeps the tight 5s default.
+ */
+vi.setConfig({ testTimeout: 15_000 });
+
 const browse = vi.hoisted(() => ({
   failFor: new Set<string>(),
   calls: [] as string[],

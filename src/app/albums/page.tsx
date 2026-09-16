@@ -38,7 +38,10 @@ export const metadata = { title: 'Browse · longplayr' };
 export default async function BrowsePage() {
   const [popular, recent, size] = await Promise.all([
     getPopularAlbums(24),
-    getRecentAlbums(24),
+    // **One album per artist, and covered albums only** (`product-spec.md` §6).
+    // Both rules are passed explicitly rather than defaulted on, so this call
+    // site says what the section selects and either can be reversed here.
+    getRecentAlbums(24, { onePerArtist: true, requireCover: true }),
     getCatalogueSize(),
   ]);
 
