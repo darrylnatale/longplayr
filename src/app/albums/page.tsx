@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 import { AlbumGrid } from '@/components/AlbumGrid';
 import { Container } from '@/components/Container';
 import { SectionHeader } from '@/components/SectionHeader';
@@ -99,6 +101,22 @@ export default async function BrowsePage() {
             <AlbumGrid albums={popular} />
           </section>
         )}
+
+        {/*
+         * **The way out of two curated sections.** Both sections above select:
+         * Recently added carries one album per artist and only covered ones,
+         * and Popular excludes every album without an external score. This is
+         * the only route to what neither shows (`product-spec.md` §6).
+         *
+         * **It also answers `current-state.md` §11's open question** about
+         * whether Browse needs a length boundary at phone width — this is that
+         * boundary, rather than a longer grid.
+         */}
+        <p className="pb-4 text-sm">
+          <Link href="/albums/all" className="text-accent underline underline-offset-4">
+            See all {size.albums.toLocaleString()} albums →
+          </Link>
+        </p>
       </div>
     </Container>
   );

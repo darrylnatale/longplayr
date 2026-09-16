@@ -1,8 +1,12 @@
 import { createClient } from '@/lib/supabase/server';
+import { countRows, COUNT_ONLY } from '@/services/count';
 import type { Database } from '@/lib/supabase/database.types';
 
 import { toCreditedArtists } from './credit';
+import { catalogueOrder, DEFAULT_CATALOGUE_SORT } from './catalogue-sort';
 import { recentReadDepth, selectRecent } from './recent-selection';
+
+import type { CatalogueSort } from './catalogue-sort';
 
 import type { RecentSelectionOptions } from './recent-selection';
 import { formatPartialDate } from './scope';
@@ -214,6 +218,81 @@ export async function getArtistByMbid(
     .sort(byReleaseDate(sort));
 
   return { ...artist, albums };
+}
+
+/** PostgREST answers an offset past the end with an error, not an empty window. */
+const RANGE_NOT_SATISFIABLE = 'PGRST103';
+
+/** One bounded window onto the catalogue, plus the size of the whole thing. */
+export type CataloguePage = {
+  albums: AlbumSummaryWithArtists[];
+  /** Every album held, not the length of this page. */
+  total: number;
+};
+
+/** How many albums one page of the catalogue-wide surface holds. */
+export const CATALOGUE_PAGE_SIZE = 60;
+
+/**
+ * Every album in the catalogue, one page at a time.
+ *
+ * **The surface that must include what every other one excludes.** Browse's
+ * Popular section reads `popularity_score` and drops rows where it is null —
+ * which is every self-service addition. `product-spec.md` §8.9 holds that
+ * **absence of an external signal must never gate discovery**, and this is the
+ * first query where that stops being a principle and becomes a `where` clause
+ * that is deliberately absent. **There is no filter here at all**, and that is
+ * the point rather than an omission.
+ *
+ * **No popularity sort either** (§8.3): an external score completes a chart and
+ * never orders a surface.
+ */
+export async function getCatalogueAlbums({
+  sort = DEFAULT_CATALOGUE_SORT,
+  limit = CATALOGUE_PAGE_SIZE,
+  offset = 0,
+}: {
+  sort?: CatalogueSort;
+  limit?: number;
+  offset?: number;
+} = {}): Promise<CataloguePage> {
+  const supabase = await createClient();
+
+  let query = supabase.from('albums').select(ALBUM_SUMMARY_COLUMNS, { count: 'exact' });
+
+  // Applied in sequence, ending at `created_at` so the ordering is total —
+  // without that, two rows comparing equal can swap between requests and an
+  // album can appear twice, or not at all, across a page boundary.
+  for (const clause of catalogueOrder(sort)) {
+    query = query.order(clause.column, {
+      ascending: clause.ascending,
+      nullsFirst: clause.nullsFirst,
+    });
+  }
+
+  const { data, count, error } = await query.range(offset, offset + limit - 1);
+
+  // **An offset past the end is a fact about the request, not a fault.** The
+  // destination has to be able to ask for page 99 of a catalogue that has two
+  // and be told so — and PostgREST answers that with `PGRST103` rather than an
+  // empty window. The count does not come back on that response, so this is the
+  // one case that costs a second round trip.
+  //
+  // The same shape `listRelationship` already uses; the constant is restated
+  // here rather than imported because a catalogue read has no business
+  // depending on the social service.
+  if (error?.code === RANGE_NOT_SATISFIABLE) {
+    const total = await countRows(
+      supabase.from('albums').select('id', COUNT_ONLY),
+      'albums.catalogue_total',
+    );
+
+    return { albums: [], total };
+  }
+
+  if (error) throw error;
+
+  return { albums: (data ?? []).map(toSummary), total: count ?? 0 };
 }
 
 /** Recently added albums. A placeholder browse surface until discovery lands. */
