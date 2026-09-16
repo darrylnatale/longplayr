@@ -79,7 +79,10 @@ function renderCredit(group: MbReleaseGroup): string {
  *
  * `product-spec.md` §8.10, `[DECIDED 2026-09-06]`.
  */
-const UPSTREAM_FETCH_DEPTH = 25;
+export const UPSTREAM_FETCH_DEPTH = 25;
+// Exported so a caller wanting *every* survivor can ask for that many without
+// restating the number. Two copies drifting apart would silently re-truncate
+// the panel — the defect this depth was raised to fix.
 
 /**
  * Searches MusicBrainz for records we do not hold.

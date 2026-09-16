@@ -1,5 +1,9 @@
 import { SectionHeader } from '@/components/SectionHeader';
-import { searchUpstream } from '@/services/catalogue/self-service';
+import { searchUpstream, UPSTREAM_FETCH_DEPTH } from '@/services/catalogue/self-service';
+
+import { ALL_SHOWN, moreLabel, splitCandidates } from './upstream-display';
+
+import type { UpstreamCandidate } from '@/services/catalogue/self-service';
 
 import { AddFromUpstream } from './AddFromUpstream';
 
@@ -94,7 +98,10 @@ export async function UpstreamPanel({
   query: string;
   nothingLocal: boolean;
 }) {
-  const candidates = await searchUpstream(query, UPSTREAM_RESULTS);
+  // **Every survivor, not only what is shown.** The upstream search fetches a
+  // fixed depth in one request regardless, so asking for all of them costs
+  // nothing extra — and the remainder was previously fetched and discarded.
+  const candidates = await searchUpstream(query, UPSTREAM_FETCH_DEPTH);
 
   if (candidates.length === 0) {
     // Nothing upstream either. When the catalogue also held nothing, this is
@@ -115,28 +122,68 @@ export async function UpstreamPanel({
     );
   }
 
+  const { shown, hidden } = splitCandidates(candidates, UPSTREAM_RESULTS);
+
   return (
     <section className="rounded-md border border-border bg-surface/50 p-4 sm:p-5">
       <SectionHeader as="h3">Not in longplayr yet</SectionHeader>
       <p className="-mt-1 mb-2 text-xs text-text-muted">
         Found in MusicBrainz. Adding one brings it into the catalogue for everyone.
       </p>
-      <ul className="flex flex-col">
-        {candidates.map((candidate) => (
-          <li key={candidate.mbid} className={`flex items-center gap-4 py-2.5 ${ROW}`}>
-            <AddSlot />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm text-text-secondary">{candidate.title}</p>
-              <p className="truncate text-xs text-text-muted">
-                {candidate.credit}
-                {candidate.year && <span className="tabular"> · {candidate.year}</span>}
-                {candidate.primaryType && ` · ${candidate.primaryType}`}
-              </p>
-            </div>
-            <AddFromUpstream mbid={candidate.mbid} />
-          </li>
-        ))}
-      </ul>
+
+      <CandidateList candidates={shown} />
+
+      {/*
+       * **A second list rather than more rows in the first**, because `details`
+       * may not be a child of `ul` — only `li` may. Splitting one list in two is
+       * a small semantic cost, taken knowingly over markup browsers silently
+       * reparent.
+       *
+       * **No client JavaScript.** `details` opens natively and is keyboard
+       * accessible, and every candidate behind it was already fetched, so
+       * opening it costs no MusicBrainz request.
+       */}
+      {hidden.length > 0 ? (
+        <details className="group">
+          <summary className="cursor-pointer py-2 text-xs text-text-muted hover:text-text-secondary">
+            {moreLabel(hidden.length)}
+          </summary>
+          <CandidateList candidates={hidden} />
+        </details>
+      ) : (
+        // Said rather than inferred from a control that is not there. This is a
+        // different condition from finding nothing at all, which keeps its own
+        // "try a different spelling" advice above.
+        <p className="py-2 text-xs text-text-faint">{ALL_SHOWN}</p>
+      )}
     </section>
+  );
+}
+
+/**
+ * Candidate rows.
+ *
+ * **Extracted so the two lists cannot drift.** Duplicating the row markup would
+ * mean the expanded half quietly diverging from the visible half the first time
+ * either changed.
+ */
+function CandidateList({ candidates }: { candidates: UpstreamCandidate[] }) {
+  return (
+    <ul className="flex flex-col">
+      {candidates.map((candidate) => (
+        <li key={candidate.mbid} className={`flex items-center gap-4 py-2.5 ${ROW}`}>
+          <AddSlot />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm text-text-secondary">{candidate.title}</p>
+            <p className="truncate text-xs text-text-muted">
+              {candidate.credit}
+              {candidate.year && <span className="tabular"> · {candidate.year}</span>}
+              {candidate.primaryType && ` · ${candidate.primaryType}`}
+            </p>
+          </div>
+          <AddFromUpstream mbid={candidate.mbid} />
+        </li>
+      ))}
+    </ul>
   );
 }
