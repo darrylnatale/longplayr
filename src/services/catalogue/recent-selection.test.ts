@@ -59,18 +59,55 @@ describe('selectRecent — one album per artist', () => {
     expect(result.map((a) => a.title)).toEqual(['Newest', 'Other']);
   });
 
-  it('spends only the first credit of a collaboration', () => {
-    // Watch the Throne takes JAY-Z's slot. Kanye West stays free to appear.
+  it('claims every credit of a collaboration, blocking a guest later', () => {
+    // **Inverted on 2026-09-16, not deleted.** This asserted the opposite:
+    // Watch the Throne took JAY-Z's slot only and Kanye stayed free. That rule
+    // let one artist occupy four slots by being credited second each time
+    // (`product-spec.md` §6), so it was reversed.
+    //
+    // **This is the accepted cost, asserted so it cannot drift back silently.**
+    // A guest is now blocked by a collaboration that came first.
     const result = selectRecent(
       [album('Watch the Throne', ['jayz', 'kanye']), album('Graduation', ['kanye'])],
       10,
       { onePerArtist: true },
     );
 
-    expect(result.map((a) => a.title)).toEqual(['Watch the Throne', 'Graduation']);
+    expect(result.map((a) => a.title)).toEqual(['Watch the Throne']);
   });
 
-  it('blocks a later album by the collaboration first credit', () => {
+  it('blocks an album whose guest already appeared, which is the case that reversed the rule', () => {
+    // The rendered page carried four albums and one artist: a Tame Impala
+    // record, then three collaborations crediting them *second*. Under the old
+    // rule all four survived.
+    const result = selectRecent(
+      [
+        album('A Transparent Night', ['tame']),
+        album('Neverender (Remixes)', ['justice', 'tame']),
+        album('Peace and Paranoia Tour', ['lips', 'tame']),
+        album('My Life (remixes)', ['zhu', 'tame']),
+      ],
+      10,
+      { onePerArtist: true },
+    );
+
+    expect(result.map((a) => a.title)).toEqual(['A Transparent Night']);
+  });
+
+  it('rejects the middle reading, which would let a guest appear twice', () => {
+    // Blocking on any credit while claiming only the first was considered and
+    // rejected. Under it, Y is unclaimed after the first album and so survives
+    // the second. Under the chosen rule the second album is excluded.
+    const result = selectRecent(
+      [album('Collab A', ['x', 'y']), album('Collab B', ['y', 'z'])],
+      10,
+      { onePerArtist: true },
+    );
+
+    expect(result.map((a) => a.title)).toEqual(['Collab A']);
+  });
+
+  it('blocks a later album by a collaboration credit', () => {
     const result = selectRecent(
       [album('Watch the Throne', ['jayz', 'kanye']), album('Reasonable Doubt', ['jayz'])],
       10,
