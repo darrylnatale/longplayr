@@ -1,5 +1,7 @@
 import Link from 'next/link';
 
+import { Pagination } from '@/components/Pagination';
+
 import { Avatar } from '@/components/Avatar';
 import { Container } from '@/components/Container';
 import { SectionHeader } from '@/components/SectionHeader';
@@ -66,61 +68,6 @@ function IdentityStrip({
         {displayName && <span className="ml-2">@{handle}</span>}
       </span>
     </Link>
-  );
-}
-
-/**
- * Previous and Next rather than Newer and Older.
- *
- * The collection destination uses the time-flavoured pair because its axis is
- * when albums were added and the reader is moving through a history. A
- * relationship list is ordered newest first too, but the reader is looking for
- * a *person*, not scrubbing a timeline — "Older followers" describes the
- * ordering rather than what the reader is doing, so the neutral pair is
- * honest where the other would be decorative.
- *
- * Renders nothing when everything fits on one page.
- */
-function Pagination({
-  page,
-  totalPages,
-  href,
-  label,
-}: {
-  page: number;
-  totalPages: number;
-  href: (page: number) => string;
-  label: string;
-}) {
-  if (totalPages <= 1) return null;
-
-  const link = 'rounded-sm px-3 py-1.5 text-xs text-text-muted transition-colors hover:text-text';
-
-  return (
-    <nav
-      aria-label={label}
-      className="mt-8 flex items-center justify-between border-t border-border pt-4"
-    >
-      <div className="flex-1">
-        {page > 1 && (
-          <Link href={href(page - 1)} rel="prev" className={link}>
-            <span aria-hidden>←</span> Previous
-          </Link>
-        )}
-      </div>
-
-      <p className="tabular text-xs text-text-faint">
-        Page {page} of {totalPages}
-      </p>
-
-      <div className="flex flex-1 justify-end">
-        {page < totalPages && (
-          <Link href={href(page + 1)} rel="next" className={link}>
-            Next <span aria-hidden>→</span>
-          </Link>
-        )}
-      </div>
-    </nav>
   );
 }
 

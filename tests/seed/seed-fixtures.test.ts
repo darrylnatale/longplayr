@@ -52,31 +52,44 @@ const ONE_PIXEL_JPEG = Buffer.from(
 const ABSENT_FIXTURE = 'messyReleaseGroup';
 
 describe('seed fixtures', () => {
-  it('ingests every fixture', async () => {
-    for (const [name, fixture] of Object.entries(allFixtures)) {
-      const result = await ingestReleaseGroupPayload(fixture, admin);
+  it(
+    'ingests every fixture',
+    // **Not the default 5s, because this is a utility rather than a test.**
+    // Seeding does roughly thirty round trips — eight ingests, fourteen storage
+    // uploads and eight status updates — and the artwork state added on
+    // 2026-09-16 pushed it against a budget written when it only ingested.
+    // It passed repeatedly and then began timing out under load, which is the
+    // signature of sitting just under a ceiling rather than of a defect.
+    // `backfill-artwork.test.ts` already carries a per-test timeout for the
+    // same reason; this follows it at a smaller figure, since nothing here
+    // leaves the machine.
+    { timeout: 5 * 60 * 1000 },
+    async () => {
+      for (const [name, fixture] of Object.entries(allFixtures)) {
+        const result = await ingestReleaseGroupPayload(fixture, admin);
 
-      const status = name === ABSENT_FIXTURE ? 'absent' : 'found';
+        const status = name === ABSENT_FIXTURE ? 'absent' : 'found';
 
-      if (status === 'found') {
-        for (const size of ARTWORK_SIZES) {
-          const { error } = await admin.storage
-            .from(ARTWORK_BUCKET)
-            .upload(artworkPath(fixture.id, size), ONE_PIXEL_JPEG, {
-              contentType: 'image/jpeg',
-              upsert: true,
-            });
-          if (error) throw error;
+        if (status === 'found') {
+          for (const size of ARTWORK_SIZES) {
+            const { error } = await admin.storage
+              .from(ARTWORK_BUCKET)
+              .upload(artworkPath(fixture.id, size), ONE_PIXEL_JPEG, {
+                contentType: 'image/jpeg',
+                upsert: true,
+              });
+            if (error) throw error;
+          }
         }
+
+        const { error: statusError } = await admin
+          .from('albums')
+          .update({ artwork_status: status, artwork_updated_at: new Date().toISOString() })
+          .eq('mbid', fixture.id);
+        if (statusError) throw statusError;
+
+        console.info(`${name}: ${result.status}, artwork ${status}`);
       }
-
-      const { error: statusError } = await admin
-        .from('albums')
-        .update({ artwork_status: status, artwork_updated_at: new Date().toISOString() })
-        .eq('mbid', fixture.id);
-      if (statusError) throw statusError;
-
-      console.info(`${name}: ${result.status}, artwork ${status}`);
-    }
-  });
+    },
+  );
 });
