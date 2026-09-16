@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 
 import { Container } from '@/components/Container';
 import { inspectQueue, type InspectedJob } from '@/services/catalogue/queue-view';
+import type { UncoveredAlbum } from '@/services/catalogue/artwork-worklist';
 import { authoriseQueueView } from '@/services/catalogue/queue-view-auth';
 
 /**
@@ -67,6 +68,79 @@ function Rows({ jobs, empty }: { jobs: InspectedJob[]; empty: string }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/**
+ * One group of uncovered albums.
+ *
+ * **The count is the true total, not the number of rows shown**, and the page
+ * says so when they differ. A capped list that reported its own length would be
+ * a confidently wrong number on a diagnostic — the failure §16.2's counting
+ * contract exists to prevent.
+ */
+function Worklist({
+  label,
+  albums,
+  total,
+  limit,
+  empty,
+}: {
+  label: string;
+  albums: UncoveredAlbum[];
+  total: number;
+  limit: number;
+  empty: string;
+}) {
+  return (
+    <div>
+      <h3 className="text-xs font-medium text-text-secondary">
+        {label}
+        <span className="tabular ml-2 font-normal text-text-muted">{total}</span>
+      </h3>
+
+      {albums.length === 0 ? (
+        <p className="mt-2 text-xs text-text-faint">{empty}</p>
+      ) : (
+        <>
+          <ul className="mt-2 flex flex-col gap-1">
+            {albums.map((album) => (
+              <li key={album.id} className="flex items-baseline justify-between gap-4 text-xs">
+                <span className="min-w-0 truncate text-text">
+                  {album.title}
+                  <span className="ml-2 text-text-muted">{album.credit}</span>
+                </span>
+
+                {/*
+                 * A row with no representative release has nowhere to link to.
+                 * It is still listed, with the reason — dropping it would leave
+                 * the list disagreeing with the count above it.
+                 */}
+                {album.addCoverArtUrl ? (
+                  <a
+                    href={album.addCoverArtUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="shrink-0 text-accent underline underline-offset-2"
+                  >
+                    Add art ↗
+                  </a>
+                ) : (
+                  <span className="shrink-0 text-text-faint">no release to link to</span>
+                )}
+              </li>
+            ))}
+          </ul>
+
+          {total > limit && (
+            <p className="mt-2 text-xs text-text-faint">
+              Showing the first <span className="tabular">{limit}</span> of{' '}
+              <span className="tabular">{total}</span>.
+            </p>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -139,6 +213,42 @@ export default async function QueueViewPage({ searchParams }: PageProps<'/debug/
           <Counts label="Outstanding jobs" counts={snapshot.depthByKind} />
           <Counts label="Album artwork" counts={snapshot.artwork} />
         </div>
+
+        {/*
+         * **The one section of this page that is a task rather than a reading.**
+         * Everything above tells the maintainer what the queue is doing; this
+         * tells them what only a person can do. `architecture.md` §17b.
+         *
+         * **The two groups are kept apart deliberately.** "No art upstream" is
+         * work for a human; "our fetch failed" is work the sweep is already
+         * retrying, and presenting them together would ask for effort the
+         * system has not finished spending.
+         */}
+        <section>
+          <h2 className="text-sm font-medium text-text">
+            Albums with no cover art
+            <span className="ml-2 text-xs font-normal text-text-muted">
+              the only part of this page that needs a person
+            </span>
+          </h2>
+
+          <div className="mt-3 flex flex-col gap-6">
+            <Worklist
+              label="No art upstream — someone must upload one"
+              albums={snapshot.worklist.missingUpstream}
+              total={snapshot.worklist.totals.absent}
+              limit={snapshot.worklist.limit}
+              empty="Every album Cover Art Archive holds art for has it."
+            />
+            <Worklist
+              label="Our fetch failed — the sweep re-queues these, nothing to do"
+              albums={snapshot.worklist.fetchFailed}
+              total={snapshot.worklist.totals.failed}
+              limit={snapshot.worklist.limit}
+              empty="No artwork fetch is currently in a failed state."
+            />
+          </div>
+        </section>
 
         <section>
           <h2 className="text-sm font-medium text-text">
