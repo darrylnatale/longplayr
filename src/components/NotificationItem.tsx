@@ -1,6 +1,8 @@
 import Link from 'next/link';
 
 import { Avatar } from '@/components/Avatar';
+
+import type { ReactNode } from 'react';
 import { formatRelativeTime } from '@/components/FeedItem';
 import type { NotificationListItem } from '@/services/social/notifications';
 
@@ -78,16 +80,35 @@ export function unreadBadgeLabel(count: number): string | null {
   return count > 9 ? '9+' : String(count);
 }
 
-export function NotificationItem({ item }: { item: NotificationListItem }) {
+export function NotificationItem({
+  item,
+  action,
+}: {
+  item: NotificationListItem;
+  /**
+   * Rendered beside the row rather than inside it.
+   *
+   * **A control cannot live inside the row's link.** The whole row is an
+   * anchor to the notification, and a `<button>` inside an `<a>` is interactive
+   * content nested in interactive content — invalid, and silently reparented by
+   * browsers. So the anchor stops before this and the control sits next to it,
+   * the same restructuring `AlbumGrid` and the search result row both needed.
+   *
+   * **The row stays clickable everywhere the anchor still covers**, which is
+   * everything except the control itself — and the control is the one part that
+   * goes somewhere else.
+   */
+  action?: ReactNode;
+}) {
   const unread = item.readAt === null;
   const name = item.actor.displayName ?? item.actor.handle;
 
   return (
-    <li>
+    <li className="flex items-center gap-3 border-b border-border">
       <Link
         href={`/notifications/${item.id}`}
         prefetch={false}
-        className="group flex items-start gap-4 border-b border-border py-3.5 transition-colors hover:bg-raised"
+        className="group flex min-w-0 flex-1 items-start gap-4 py-3.5 transition-colors hover:bg-raised"
       >
         {/*
          * The marker column keeps its width whether or not a dot is drawn, so a
@@ -118,15 +139,24 @@ export function NotificationItem({ item }: { item: NotificationListItem }) {
 
         {unread && <span className="sr-only">Unread</span>}
       </Link>
+
+      {action}
     </li>
   );
 }
 
-export function NotificationList({ items }: { items: NotificationListItem[] }) {
+export function NotificationList({
+  items,
+  actionFor,
+}: {
+  items: NotificationListItem[];
+  /** Optional control for a row, decided by the page rather than here. */
+  actionFor?: (item: NotificationListItem) => ReactNode;
+}) {
   return (
     <ul>
       {items.map((item) => (
-        <NotificationItem key={item.id} item={item} />
+        <NotificationItem key={item.id} item={item} action={actionFor?.(item)} />
       ))}
     </ul>
   );

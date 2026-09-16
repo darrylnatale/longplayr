@@ -277,3 +277,73 @@ test('a page past the end of a relationship list is a 404', async ({ page }) => 
 
   expect(response?.status()).toBe(404);
 });
+
+/**
+ * Following back from the notifications page (`product-spec.md` §6).
+ *
+ * **The whole point is not opening the profile.** Before this, a follow
+ * notification told you somebody had followed you and the only way to return it
+ * was to click through to them.
+ */
+test('a follow notification offers the follow back, and it works without opening the profile', async ({
+  page,
+  browser,
+}) => {
+  const me = await createAccount('Ines Bianchi');
+  const follower = await createAccount('Tomas Ruiz');
+
+  // They follow me, which is what generates the notification.
+  const theirContext = await browser.newContext();
+  const theirPage = await theirContext.newPage();
+  await signIn(theirPage, follower);
+  await theirPage.goto(`/${me.handle}`);
+  await followButton(theirPage).click();
+  await expect(followButton(theirPage)).toHaveAttribute('aria-pressed', 'true', ACTION);
+  await theirContext.close();
+
+  await signIn(page, me);
+  await page.goto('/notifications');
+
+  // Not following them yet, so the control invites — on the notification row,
+  // with no navigation.
+  const control = page.getByRole('button', { name: /Follow/ });
+  await expect(control.first()).toBeVisible(ACTION);
+  await expect(control.first()).toHaveAttribute('aria-pressed', 'false');
+
+  await control.first().click();
+
+  // **Live state, not the state when the notification arrived.** It becomes
+  // Following in place rather than disappearing — an old notification that
+  // silently changed what it showed was the rejected alternative.
+  await expect(control.first()).toHaveAttribute('aria-pressed', 'true', ACTION);
+  await expect(page).toHaveURL(/\/notifications$/);
+
+  // And it is a real follow, visible where follows live.
+  await page.goto(`/${me.handle}`);
+  await expect(page.getByRole('link', { name: '1 following' })).toBeVisible(ACTION);
+});
+
+test('a follow notification carries exactly one control', async ({ page, browser }) => {
+  // **Named for what it proves, not for what would be better to prove.** The
+  // scope decision is that only `followed` rows carry an action — but this sets
+  // up a follow notification and can therefore only show that *that* row has
+  // one control, not that a review-like row has none. Asserting the absence
+  // needs a liked review, which is a heavier fixture than this cycle built.
+  // **Recorded as a coverage gap rather than dressed up in the name.**
+  const me = await createAccount();
+  const other = await createAccount();
+
+  const theirContext = await browser.newContext();
+  const theirPage = await theirContext.newPage();
+  await signIn(theirPage, other);
+  await theirPage.goto(`/${me.handle}`);
+  await followButton(theirPage).click();
+  await expect(followButton(theirPage)).toHaveAttribute('aria-pressed', 'true', ACTION);
+  await theirContext.close();
+
+  await signIn(page, me);
+  await page.goto('/notifications');
+
+  // Exactly one row, and exactly one control — the follow one.
+  await expect(page.getByRole('button', { name: /Follow/ })).toHaveCount(1);
+});

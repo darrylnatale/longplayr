@@ -2,10 +2,14 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
 import { Container } from '@/components/Container';
+import { FollowButton } from '@/components/FollowButton';
 import { NotificationList } from '@/components/NotificationItem';
 import { SectionHeader } from '@/components/SectionHeader';
 import { getCurrentProfile, getCurrentUser } from '@/services/profiles';
+import { followingAmong } from '@/services/social';
 import { listNotifications, NOTIFICATIONS_PAGE_SIZE } from '@/services/social/notifications';
+
+import { followAction, unfollowAction } from '../[handle]/actions';
 
 import { cursorFrom, notificationsPath } from './pagination';
 
@@ -68,6 +72,16 @@ export default async function NotificationsPage({ searchParams }: PageProps<'/no
     cursor,
   });
 
+  // **One query for the whole page, not one per row.** `getMyFollow` answers
+  // for a single subject, and calling it per notification is the N+1 the feed
+  // query and the counting contract both warn against (`product-spec.md` §6).
+  //
+  // Only `followed` rows can carry the control, so only their actors are asked
+  // about — and an empty list never reaches the database.
+  const following = await followingAmong(
+    items.filter((item) => item.type === 'followed').map((item) => item.actor.id),
+  );
+
   return (
     <Container variant="content">
       <div className="py-8 sm:py-10">
@@ -79,7 +93,27 @@ export default async function NotificationsPage({ searchParams }: PageProps<'/no
           <Empty endOfList={cursor !== null} />
         ) : (
           <>
-            <NotificationList items={items} />
+            <NotificationList
+              items={items}
+              actionFor={(item) =>
+                item.type === 'followed' ? (
+                  /*
+                   * **Live state, not the state when the notification arrived.**
+                   * From somebody already followed this reads "Following" and
+                   * unfollows if pressed — the same component and semantics as
+                   * the profile. The notification stays a record of a past
+                   * event; the control stays a control of the present
+                   * (`product-spec.md` §6).
+                   */
+                  <FollowButton
+                    followeeId={item.actor.id}
+                    following={following.has(item.actor.id)}
+                    followAction={followAction}
+                    unfollowAction={unfollowAction}
+                  />
+                ) : null
+              }
+            />
 
             {/*
              * Forward only, matching the feed. The list grows at the top while
