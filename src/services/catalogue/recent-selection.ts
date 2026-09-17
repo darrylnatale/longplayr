@@ -15,24 +15,50 @@ import type { AlbumSummaryWithArtists } from './queries';
  */
 
 /**
- * How much deeper to read than the section renders.
+ * How deep to read before filtering and deduplicating.
  *
- * **Filtering and deduplicating happen after the read**, so reading exactly the
- * render count guarantees an under-filled grid the moment either rule removes
- * anything. This scales with the section — Browse reads ~192 to render 24, Home
- * ~96 to render 12 — rather than with the catalogue, which a flat constant
- * would not.
+ * **A fixed depth, not a multiple of what renders — and that correction is the
+ * whole point of this constant. [AMENDED 2026-09-17]** It was `limit * 8`,
+ * which assumed the depth needed scales with how many cells a section draws.
+ * It does not: **it scales with how clustered the catalogue is**, and Home and
+ * Browse must read past the same clusters whether they draw 12 cells or 24.
  *
- * **It is a multiplier and not a guarantee.** A tranche of uncovered albums by
- * one artist can defeat any depth, and in that case the section **under-fills
- * honestly** rather than scanning further. An unbounded scan on the product's
- * two busiest reads would be the worse failure.
+ * **The clustering is severe because ingestion is artist-batched.** A curated
+ * tranche or a discography expansion writes an artist's whole catalogue at
+ * once, so a recency window is really a window over a handful of artists.
+ * Measured on the deployed catalogue on 2026-09-17, the **192 most recently
+ * added albums held just 21 distinct artists** — Dalida 37, Radiohead 31,
+ * Belle and Sebastian 24.
+ *
+ * **What that produced, and what fixes it, both measured rather than guessed:**
+ *
+ * ```
+ *   read 192  ->  11 survive   (what shipped; Browse renders 24)
+ *   read 300  ->  15
+ *   read 400  ->  23
+ *   read 500  ->  29
+ *   read 700  ->  47
+ * ```
+ *
+ * **750 is chosen for headroom rather than sufficiency.** 400 would fill a
+ * 24-cell section today, but one more large discography lands in front of it
+ * and it would not — and the failure is silent, appearing as a short grid
+ * nobody is told about.
+ *
+ * > **⚠️ This is a scan, and it is accepted knowingly rather than overlooked.**
+ * > There is **no index on `created_at`**, so the read sorts most of the table
+ * > on the product's two busiest pages. At roughly a thousand albums that is
+ * > nothing. **It does not survive growth**, and the replacement is known: ask
+ * > the database for one album per artist directly, which is bounded by artist
+ * > count rather than album count. That needs a migration and was deliberately
+ * > not taken here.
  */
-export const RECENT_READ_MULTIPLE = 8;
+export const RECENT_READ_DEPTH = 750;
 
 /** How many rows to read to render `limit`. */
 export function recentReadDepth(limit: number): number {
-  return Math.max(1, limit) * RECENT_READ_MULTIPLE;
+  // Never read less than is rendered, however the depth is later tuned.
+  return Math.max(limit, RECENT_READ_DEPTH);
 }
 
 export type RecentSelectionOptions = {

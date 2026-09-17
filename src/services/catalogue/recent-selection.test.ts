@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { RECENT_READ_MULTIPLE, recentReadDepth, selectRecent } from './recent-selection';
+import { RECENT_READ_DEPTH, recentReadDepth, selectRecent } from './recent-selection';
 
 import type { AlbumSummaryWithArtists } from './queries';
 
@@ -36,13 +36,30 @@ function album(
 }
 
 describe('recentReadDepth', () => {
-  it('reads several times what it renders', () => {
-    expect(recentReadDepth(24)).toBe(24 * RECENT_READ_MULTIPLE);
-    expect(recentReadDepth(12)).toBe(12 * RECENT_READ_MULTIPLE);
+  it('reads the same depth whatever the section renders', () => {
+    // **The correction of 2026-09-17.** This was `limit * 8`, which assumed the
+    // depth needed scales with the number of cells drawn. It scales with how
+    // clustered the catalogue is, and Home and Browse read past the same
+    // clusters whether they draw 12 cells or 24.
+    expect(recentReadDepth(24)).toBe(RECENT_READ_DEPTH);
+    expect(recentReadDepth(12)).toBe(RECENT_READ_DEPTH);
+  });
+
+  it('never reads less than it renders', () => {
+    // A guard against a later, smaller depth quietly starving a large section.
+    expect(recentReadDepth(RECENT_READ_DEPTH * 2)).toBe(RECENT_READ_DEPTH * 2);
   });
 
   it('never reads nothing', () => {
     expect(recentReadDepth(0)).toBeGreaterThan(0);
+  });
+
+  it('reads deep enough for the clustering actually measured', () => {
+    // Measured on the deployed catalogue on 2026-09-17: reading 400 yielded 23
+    // survivors against a 24-cell section, and 192 yielded 11. The depth is set
+    // for headroom rather than sufficiency, because the failure is a silently
+    // short grid.
+    expect(RECENT_READ_DEPTH).toBeGreaterThanOrEqual(500);
   });
 });
 
