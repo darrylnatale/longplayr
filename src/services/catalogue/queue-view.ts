@@ -2,6 +2,9 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { COUNT_ONLY, countRows } from '@/services/count';
 
 import { toUncoveredAlbum, WORKLIST_LIMIT } from './artwork-worklist';
+import { classifyMissingDate, isCaptureFault, payloadDateValue } from './date-capture';
+
+import type { DateCaptureRow, DateCaptureVerdict } from './date-capture';
 
 import type { ArtworkWorklist, UncoveredAlbumRow } from './artwork-worklist';
 
@@ -88,6 +91,7 @@ export type QueueSnapshot = {
   depthByKind: Record<string, number>;
   artwork: Record<string, number>;
   worklist: ArtworkWorklist;
+  dateCapture: DateCaptureReport;
   /** When a job was last settled — the practical answer to "did a drain run?" */
   lastActivityAt: string | null;
 };
@@ -169,6 +173,8 @@ export async function inspectQueue(
     failed: artwork.failed ?? 0,
   });
 
+  const dateCapture = await checkDateCapture(admin);
+
   return {
     takenAt: now.toISOString(),
     next: (ready ?? []).map((job, index) => inspect(job, now, index === 0)),
@@ -178,8 +184,88 @@ export async function inspectQueue(
     depthByKind,
     artwork,
     worklist,
+    dateCapture,
     lastActivityAt: latest?.[0]?.updated_at ?? null,
   };
+}
+
+/** Counts by verdict, plus the albums where something was actually lost. */
+export type DateCaptureReport = {
+  counts: Record<DateCaptureVerdict, number>;
+  /** Only the faults, since only they need looking at. */
+  faults: DateCaptureRow[];
+  /** Albums checked. Undated albums only — the rest are evidence of nothing. */
+  checked: number;
+};
+
+/** How many undated albums to examine in one pass. */
+const DATE_CAPTURE_LIMIT = 500;
+
+/**
+ * Whether any album's missing release date was ours to lose.
+ *
+ * **`architecture.md` §17c and §7a.** Every upstream response is kept verbatim,
+ * so this compares a stored payload against a column with **no MusicBrainz
+ * round trip and no rate-limit exposure**.
+ *
+ * **Payloads are fetched in one batch, not one per album.** That is the N+1 the
+ * feed query, the counting contract and the notifications page have each
+ * recorded — and here it would be several hundred round trips on a page render.
+ *
+ * **Reads only.** §17a's service-role client is safe on that page because
+ * authorisation runs before the read and this module contains no write verb.
+ */
+async function checkDateCapture(admin: Admin): Promise<DateCaptureReport> {
+  const counts: Record<DateCaptureVerdict, number> = {
+    'upstream-empty': 0,
+    malformed: 0,
+    lost: 0,
+    'no-payload': 0,
+    unreadable: 0,
+  };
+
+  const { data: undated, error } = await admin
+    .from('albums')
+    .select('mbid, title')
+    .is('first_release_date', null)
+    .order('created_at', { ascending: false })
+    .limit(DATE_CAPTURE_LIMIT);
+
+  if (error) throw error;
+
+  const rows = undated ?? [];
+  if (rows.length === 0) return { counts, faults: [], checked: 0 };
+
+  const { data: payloads, error: payloadError } = await admin
+    .from('upstream_payloads')
+    .select('source_id, payload')
+    .eq('kind', 'release_group')
+    .in(
+      'source_id',
+      rows.map((row) => row.mbid),
+    );
+
+  if (payloadError) throw payloadError;
+
+  const byId = new Map((payloads ?? []).map((row) => [row.source_id, row.payload]));
+  const faults: DateCaptureRow[] = [];
+
+  for (const row of rows) {
+    const payload = byId.has(row.mbid) ? byId.get(row.mbid) : null;
+    const verdict = classifyMissingDate(payload);
+    counts[verdict] += 1;
+
+    if (isCaptureFault(verdict)) {
+      faults.push({
+        mbid: row.mbid,
+        title: row.title,
+        verdict,
+        payloadValue: payloadDateValue(payload),
+      });
+    }
+  }
+
+  return { counts, faults, checked: rows.length };
 }
 
 /**
