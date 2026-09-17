@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   CATALOGUE_SORT_OPTIONS,
   catalogueOrder,
+  catalogueOrderFor,
+  catalogueReversedFrom,
   catalogueSortFrom,
   DEFAULT_CATALOGUE_SORT,
   isCatalogueSort,
@@ -92,6 +94,74 @@ describe('catalogueOrder', () => {
     for (const option of CATALOGUE_SORT_OPTIONS) {
       const columns = catalogueOrder(option.value).map((c) => c.column);
       expect(columns).not.toContain('popularity_score');
+    }
+  });
+});
+
+describe('catalogueOrderFor — running a sort the other way', () => {
+  it('leaves every mode alone when not reversed', () => {
+    for (const option of CATALOGUE_SORT_OPTIONS) {
+      expect(catalogueOrderFor(option.value)).toEqual(catalogueOrder(option.value));
+    }
+  });
+
+  it('flips only the leading clause', () => {
+    // Tiebreakers are what make the ordering total, and `range()` pagination
+    // depends on totality: two rows that can compare equal may swap between
+    // requests, and an album then appears twice or not at all across a page.
+    const forward = catalogueOrder('artist');
+    const back = catalogueOrderFor('artist', true);
+
+    expect(back[0].ascending).toBe(!forward[0].ascending);
+    expect(back.slice(1)).toEqual(forward.slice(1));
+  });
+
+  it('keeps undated releases last in both directions', () => {
+    // The specific failure `product-spec.md` §6 names: flipping `nullsFirst`
+    // would put undated albums at the top of an oldest-first run, where they
+    // read as the earliest records held rather than as records with no date.
+    const forward = catalogueOrder('year');
+    const back = catalogueOrderFor('year', true);
+
+    expect(forward[0].nullsFirst).toBe(false);
+    expect(back[0].nullsFirst).toBe(false);
+    expect(back[0].ascending).toBe(true);
+  });
+
+  it('still ends every reversed mode at created_at, whichever way that runs', () => {
+    // **The invariant is the column, not its direction.** Totality is what
+    // `range()` pagination needs, and `created_at` supplies it either way.
+    // Reversing "recently added" legitimately flips that clause, because there
+    // it *is* the sort rather than the tiebreaker — an earlier version of this
+    // test asserted `ascending: false` and was wrong about exactly that case.
+    for (const option of CATALOGUE_SORT_OPTIONS) {
+      expect(catalogueOrderFor(option.value, true).at(-1)?.column).toBe('created_at');
+    }
+  });
+
+  it('flips the tiebreaker only when it is itself the sort', () => {
+    expect(catalogueOrderFor('added', true).at(-1)?.ascending).toBe(true);
+    expect(catalogueOrderFor('title', true).at(-1)?.ascending).toBe(false);
+  });
+
+  it('never orders by popularity in either direction', () => {
+    for (const option of CATALOGUE_SORT_OPTIONS) {
+      const columns = catalogueOrderFor(option.value, true).map((c) => c.column);
+      expect(columns).not.toContain('popularity_score');
+    }
+  });
+});
+
+describe('catalogueReversedFrom', () => {
+  it('reads the one recognised value', () => {
+    expect(catalogueReversedFrom('rev')).toBe(true);
+  });
+
+  it('treats anything else as the natural direction', () => {
+    // `?dir=` is user input, and a malformed one is not worth a 404 — the same
+    // rule `?sort=` and `?page=` already apply.
+    for (const value of ['asc', 'desc', 'nonsense', '', undefined]) {
+      expect(catalogueReversedFrom(value)).toBe(false);
     }
   });
 });

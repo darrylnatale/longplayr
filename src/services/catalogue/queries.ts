@@ -3,7 +3,7 @@ import { countRows, COUNT_ONLY } from '@/services/count';
 import type { Database } from '@/lib/supabase/database.types';
 
 import { toCreditedArtists } from './credit';
-import { catalogueOrder, DEFAULT_CATALOGUE_SORT } from './catalogue-sort';
+import { catalogueOrderFor, DEFAULT_CATALOGUE_SORT } from './catalogue-sort';
 import { recentReadDepth, selectRecent } from './recent-selection';
 
 import type { CatalogueSort } from './catalogue-sort';
@@ -249,10 +249,12 @@ export const CATALOGUE_PAGE_SIZE = 60;
  */
 export async function getCatalogueAlbums({
   sort = DEFAULT_CATALOGUE_SORT,
+  reversed = false,
   limit = CATALOGUE_PAGE_SIZE,
   offset = 0,
 }: {
   sort?: CatalogueSort;
+  reversed?: boolean;
   limit?: number;
   offset?: number;
 } = {}): Promise<CataloguePage> {
@@ -263,7 +265,7 @@ export async function getCatalogueAlbums({
   // Applied in sequence, ending at `created_at` so the ordering is total —
   // without that, two rows comparing equal can swap between requests and an
   // album can appear twice, or not at all, across a page boundary.
-  for (const clause of catalogueOrder(sort)) {
+  for (const clause of catalogueOrderFor(sort, reversed)) {
     query = query.order(clause.column, {
       ascending: clause.ascending,
       nullsFirst: clause.nullsFirst,

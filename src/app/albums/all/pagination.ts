@@ -1,6 +1,7 @@
 import {
   CATALOGUE_SORT_OPTIONS,
   DEFAULT_CATALOGUE_SORT,
+  REVERSED_PARAM,
 } from '@/services/catalogue/catalogue-sort';
 
 import type { CatalogueSort } from '@/services/catalogue/catalogue-sort';
@@ -48,23 +49,43 @@ export function pageFrom(value: string | string[] | undefined): number {
  * destinations already apply, extended to the second parameter so that four
  * addresses cannot render the same first page.
  */
-export function cataloguePath(sort: CatalogueSort, page: number): string {
+export function cataloguePath(sort: CatalogueSort, page: number, reversed = false): string {
   const params = new URLSearchParams();
   if (sort !== DEFAULT_CATALOGUE_SORT) params.set('sort', sort);
+  if (reversed) params.set('dir', REVERSED_PARAM);
   if (page > 1) params.set('page', String(page));
 
   const query = params.toString();
   return query ? `/albums/all?${query}` : '/albums/all';
 }
 
-/** The sort control's links, with the current mode marked. */
-export function sortLinks(current: CatalogueSort) {
-  return CATALOGUE_SORT_OPTIONS.map((option) => ({
-    ...option,
-    // Changing the sort returns to page one: page 7 of one ordering has no
-    // meaningful counterpart in another, and keeping the number would land the
-    // reader somewhere arbitrary.
-    href: cataloguePath(option.value, 1),
-    current: option.value === current,
-  }));
+/**
+ * The sort control's links, with the current mode marked.
+ *
+ * **The active sort links to its own reversal.** Pressing a sort that is
+ * already selected flips its direction rather than doing nothing, which is what
+ * keeps the control a row of four rather than a row of eight
+ * (`product-spec.md` §6).
+ *
+ * **An inactive sort always links to its natural direction**, never carrying
+ * the current one across. Direction is a property of an ordering, not of the
+ * reader — landing on "title, reversed" because the previous sort happened to
+ * be reversed is a state nobody asked for.
+ */
+export function sortLinks(current: CatalogueSort, reversed = false) {
+  return CATALOGUE_SORT_OPTIONS.map((option) => {
+    const isCurrent = option.value === current;
+
+    return {
+      ...option,
+      // Changing the sort returns to page one: page 7 of one ordering has no
+      // meaningful counterpart in another, and keeping the number would land
+      // the reader somewhere arbitrary.
+      href: cataloguePath(option.value, 1, isCurrent ? !reversed : false),
+      current: isCurrent,
+      // Only the active sort carries a direction, because only there does it
+      // mean anything to the reader.
+      reversed: isCurrent && reversed,
+    };
+  });
 }
