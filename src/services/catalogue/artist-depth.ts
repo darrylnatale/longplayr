@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 
-import { attemptStateFor } from './jobs';
+import { isExpansionStale } from './expansion-staleness';
+import { attemptStateFor, lastSucceededAt } from './jobs';
 
 import type { Database } from '@/lib/supabase/database.types';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -87,7 +88,7 @@ export function isExcludedFromExpansion(artistMbid: string): boolean {
  * a self-service add is as included as a curated one, so it expands on the same
  * terms (`CLAUDE.md`, catalogue breadth and depth).
  */
-export type ExpansionState = 'start' | 'outstanding' | 'failed' | 'settled';
+export type ExpansionState = 'start' | 'outstanding' | 'failed' | 'stale' | 'settled';
 
 export async function expansionStateFor(
   artistMbid: string,
@@ -103,5 +104,14 @@ export async function expansionStateFor(
   // An excluded artist returned `settled` above, so this is a real attempt
   // history: every row finished, and none of them succeeded.
   if (attempt === 'failed') return 'failed';
-  return 'settled';
+
+  // **Only a success can go stale, and `lastSucceededAt` is what guarantees it.**
+  // Reading the newest *finished* row instead would make a terminally failed
+  // artist look stale, and a page view would then re-queue it — the retry loop
+  // the once-per-artist rule exists to prevent, arriving through a renamed door.
+  //
+  // **A refresh looks for additions rather than completing something unfinished**,
+  // which is why `stale` says nothing to the reader while `outstanding` does.
+  const succeededAt = await lastSucceededAt('discover_curated_artist', artistMbid, admin);
+  return isExpansionStale(succeededAt) ? 'stale' : 'settled';
 }
