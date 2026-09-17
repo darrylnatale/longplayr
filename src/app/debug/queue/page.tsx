@@ -224,6 +224,62 @@ export default async function QueueViewPage({ searchParams }: PageProps<'/debug/
          * retrying, and presenting them together would ask for effort the
          * system has not finished spending.
          */}
+        {/*
+         * **Whether a missing release date was ever ours to lose**
+         * (`architecture.md` §17c). An album with no year is usually upstream
+         * truth; one whose stored payload held a date is not. §7a keeps every
+         * response verbatim, so this costs no MusicBrainz request.
+         *
+         * **It reports and never corrects.** A backfill rewrites catalogue rows
+         * and is a separate decision — a fault found here does not silently
+         * become a migration.
+         */}
+        <section>
+          <h2 className="text-sm font-medium text-text">
+            Albums with no release year
+            <span className="ml-2 text-xs font-normal text-text-muted">
+              upstream truth, or something we dropped
+            </span>
+          </h2>
+
+          <div className="mt-3">
+            {snapshot.dateCapture.checked === 0 ? (
+              <p className="text-xs text-text-faint">Every album carries a release date.</p>
+            ) : (
+              <>
+                <Counts
+                  label={`Checked ${snapshot.dateCapture.checked}`}
+                  counts={snapshot.dateCapture.counts}
+                />
+
+                {snapshot.dateCapture.faults.length === 0 ? (
+                  <p className="mt-3 text-xs text-text-faint">
+                    No album lost a date the payload was holding. Every missing year is upstream
+                    truth.
+                  </p>
+                ) : (
+                  <ul className="mt-3 flex flex-col gap-1">
+                    {snapshot.dateCapture.faults.map((fault) => (
+                      <li
+                        key={fault.mbid}
+                        className="flex items-baseline justify-between gap-4 text-xs"
+                      >
+                        <span className="min-w-0 truncate text-text">
+                          {fault.title}
+                          <span className="ml-2 text-text-muted">{fault.verdict}</span>
+                        </span>
+                        <span className="shrink-0 text-text-faint">
+                          payload held {fault.payloadValue ?? '—'}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+          </div>
+        </section>
+
         <section>
           <h2 className="text-sm font-medium text-text">
             Albums with no cover art
