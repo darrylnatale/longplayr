@@ -36,7 +36,13 @@ export function recentReadDepth(limit: number): number {
 }
 
 export type RecentSelectionOptions = {
-  /** Keep only each artist's most recent album. Counted against the first credit. */
+  /**
+   * Keep only each artist's most recent album.
+   *
+   * **Counted against every credited artist**, so an album is excluded when any
+   * of its artists has already appeared and appearing claims all of them.
+   * Reversed on 2026-09-16 from counting the first credit only.
+   */
   onePerArtist?: boolean;
   /** Keep only albums that have a cover. */
   requireCover?: boolean;
@@ -71,23 +77,29 @@ export function selectRecent(
   for (const album of covered) {
     if (kept.length >= limit) break;
 
-    // **The first credit only.** A collaboration spends that artist's slot and
-    // leaves every other credited artist free to appear with their own record.
-    // Counting against all credits was rejected: one collaboration would block
-    // two artists from the whole section, which is a large effect for a rule
-    // about visual variety (`product-spec.md` §6).
+    // **Every credited artist, not just the first. [REVERSED 2026-09-16]** This
+    // counted the first credit only until the rendered page showed what that
+    // permits: **four albums and one artist**, because Tame Impala was credited
+    // *second* on three of them. One artist occupying four slots is the exact
+    // failure this rule exists to prevent (`product-spec.md` §6).
     //
-    // **An album with no artist rows is never deduplicated away.** It has no
-    // identity to group on, and silently dropping it would hide a catalogue
-    // gap behind a presentation rule.
-    const primary = album.artists[0]?.mbid;
-    if (!primary) {
+    // **The cost is accepted rather than answered.** A collaboration now blocks
+    // its guests: if Watch the Throne appears, Kanye West cannot also appear
+    // with a solo record. The original decision named that cost and chose the
+    // other way; the evidence that reversed it shows the cost of the old rule
+    // and says nothing about the cost of this one.
+    //
+    // **An album crediting nobody is still never deduplicated away.** It has no
+    // identity to group on, and silently dropping it would hide a catalogue gap
+    // behind a presentation rule.
+    const credits = album.artists.map((artist) => artist.mbid);
+    if (credits.length === 0) {
       kept.push(album);
       continue;
     }
 
-    if (seen.has(primary)) continue;
-    seen.add(primary);
+    if (credits.some((mbid) => seen.has(mbid))) continue;
+    for (const mbid of credits) seen.add(mbid);
     kept.push(album);
   }
 
