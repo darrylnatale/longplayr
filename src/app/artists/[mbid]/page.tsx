@@ -130,13 +130,22 @@ export default async function ArtistPage({ params, searchParams }: PageProps<'/a
   const expansion = await expansionStateFor(mbid);
 
   /*
-   * **Enqueue on `start` and `outstanding` only — never on `failed`.**
+   * **Enqueue on `start`, `outstanding` and `stale` — never on `failed`.**
    * Re-enqueueing a terminally failed expansion from a page view would restart
    * the three-attempt retry policy on every visit; the recovery sweep owns that
    * retry, behind a 24-hour cooling-off. The status line below *does* speak for
    * `failed`, and that divergence is deliberate — `artist-depth.ts`.
+   *
+   * **`stale` is a successful expansion grown old, and only ever that.**
+   * `lastSucceededAt` reads succeeded rows alone, so a failed artist can never
+   * present as stale and be re-queued here under a different name
+   * (`product-spec.md` §8.9).
+   *
+   * **It says nothing to the reader**, and the status line below already gets
+   * that right by enumerating positively rather than negating `settled` — a
+   * state added to a negated condition would have claimed work was in progress.
    */
-  if (expansion === 'start' || expansion === 'outstanding') {
+  if (expansion === 'start' || expansion === 'outstanding' || expansion === 'stale') {
     after(async () => {
       try {
         /*

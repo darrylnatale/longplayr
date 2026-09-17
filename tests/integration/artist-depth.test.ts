@@ -3,6 +3,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
 import type { Database } from '@/lib/supabase/database.types';
 import { expansionStateFor, isExcludedFromExpansion } from '@/services/catalogue/artist-depth';
+import { EXPANSION_REFRESH_DAYS } from '@/services/catalogue/expansion-staleness';
 import { attemptStateFor } from '@/services/catalogue/jobs';
 import {
   enqueueJob,
@@ -44,12 +45,23 @@ async function clearJobs() {
 }
 
 /** Writes one job row directly, so a status can be pinned without a drain. */
-async function seedJob(targetMbid: string, status: Database['public']['Enums']['job_status']) {
-  const { error } = await admin
-    .from('ingestion_jobs')
-    .insert({ kind: 'discover_curated_artist', target_mbid: targetMbid, status });
+async function seedJob(
+  targetMbid: string,
+  status: Database['public']['Enums']['job_status'],
+  finishedAt?: Date,
+) {
+  const { error } = await admin.from('ingestion_jobs').insert({
+    kind: 'discover_curated_artist',
+    target_mbid: targetMbid,
+    status,
+    // `updated_at` is what a staleness rule reads, so a test that pins a status
+    // must be able to pin its age too.
+    ...(finishedAt ? { updated_at: finishedAt.toISOString() } : {}),
+  });
   if (error) throw error;
 }
+
+const daysAgo = (n: number) => new Date(Date.now() - n * 24 * 60 * 60 * 1000);
 
 beforeEach(clearJobs);
 afterAll(clearJobs);
@@ -208,5 +220,68 @@ describe('the priority the page enqueues at', () => {
       .single();
 
     expect(data!.priority).toBeGreaterThan(INTERACTIVE_JOB_PRIORITY);
+  });
+});
+
+/**
+ * Refreshing a discography that has gone stale (`product-spec.md` §8.9).
+ *
+ * **The case that matters most is the negative one.** A staleness rule built on
+ * the newest *finished* job rather than the newest *succeeded* one would make a
+ * terminally failed artist look stale — and the artist page enqueues on stale,
+ * so it would re-queue failures on every visit. That is the retry loop the
+ * once-per-artist rule exists to prevent, arriving through a renamed door.
+ */
+describe('expansion staleness', () => {
+  it('is settled when a success is recent', async () => {
+    const mbid = artistMbid('f1');
+    await seedJob(mbid, 'succeeded', daysAgo(1));
+
+    expect(await expansionStateFor(mbid, admin)).toBe('settled');
+  });
+
+  it('is stale when the success is old enough', async () => {
+    const mbid = artistMbid('f2');
+    await seedJob(mbid, 'succeeded', daysAgo(EXPANSION_REFRESH_DAYS + 1));
+
+    expect(await expansionStateFor(mbid, admin)).toBe('stale');
+  });
+
+  it('stays failed however old a failed attempt is', async () => {
+    // The dangerous case. An ancient failure must not become stale, because the
+    // page enqueues on stale and never on failed.
+    const mbid = artistMbid('f3');
+    await seedJob(mbid, 'failed', daysAgo(EXPANSION_REFRESH_DAYS * 10));
+
+    expect(await expansionStateFor(mbid, admin)).toBe('failed');
+  });
+
+  it('measures age from the newest success, not the oldest', async () => {
+    // An artist expanded long ago and refreshed recently is as fresh as the
+    // refresh.
+    const mbid = artistMbid('f4');
+    await seedJob(mbid, 'succeeded', daysAgo(EXPANSION_REFRESH_DAYS * 3));
+    await seedJob(mbid, 'succeeded', daysAgo(1));
+
+    expect(await expansionStateFor(mbid, admin)).toBe('settled');
+  });
+
+  it('ignores an old failure alongside a recent success', async () => {
+    const mbid = artistMbid('f5');
+    await seedJob(mbid, 'failed', daysAgo(EXPANSION_REFRESH_DAYS * 2));
+    await seedJob(mbid, 'succeeded', daysAgo(1));
+
+    expect(await expansionStateFor(mbid, admin)).toBe('settled');
+  });
+
+  it('is outstanding rather than stale while work is queued', async () => {
+    // A queued refresh must not queue another on the next view. The partial
+    // unique index would reject the duplicate anyway; this keeps the page from
+    // trying.
+    const mbid = artistMbid('f6');
+    await seedJob(mbid, 'succeeded', daysAgo(EXPANSION_REFRESH_DAYS + 1));
+    await seedJob(mbid, 'pending');
+
+    expect(await expansionStateFor(mbid, admin)).toBe('outstanding');
   });
 });

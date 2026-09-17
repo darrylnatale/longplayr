@@ -898,6 +898,37 @@ export async function attemptStateFor(
   return data.some((row) => row.status === 'succeeded') ? 'succeeded' : 'failed';
 }
 
+/**
+ * When this target's expansion last **succeeded**, or null if it never has.
+ *
+ * **Succeeded rows only, and that is the load-bearing word.** A staleness rule
+ * built on the newest *finished* row would make a terminally failed artist look
+ * stale, and a page view would then re-queue it — restarting the three-attempt
+ * retry policy that `attemptStateFor` exists to warn against. **A refresh and a
+ * retry must stay different events**, and this is where that separation is
+ * enforced rather than assumed. `product-spec.md` §8.9.
+ *
+ * **The newest success, not the first.** An artist expanded, refreshed, and
+ * refreshed again is as fresh as its last refresh.
+ */
+export async function lastSucceededAt(
+  kind: JobKind,
+  targetMbid: string,
+  admin: Admin = createAdminClient(),
+): Promise<string | null> {
+  const { data, error } = await admin
+    .from('ingestion_jobs')
+    .select('updated_at')
+    .eq('kind', kind)
+    .eq('target_mbid', targetMbid)
+    .eq('status', 'succeeded')
+    .order('updated_at', { ascending: false })
+    .limit(1);
+
+  if (error) throw error;
+  return data?.[0]?.updated_at ?? null;
+}
+
 export async function queueDepth(admin: Admin = createAdminClient()) {
   const statuses = ['pending', 'running', 'succeeded', 'failed'] as const;
 
