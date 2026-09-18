@@ -14,19 +14,57 @@
 
 **The verification gate moved, and `CLAUDE.md` now carries it. [APPLIED 2026-09-15]** Work happens on a branch and reaches `main` only through a green CI run; STEP F runs `npm run verify` plus targeted suites; **the migration gate moved from STEP I to STEP J**, so the order is **CI green → migration applied → merge**. The decision is `architecture.md` §12; the process is `CLAUDE.md`. **The two no longer disagree.** (§68, §69)
 
-**Verified 2026-09-18 against the repository, the remote and CI.** `main` is at **`44b03ac`**, the merge of PR #21; `origin/main` identical, and **the working tree carries documentation only**. **Nothing is open and nothing is pending.** **29 migrations, 0 unapplied**, deployed schema current.
+**Verified 2026-09-18 against the repository, the remote and CI.** `main` is at **`e330549`**, the merge of PR #22; `origin/main` identical. **Nothing is open.** **30 migrations, 0 unapplied** — `20260918120000_reserve_deleted_handles` was applied to the deployed database at STEP J, between a green run and the merge, and confirmed twice. **The post-merge run `35365720989` on `e330549` was still in flight when this was written** (F-051: a pull-request run tests the base as it was when it started, so the post-merge run is not redundant).
 
-**Fifteen cycles merged between 2026-09-15 and 2026-09-17** — PRs #7 to #21, recorded as §72 to §86. **Only §74 carried a migration.** **§79 is the only cycle to have failed CI and been reopened**; it was remediated and merged on a second run. **§80, §83 and §84 were confirmed on production** rather than merely merged.
+**Sixteen cycles merged between 2026-09-15 and 2026-09-18** — PRs #7 to #22, recorded as §72 to §87. **§74 and §87 are the only cycles to have carried a migration.** **§79 and §87 are the only cycles to have failed CI and been reopened**; both were remediated and merged on a second run. **§80, §83 and §84 were confirmed on production** rather than merely merged.
 
 > **⚠️ The phase plan has been under-weighted, and the maintainer pointed it out on 2026-09-18.** Every cycle from §72 to §86 was selected from `docs/product-feedback.md`. **`CLAUDE.md` STEP A asks for _the current project state **and** any triaged product feedback_**, and the first half has gone effectively unconsulted for three days.
 >
 > **This matters because the two are not equivalent.** Feedback items improve things that exist. **Phase 7 contains obligations** — account deletion as a hard delete with a complete cascade is a `CLAUDE.md` non-negotiable, is unbuilt, and `CLAUDE.md` calls an orphaned row a privacy failure. **Phase 6 — reporting, blocking, suspension, and status enforced across every read path — is entirely unbuilt.** Neither has appeared in a STEP A ranking.
 >
 > **The next STEP A must rank the phase plan alongside the feedback backlog**, not after it.
+>
+> **§87 is the first cycle to have done so, and it changed the answer.** Ranking the phase plan produced account deletion as the leading candidate — an unmet obligation rather than an improvement — which no feedback-only ranking had ever surfaced. **Phase 6 remains entirely unranked.**
 
 **Four feedback entries were filed on 2026-09-16 at the maintainer's request** — **F-041** (filtering, sorting and exclusion), **F-042** (filtering a grid by collection state), **F-043** (follow back from notifications) and **F-044** (the test environment fails more often than the code does). **F-041 surfaced that longplayr holds no genre data at all**, deliberately excluded at ingest, so that filter is an ingest, schema and backfill change rather than a UI one.
 
 **A decision session on 2026-09-16 answered eight open product questions** and promoted five entries to decided-and-unbuilt — readable URLs, browse-everything, the cover-art prompt (now built, §78), discography refresh, and Recently added's two rules. **It also opened F-040**, a collision between the new upstream-contribution principle and the read-only-catalogue non-negotiable. The records are in `product-spec.md` §6 and §8.9, `design-reference.md` §11.11, and `architecture.md` §18. Three cycles closed and merged today — PR #7 (`5479041`), PR #8 (`8544330`) and **PR #9 (`4c0a0f7`, CI #112, 132 end-to-end, zero flaky)**. The first two carried no migration; **§74 did**, and STEP J gated for it, applying `20260915160000` to the deployed database between a green CI run and the merge. **Post-merge run #111 on `8544330` came back `completed/success`**, so the tree before this cycle is independently green. **The double-CI cost of the branch model is now observed on five consecutive cycles** and remains recorded rather than decided.
+
+> ## ✅ §87 — An account can be deleted, and its handle never comes back — **[GATE CLEARED: CI `35361448010` `completed/success`, 518 unit, 731 integration, 134 end-to-end, zero flaky]**
+>
+> **Account deletion was a `CLAUDE.md` non-negotiable that nothing in the product did.** No deletion path existed anywhere in `src/services/auth/`, and there was no settings surface to put one on. `development-plan.md` gated Phase 7 on one open decision — handle reuse after deletion — and that decision had never been asked.
+>
+> **The finding that made it a slice rather than a phase.** The cascade was **already declared**: every user-bearing table cascades from `profiles`, `profiles.id` cascades from `auth.users`, and `reviews` and `relisten_events` reach it transitively through `collection_entries`. Averages are computed on read, so Phase 7's _"averages recompute with no manual step"_ was **already satisfied structurally**. The single `on delete set null`, on `catalogue_additions`, is a deliberate anonymisation with its reasoning in its own migration. **No user-owned storage objects exist.** What was missing was the action, a home for it, and proof.
+>
+> **Handles are reserved permanently** (`data-model.md` §9.5). `reserved_handles` holds the handle and **nothing else** — no user id, no email, no `created_at` — because the row that must outlive its owner is justified only by carrying nothing. A **`before delete` trigger** does the reserving, which is what makes it unbypassable: the delete this product issues targets `auth.users` and reaches `profiles` as a cascade, where a row trigger fires and an application-level write would not.
+>
+> **Confirmation is typing your handle, not your password.** The stack is email/password **plus Google**, and a Google account has no password to re-enter — a confirmation half the users cannot complete is not one.
+>
+> ### ⚠️ CI failed on the first run, and the failure was the guard doing its job
+>
+> **Run `35358375139` on `ba9ee7e` came back `failure`.** The `Format, lint, types, unit tests, build` job passed; the integration job failed on **one test** — `has data in every user-bearing table before the delete`, the assertion written specifically so the suite could not pass by having created nothing.
+>
+> **It caught three empty fixtures, not a broken cascade.** `list_likes` counted the subject's column against a row inserted for the _other_ user, so the subject had no like at all. **`notifications` are written by the service rather than by a trigger**, so inserting follows directly produced none — in either direction. **Every cascade assertion passed**, on 35 of 36 files green.
+>
+> **The fix improved the test rather than merely repairing it.** The subject now likes a list belonging to the other account, which gave the cascade a case it was missing entirely — **a row of the deleted user's hanging off somebody else's content**, where the like must go and the list must not. Both notification directions are inserted explicitly, because `data-model.md` §8 requires deletion to remove notifications the user **caused for other people**, not only those they received.
+>
+> ### 🔎 Two review findings, and neither was in the plan
+>
+> **`/settings` was unreachable.** No header entry, no mobile tab — **exactly F-017's failure**, a page that exists and cannot be reached. Fixed in the own-profile block beside Notifications and Sign out, which already carries the reasoning for why those live there and why they have **no responsive class**. A sixth tab would change the bar's composition, which this slice did not own.
+>
+> **There is no `profiles` delete policy**, so a user cannot delete their profile row directly — only the service-role path through `auth.users` can. **The deletion cannot be half-executed.** Nothing to change; worth knowing.
+>
+> ### 📄 Evidence, and one limitation stated rather than glossed
+>
+> **The integration test was never run locally**, by decision under the 2026-09-16 amendment — and it was the most important evidence in the cycle. **Two direct database probes stood in for it** and are the reason the second CI run was green rather than a third: the first confirmed the reservation trigger fires on the **cascaded** delete and that a reclaim raises SQLSTATE `23505` carrying `profiles_handle_not_reserved`; the second confirmed the three corrected fixtures populate, that the cascade clears them, and that the other account keeps its list and its profile.
+>
+> **That is the trade `CLAUDE.md` describes, observed once more.** A red CI run reopened the cycle and cost roughly fifteen minutes; the probes cost seconds and caught the class of error that would have cost a second fifteen.
+>
+> ### 📄 Documentation, committed for the first time since 2026-09-04
+>
+> **Fifteen merged pull requests' worth of decisions existed only in one working tree.** §72 to §86 and every measurement and correction in them had never been committed. It went up as this branch's first commit — **deliberately mixed**, because this cycle's STEP C edits are in the same files and can no longer be separated cleanly.
+>
+> **The maintainer has since said documentation may stay local**, and that is recorded rather than argued with: nothing in the build or the test suite reads `docs/`, so the only cost was loss risk, and that is discharged now it is pushed. **The one place it would matter is a fresh clone**, where `current-state.md` is what a new session reads first.
 
 > ## ✅ Four things the deployed data confirmed on 2026-09-15
 >

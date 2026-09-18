@@ -155,6 +155,7 @@ export type Database = {
           representative_release_id: string | null
           search_vector: unknown
           secondary_types: Database["public"]["Enums"]["album_secondary_type"][]
+          slug: string
           title: string
           updated_at: string
         }
@@ -176,6 +177,7 @@ export type Database = {
           representative_release_id?: string | null
           search_vector?: unknown
           secondary_types?: Database["public"]["Enums"]["album_secondary_type"][]
+          slug?: string
           title: string
           updated_at?: string
         }
@@ -197,6 +199,7 @@ export type Database = {
           representative_release_id?: string | null
           search_vector?: unknown
           secondary_types?: Database["public"]["Enums"]["album_secondary_type"][]
+          slug?: string
           title?: string
           updated_at?: string
         }
@@ -218,6 +221,7 @@ export type Database = {
           mbid: string
           name: string
           search_vector: unknown
+          slug: string
           sort_name: string
           type: string | null
           updated_at: string
@@ -229,6 +233,7 @@ export type Database = {
           mbid: string
           name: string
           search_vector?: unknown
+          slug?: string
           sort_name: string
           type?: string | null
           updated_at?: string
@@ -240,6 +245,7 @@ export type Database = {
           mbid?: string
           name?: string
           search_vector?: unknown
+          slug?: string
           sort_name?: string
           type?: string | null
           updated_at?: string
@@ -1070,6 +1076,7 @@ export type Database = {
           mbid: string
           popularity_score: number
           primary_type: Database["public"]["Enums"]["album_type"]
+          slug: string
           text_rank: number
           tier: number
           title: string
@@ -1083,11 +1090,13 @@ export type Database = {
           id: string
           mbid: string
           name: string
+          slug: string
           tier: number
         }[]
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      slugify: { Args: { value: string }; Returns: string }
     }
     Enums: {
       activity_type:
