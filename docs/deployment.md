@@ -114,6 +114,36 @@ Set environment variables per environment:
 Preview deployments then exercise real migrations against staging data before
 anything reaches production.
 
+### Secrets set only on Vercel
+
+Two variables exist only in the hosting environment. **Both fail closed in
+production and open in development**, so local work needs neither.
+
+| Variable            | For                                                                               |
+| ------------------- | --------------------------------------------------------------------------------- |
+| `CRON_SECRET`       | The scheduled drain at `/api/cron/drain-jobs`. Vercel signs cron requests with it |
+| `QUEUE_VIEW_SECRET` | The temporary operator queue view at `/debug/queue` — `architecture.md` §17a      |
+
+**`QUEUE_VIEW_SECRET` is passed in the URL**, as `/debug/queue?key=…`. Generate one
+with `openssl rand -base64 32`, or `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`
+for a value with no characters that need escaping.
+
+**A variable change needs a new deployment to take effect** — an existing
+deployment will not pick it up. Setting it before the push that ships the page it
+gates is the tidiest order.
+
+**Its weakness, recorded rather than assumed away.** A secret in a URL reaches
+browser history, referrer headers and any intermediate proxy log — so bookmarking
+that page, which is the convenient thing to do, is also what spreads the secret.
+**That is accepted because the page performs no mutation of any kind. It would not
+be acceptable for anything that writes**, and `architecture.md` §17a records that
+the access model must change before anything on that page does.
+
+**`.env.example` is not in the repository.** `.gitignore`'s `.env*` rule catches
+it, so it exists only on machines where it was created by hand — which is why this
+table is here rather than there. **A fresh clone has no environment documentation
+except this file.**
+
 ---
 
 ## 4. MusicBrainz contact — required before any ingestion

@@ -514,6 +514,18 @@ Audit trail for self-service catalogue additions: which user added which album, 
 
 Exists for two reasons: **rate limiting** (the ceiling that prevents bulk junk-adding, which is the only real risk self-service introduces), and **retrospective review** if something out of scope slips through. **[DECIDED — C4]**
 
+### Discovery chart
+
+The stored answer to a discovery chart, recomputed on a schedule rather than per request. **[DECIDED 2026-09-05 — Phase 5 slice 1. Nothing here is built yet, and no shape is chosen.]**
+
+`product-spec.md` §8.3 decides a cached table rather than per-request computation, so a persisted read model exists **as a consequence of that decision**. **Its name, columns, keys, indexes and retention are deliberately not decided** — the product decision requires that it exist, not what it looks like. A schema author reaching this entry should expect to design it, not to find it designed.
+
+**Distinct from `albums.popularity_score`**, which stays the external-source prominence signal with its existing consumers. **A materialised chart is not a popularity signal**, so `product-spec.md` §8.9's open question — whether the two popularity concepts become one field or two — is **not** answered by this entity and must not be read as answered by it.
+
+**Its inputs are `CollectionEntry` and `RelistenEvent`, not `Activity`.** §8.3 requires backfilled collection data to count and `Activity` exists to exclude backfills, so they cannot be the same source. This is the one thing about the entity that is settled, and it is settled by product decision rather than by convenience.
+
+**The chart is not capped at 20 and may hold more. [DECIDED 2026-09-05]** §8.3's 20 is a **floor** the external fill completes the chart to, never a ceiling: a chart with more than 20 qualifying internal albums stays that long, because internal results must not be truncated merely because they exceed the floor. **A row count is therefore unbounded by the product rule**, which a schema author should know before choosing keys or indexes. Whether the chart is materialised deeper than any consumer reads, and how the floor is applied at read time, **remain implementation concerns** and are unchanged by this entry.
+
 ---
 
 ## 8. Cross-cutting behaviour
@@ -548,7 +560,17 @@ Every catalogue entity has a unique MBID. Re-ingesting an album is an upsert on 
 
 **9.4 — Genre and tag data.** Deferred from the MVP, but if it lands later it attaches to albums and artists and is worth leaving room for rather than bolting on.
 
-**9.5 — Handle reuse after deletion.** Hard deletion frees a handle. Whether it becomes immediately claimable affects whether old links resolve to a different person — a small decision with an impersonation edge case behind it.
+**~~9.5 — Handle reuse after deletion.~~ RESOLVED 2026-09-18. A deleted handle is reserved permanently and never becomes claimable again.**
+
+**Decided on the impersonation case rather than on tidiness.** Freeing `@darryl` means every old link, mention and follower memory resolves to a stranger, and **the product has no mechanism to signal the substitution** — the new holder simply appears to be the old one. Reclaiming a scarce string is worth less than that.
+
+**The mechanism holds the handle and nothing else.** A `reserved_handles` table of one column — the handle text, primary key — written by a `before delete` trigger on `profiles`. **It is deliberately not cascaded**, which is the entire point: it is the one row that must survive the deletion that creates it.
+
+**No user id, no email, no timestamp.** A reservation needs none of them, and the less the row carries the less there is to justify keeping. **The omission of `created_at` is deliberate** and breaks this file's usual convention: a timestamp would tie a handle to a moment and give a correlation handle where none is needed.
+
+**The tension with hard deletion is real and is answered rather than waved away.** `CLAUDE.md` calls an orphaned row a privacy failure, and a handle can identify a person — so retaining one after erasure needs a reason. **The reason is that the surviving row asserts nothing about anybody**: no link to a person, no way to recover who held it, no content. It is the same shape as the static reserved list that already refuses `admin` and `staff`. **This is recorded as defensible, not as settled forever** — `development-plan.md` Phase 7's security review should examine it again with the whole deletion path in front of it.
+
+**Interaction with §8.8 of `product-spec.md`**, which held handle rules open and named this question as part of them: **this resolves the reuse half only.** Character set, length and the reserved-name list are unchanged and still provisional.
 
 ---
 

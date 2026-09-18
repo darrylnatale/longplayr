@@ -109,14 +109,14 @@ A later Phase 3 slice owns both, together with the schema change that adds the e
 
 ### Privacy, safety, moderation
 
-| Decision      | Value                                                                                                                                      |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Visibility    | Everything public. No private accounts, no per-entry visibility                                                                            |
-| Deletion      | **Hard delete.** Collection, ratings, reviews, lists, follows all removed; averages recompute                                              |
-| Export        | Users can export their data                                                                                                                |
-| Blocking      | Cuts interaction (follow, like, feed, notifications) in both directions. **Does not hide content** — must be labelled truthfully in the UI |
-| Reporting     | Users can report reviews, lists, and accounts                                                                                              |
-| Admin actions | Soft-delete content; suspend or ban accounts. Content and users carry status fields from day one                                           |
+| Decision      | Value                                                                                                                                               |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Visibility    | Everything public. No private accounts, no per-entry visibility                                                                                     |
+| Deletion      | **Hard delete.** Collection, ratings, reviews, lists, follows all removed; averages recompute. **The handle is reserved permanently** (§6 Settings) |
+| Export        | Users can export their data                                                                                                                         |
+| Blocking      | Cuts interaction (follow, like, feed, notifications) in both directions. **Does not hide content** — must be labelled truthfully in the UI          |
+| Reporting     | Users can report reviews, lists, and accounts                                                                                                       |
+| Admin actions | Soft-delete content; suspend or ban accounts. Content and users carry status fields from day one                                                    |
 
 ### Catalogue
 
@@ -200,6 +200,62 @@ A later Phase 3 slice owns both, together with the schema change that adds the e
 
 Information hierarchy per surface. Visual treatment is `docs/design-reference.md`; this is about what exists and what matters most.
 
+### Home
+
+**The front door, and the first definition this section has ever carried for it. [DECIDED 2026-09-05 — Phase 5 slice 3. Approved scope; not implemented.]** §6 has defined nine surfaces and not this one, while the Feed entry below assigns the signed-in home page to Phase 5. This supplies the definition that absence left open.
+
+**Recently added shows albums that have a cover, and one album per artist. [DECIDED 2026-09-16 — approved scope; not implemented]** Browse's lead section applies neither rule today: `getRecentAlbums` is a plain recency query, so a tranche ingesting eight albums by one artist fills a third of the section, and albums with no cover render a placeholder in the product's most prominent grid.
+
+**The conflict this had with the cover-art prompt was put to the maintainer rather than resolved by inference**, because hiding uncovered albums removes the most visible route to the prompt that fixes them. **Hiding won**: the prompt remains reachable from search, artist pages and lists, and the lead grid stays clean.
+
+**Both were settled on 2026-09-16, along with two further questions the cycle raised.**
+
+~~A collaboration counts against its first credited artist only. _Watch the Throne_ spends JAY-Z's slot; Kanye West can still appear with a solo record. The stricter reading was rejected: counting against every credit lets one collaboration block two artists from the entire section, which is a large effect for a rule about visual variety.~~
+
+**REVERSED THE SAME DAY, ON EVIDENCE THE DECISION DID NOT HAVE. [DECIDED 2026-09-16]** The line above is struck rather than deleted, because it was the approved rule and the reasoning it gives is still the cost of what replaced it.
+
+**A collaboration counts against every credited artist.** An album is excluded when **any** of its credited artists has already appeared in the section, and appearing claims **all** of them.
+
+**What changed the answer was looking at the rendered page.** Recently added carried **four albums and one artist**: _A Transparent Night_ by Tame Impala, then three collaborations — with Justice, The Flaming Lips and ZHU — on each of which **Tame Impala is credited second**. Under the first-credit rule all four survived, because Tame Impala led only one of them. **One artist occupying four slots is precisely the failure this rule exists to prevent**, and the decision was taken without that case in front of it.
+
+**The cost the original decision named is real and is now accepted rather than answered.** A collaboration does block its guests: if _Watch the Throne_ appears, Kanye West cannot also appear with a solo record. **The evidence that reversed this shows the cost of the old rule and says nothing about the cost of the new one** — that remains a judgement, and it was made knowingly.
+
+**A middle reading was constructed and rejected, and it is recorded because it is not obvious.** Blocking on any credit while claiming only the first credit's slot fixes the Tame Impala case **and** leaves a guest free to appear later with their own record — strictly better on both known cases. **It was rejected because it still permits a guest to appear twice** before being claimed, a weaker guarantee than the section's purpose wants.
+
+**Which album survives is not a new decision.** The rule keeps the **first** album it sees for an artist, and the query is recency-ordered, so that is their most recent.
+
+**One interaction neither decision examined.** Three of the four albums in the observed case are remix or tour releases, and the cover rule may already remove some of them for an unrelated reason — uncovered albums skew to exactly that material. **The two rules compound here**, and the combined effect is unmeasured.
+
+~~**Read depth is a multiple of what is rendered — roughly eight times.** It scales with the section rather than with the catalogue, which a flat constant does not.~~
+
+**CORRECTED ON MEASUREMENT 2026-09-17.** The struck sentence had it backwards, and the product showed it: **Browse rendered 11 cells of 24 and Home 8 of 12.**
+
+**Depth scales with how clustered the catalogue is, not with how many cells a section draws.** Ingestion is **artist-batched** — a curated tranche or a discography expansion writes an artist's whole catalogue at once — so a recency window is really a window over a handful of artists. Measured on the deployed catalogue: **the 192 most recently added albums held 21 distinct artists**, with Dalida at 37, Radiohead 31 and Belle and Sebastian 24. Home and Browse must read past the same clusters whether they draw 12 cells or 24, so scaling depth off the render count is wrong by construction.
+
+**Measured rather than tuned by feel**: reading 192 yielded 11 survivors, 300 yielded 15, 400 yielded 23, 500 yielded 29 and 700 yielded 47. **Depth is now a fixed 750**, chosen for headroom rather than sufficiency — 400 would fill the section today, and one more large discography landing in front of it would silently shorten the grid again.
+
+**The cover filter was measured and cleared as a cause**: only 22 of the 240 most recent albums lacked a cover.
+
+> **⚠️ This is a scan, accepted knowingly.** There is **no index on `created_at`**, so the read sorts most of the table on the product's two busiest pages. At roughly a thousand albums that costs nothing and **it does not survive growth.** The replacement is known — ask the database for one album per artist directly, bounded by artist count rather than album count — and it needs a migration, which was deliberately not taken here.
+
+**When it still cannot fill, the section under-fills rather than scanning further.** A tranche of uncovered albums by a single artist can defeat any depth, and **an honest short grid is better than an unbounded scan** on the product's front door.
+
+**The two rules are independently reversible.** They are separate options on the query, not one fixed behaviour, because **they move in opposite directions over time**: the cover rule does less as artwork coverage improves and more as catalogue depth grows. Reversing either must be a change at the call site rather than surgery on the query.
+
+**Home and Browse take the same rules at different sizes.** They already read the same query, and §6 holds that the two must never give different answers about what is recent.
+
+**One tension recorded rather than waved away.** Uncovered albums skew toward remixes, demos and live records — measured at 13, 4 and 4 of 45 — and coverage falls as discography depth grows. **So this rule systematically hides that material, and hides more of it over time**, which cuts against §8.9's completion-oriented depth principle and against wanting a catalogue that is not mostly-mainstream. It is accepted with that cost stated.
+
+**An orientation surface carrying one discovery section — not a second catalogue wall.** It shows **Popular this week** (§8.3) and nothing else of the catalogue: no Recently added, no catalogue-size line, no pagination, sorting or filtering. Browse owns the wall and is unchanged. **Home reads the same result Browse reads**, so the two cannot give different answers to what is popular, and it shows **twelve** albums where Browse shows its own larger count. It carries a route onward into the catalogue, which Phase 5's definition of done requires rather than leaves optional.
+
+**The same discovery content for every viewer who can see any.** Signed out, and signed in with a completed profile, both get it — and **the surface does not change shape with the viewer's follow graph.** Following nobody and following people see the same front door. That is a decision rather than an omission: the follow graph is the Feed's subject, the Feed below already distinguishes _following nobody_ from _following people who have done nothing_, and a second follow-conditional surface would answer the same question in two places and let the two drift. `MobileTabBar`'s own reasoning applies to a page as much as to a tab — a destination that moves under the reader is one they have to re-read every time. **No follow-count query, no suggested accounts, no taste overlap, no personalisation.**
+
+**The signed-in-without-a-profile state is untouched.** Decision E makes a completed profile a precondition for collecting, so that state asks for a handle and nothing competes with it.
+
+**When Popular returns nothing the section is not rendered at all** — no heading, no panel, no placeholder, no zeroed count — and the page is exactly what it was before. This is the rule this document already applies to absent favourites and to the Feed's empty states, and Browse already applies it to this same signal. **The Feed's empty-state copy is not borrowed**: the Feed explains why _your_ feed is empty because that is a fact about you, while an absent chart is a fact about the catalogue, and the answer to that is silence.
+
+**Not in scope for the slice that defines this surface:** _Highest rated this week_, which remains Phase 5 work; any change to the Feed; any change to Browse; blending; and everything §10 holds as recorded direction.
+
 ### Album page
 
 Primary: artwork, title, artist, year, average rating with count. Then: your entry controls — add / rate / like / review / relisten, and edition if you care. Then: tracklist and editions. Then: reviews from others, most recent first. Then: outbound streaming links.
@@ -234,6 +290,30 @@ Primary: name and discography as an artwork grid. **One interleaved chronologica
 Sorting by popularity waits for the popularity layer in Phase 5.
 
 **The interleaved run stands at the immediate depth boundary, and is a known casualty of the long-term one. [2026-08-23]** "Never grouped by type" was decided when no artist held more than three releases. At the boundary in §8.9 — albums, EPs and mixtapes — a major artist reads as roughly ten to twenty items and the run stays readable. If depth later admits live albums and compilations, sixty items interleaved chronologically with eighteen albums is not a readable run, and this decision reopens. **It is not reopened now**, and it must not be pre-emptively redesigned; see `design-reference.md` §12.
+
+**The page fills its own discography on first view. [DECIDED 2026-09-07]** Opening an artist longplayr has not yet expanded **enqueues a discography expansion after the response is sent**, and the page itself is unchanged in shape: it renders immediately from the albums already held, and newly discovered ones appear **on a later view**. This is the album page's hydration behaviour applied to a second surface, not a new one.
+
+**While an expansion is outstanding the page says so**, in one quiet line and the same register as the album page's _"Fetching the tracklist from MusicBrainz. Refresh in a moment."_ The reasoning transfers exactly: a page showing one album and saying nothing **implicitly claims that artist has one album**, which is a fact longplayr has not established, and a bare silence reads as a defect rather than as work in progress.
+
+**The line now distinguishes three states, and the missing one was a lie by omission. [DECIDED 2026-09-13 — DECIDED AND DELIBERATELY UNBUILT at the time of writing]**
+
+**The defect.** _"Fetching the rest of this discography"_ rendered whenever an expansion was outstanding, and **nothing rendered when one had terminally failed** — so a discography truncated by a transient upstream error **presented itself as complete.** Radiohead sat in that state for six days after three attempts inside 47 minutes against MusicBrainz load shedding.
+
+| The reader is in this position                                           | The page says                                                                         |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| More is coming — never attempted, backing off, or re-queued by the sweep | _"Fetching the rest of this discography from MusicBrainz. Look again in a moment."_   |
+| **More is coming, but not soon**                                         | **"Couldn't finish fetching this discography from MusicBrainz. It will be retried."** |
+| Nothing more is coming                                                   | Nothing                                                                               |
+
+**Three states collapse into one rendering because the reader's action is identical** — come back — **and the fourth differs in kind.** This is the same judgement §6 already applies elsewhere: the page states a fact about longplayr's knowledge, not a report on a job queue.
+
+**"Look again in a moment" earns its horizon now and did not before.** It was written when refreshing could not help; a later view drains a job, so the sentence is both true and actionable. **The failure line carries no horizon at all**, deliberately — the retry depends on a sweep whose timing is not promisable, and an unhonourable horizon is exactly the defect being fixed.
+
+**The error itself is never shown to a reader.** `503 for /release-group — server busy [zone=global remaining=13/15]` is diagnostic text for an operator, and belongs on the surface in `architecture.md` §17a.
+
+**This resolves the question the entry below leaves open** — _"whether an artist page should signal in-progress enrichment at all"_ — in the affirmative, and adds that **it must also signal enrichment that stopped.** The rest of that paragraph stands.
+
+**There is no spinner, skeleton, "load more" control or other new interaction.** A progress indicator would promise a completion time the one-request-per-second ceiling cannot honour — an artist with a hundred release groups queued behind other work may take minutes — and inventing an interaction model is not what this buys. **Whether an artist page should signal in-progress enrichment at all is worth revisiting once real use has been observed; the line above is the honest minimum, not a settled treatment.**
 
 ### Profile page
 
@@ -362,6 +442,16 @@ A dedicated page listing events directed at you: new followers, likes on your re
 
 This exists because likes and follows deliberately generate **no feed events**. Without a notifications surface they would be invisible entirely, and a user could be liked fifty times without ever knowing.
 
+**A follow notification carries a follow button. [DECIDED 2026-09-16 — approved scope]** Someone follows you and you can follow them back **without opening their profile**, which is what the page otherwise forces.
+
+**It shows live state, not the state at the time of the notification.** From somebody you already follow it reads _Following_ and unfollows if pressed — **the same component and the same semantics as the profile**. The notification stays a truthful record of a past event and the control stays a truthful control of the present, which are two different things and should not be conflated.
+
+**Hiding the button once satisfied was rejected**, though it looks tidier: an old notification would then **silently change what it shows**, and _"already followed"_ would be indistinguishable from _"this row has no button"_. **A disabled marker was also rejected** — a control that cannot be used is worse than one that can.
+
+**This is the follow notification only, and deliberately not a general pattern. [DECIDED 2026-09-16]** A liked review and a liked list have **no obvious counterpart action**, so defining one now would be designing for a need nobody has expressed — and `§10.6`'s warning about how many controls a row can carry before it stops reading as a list applies here as much as to a tile. **Both keep their existing link through to the thing that was liked.**
+
+**The cost is a query shape rather than a feature**, and the trap is named because the codebase has recorded it twice already. The page needs the viewer's follow state for **every actor on it**, and `getMyFollow` is single-subject — calling it per row is the N+1 the feed query and the counting contract both warn against. **One batched lookup per page**, and the notification read does not learn who is reading: the follow state is fetched beside it rather than embedded in it.
+
 ### List page
 
 Title, description, author, like count. Then the albums — numbered if ranked, plain grid if not.
@@ -394,6 +484,111 @@ Reports queue with content preview and actions (dismiss, remove, suspend, ban). 
 
 ---
 
+### Settings **[DECIDED 2026-09-18 — approved scope; not implemented]**
+
+**There is no settings surface at all today**, and account deletion — a `CLAUDE.md` non-negotiable and a Phase 7 obligation — has nowhere to live. `/settings` is created to hold it.
+
+**It contains account deletion and nothing else.** No display-name editing, no avatar upload, no preferences. Those are separate work with separate decisions; a settings page is not a licence to fill it.
+
+**The surface was already anticipated.** `settings` sits in the handle blocklist as a routing collision, so the handle system reserved the path long before anything was built there.
+
+| Element        | Behaviour                                                                                                                            |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Access         | Signed-in only, and acts on the viewer's own account. There is no route to delete anyone else's — admin-initiated removal is Phase 6 |
+| What it says   | Plainly what deletion does: immediate, permanent, everything goes, **and the handle can never be used again** — including by you     |
+| Confirmation   | **Type your own handle.** Not a password                                                                                             |
+| After deletion | Signed out, returned to the signed-out home page                                                                                     |
+
+**Confirmation is the handle rather than the password, and the reason is structural.** The stack is email/password **plus Google**, and a Google-authenticated account has no password to re-enter. **A confirmation half the users cannot complete is not a confirmation.** Typing the handle is universal, deliberate, and hard to do by accident.
+
+**Deletion is immediate and total. No grace period, no soft-delete, no recovery window** — the non-negotiable says hard delete, and an account that can be restored is not deleted.
+
+**What survives, and it is two things.** The reserved handle (`data-model.md` §9.5), and `catalogue_additions` rows with their user reference cleared — already designed that way, because the record of what entered the catalogue matters when the person is gone and carries nothing personal once the reference is null. **Nothing else survives.**
+
+**What disappears from other people's surfaces is correct, not collateral.** Likes by the deleted account vanish and counts drop; their follows vanish and follower counts drop; their reviews, ratings, lists and activity vanish. **Album averages need no work at all** — they are computed on read, so there is nothing materialised to go stale.
+
+**Deletion generates no feed event.** The feed invariant records interactions; this removes them.
+
+---
+
+### Browse everything **[DECIDED 2026-09-16 — approved scope; not implemented]**
+
+**There is currently no way to see the whole catalogue.** Browse is two fixed sections with no pagination and no sort, so a record that is neither recent nor externally popular is reachable only by already knowing to search for it. That is F-005, and at 948 albums it is a real gap rather than a theoretical one.
+
+**Decided: a paginated catalogue-wide surface, reached from Browse, sorted only by things the catalogue itself owns** — recently added, release year, title.
+
+**There is no popularity sort, and that follows directly from the prominence decision in §8.3.** An external score exists to complete a chart, never to order a surface. Offering it as a sort would reintroduce by the back door exactly what that decision removed from the front.
+
+**Two constraints inherited rather than invented.** §8.9 holds that **absence of an external signal must never gate discovery**, so a see-everything surface must include albums whose `popularity_score` is null — which is every self-service addition, and which Browse's Popular section excludes by design. And the grid density, captions and artwork sizing all follow `design-reference.md` §11.5 and §11.6 unchanged; **this surface introduces no new grid.**
+
+**Four sorts, and artist is the one the decision did not originally name. [DECIDED 2026-09-16]** Recently added, release year, title **and artist** — because a catalogue wall is the surface where walking by artist is most natural, and the ordering rule for it is **already decided and reused rather than re-argued**: sorted by the album's own `display_credit` rather than an artist's `sort_name`, so _The Clash_ files under T. That was settled on 2026-08-21 for the collection, on the grounds that the alternative needs two joins — unreachable in one PostgREST query — and is **undefined for a joint credit**, which has two sort names and no rule to choose between them. **The same reasoning holds here unchanged.**
+
+**It gets its own sort vocabulary rather than the collection's. [DECIDED 2026-09-16]** The six collection modes include `rating` and `listened`, which **a catalogue has no version of**, and its `added` means _when you added it_ where a catalogue's means _when the catalogue got it_ — **the same word for two different facts.** Sharing the type would let this surface express states it must then reject at runtime.
+
+**Sixty per page, matching the collection. [DECIDED 2026-09-16]** The number is already chosen for a paginated grid of covers in this product, and a reader moving between a collection and the catalogue meets the same rhythm. **A larger page was considered** — a wall is for scanning rather than reading — and rejected because it would make this the heaviest single render in the product.
+
+**Reached by a "See all" link from Browse. [DECIDED 2026-09-16]** Browse keeps its two curated sections and gains one route onward. **A nav item was rejected**: the navigation is deliberately short, and _Browse_ and _All_ sitting beside each other would be two things a reader has to tell apart. **This also answers an open question** — `current-state.md` §11 carries _"whether Browse needs a length boundary at phone width"_, and a see-all link is that boundary.
+
+**Every sort runs both ways, and the direction is a second press on the active one. [DECIDED 2026-09-16]** The page first shipped with four sorts of **one fixed direction each**, which meant the catalogue could be read newest-first but never oldest-first — and `§6` had already decided for the artist page, on 2026-08-20, that release date is wanted **both** ways.
+
+**All four rather than release date alone.** Reversing only the axis that was asked about would leave three that behave differently for no reason a reader could infer. **The cost is eight addressable states instead of four**, and that one of them — oldest added first — is probably the least useful ordering the catalogue has.
+
+**Direction is expressed by pressing the sort that is already active**, with an arrow on it showing which way it runs. **No second control**: the row stays four items, the arrow appears only on the active sort where it means something, and a page that currently has one control keeps having one.
+
+**"Reversed" is relative, because the natural direction differs by axis.** Recently added and release year default **newest first**; title and artist default **A–Z**. The address omits whichever is the default, so **each ordering still has exactly one URL** — the rule the page already applies to its default sort and its first page.
+
+**Undated releases stay last in both directions, and this is inherited rather than decided.** §6 settled it for the artist page on 2026-08-20 with the reason that reversing them to the top of an oldest-first run would make them read as **the earliest releases rather than releases with no date**. The catalogue page already encodes half of it; the direction flip leaves it alone.
+
+**Only the leading clause flips.** Reversing the artist sort gives artists Z–A while **each artist's own albums still read A–Z**, because the tiebreakers are what make the ordering total and stable across a page boundary — and a reader reversing "artist" is asking about artists, not about titles.
+
+**Larger captioned cells, because the sort control requires them. [DECIDED 2026-09-16 — returned from implementation]** The page was first built on the caption-free density that `design-reference.md` §11.5 calls the record-shelf wall, and **rendering it showed the mistake**: three of the four sorts — artist, title and year — order the grid by data that density does not display, so the page reordered itself for reasons **the reader could not see**. §11.5 ties captions to `relaxed` cells and forbids them on `standard`, where a cell tops out near 105px and a credit is unreadable, **so there is no middle option**. Legibility wins over density on the one surface whose purpose is finding a specific record.
+
+**Two alternatives were considered and rejected.** Keeping the dense wall and **dropping the sort control** — defensible, since a caption-free grid is the product's visual identity, but it removes the thing that makes a 948-album page usable. And keeping both and accepting the opacity, which would leave a control that changes the page for unstated reasons.
+
+**Deliberately not decided here:** whether a chosen sort persists across visits, and whether the page ever gains filters — `docs/product-feedback.md` F-041 and F-042 both propose them, and **filtering a surface before it exists is the wrong order.**
+
+### Readable URLs **[DECIDED 2026-09-16 — approved scope; not implemented]**
+
+**Album and artist URLs become readable slugs, and the identifier form stops resolving.** A clean switch rather than a dual-resolving one.
+
+**The timing is the argument.** Four profiles, no real users, and nothing meaningfully shared — so the cost of stranding existing links is **as close to zero as it will ever be**. The identical change after launch would break real bookmarks and real shared links, and would then be worth the redirect machinery this deliberately skips.
+
+**Three constraints this must satisfy, none of them settled here.** A slug is derived from catalogue data, so **slug collisions are inevitable** — two albums share a title far more often than intuition suggests — and the resolution must be deterministic rather than insertion-ordered. The catalogue is **read-only downstream of MusicBrainz**, so an upstream rename changes the source of a slug; whether a slug is stored once or regenerated is an open design question with different failure modes either way. And the MBID remains the **canonical identity** in every case — `architecture.md` §19.1 holds that provider identifiers are enrichment and never identity, and **a slug is weaker still: it is a label, not an identifier.**
+
+### Reaching an artist from a credit **[DECIDED 2026-09-15]**
+
+**A printed credit is a route to the artist, on every surface that prints one.** This is a cross-surface rule rather than a property of one page, recorded here because the defect it fixes was invisible exactly because no surface owned it.
+
+**The defect.** An artist credit rendered as plain text everywhere except the album page. From a grid — Home's discovery section and Browse's captioned lead — the credit was dead text, so **reaching an artist required opening one of their albums first and clicking through from there.** The artist page is `design-reference.md` §5.4's primary surface for this product, and it had one route in.
+
+**Decided: a credit renders as one link per credited artist, and the album page's existing treatment is the model.** The album page already renders `album_artists` names, each linked, comma-separated, falling back to the flat `display_credit` string only when no artist rows exist. That treatment is extended rather than reinvented, so the same record describes its artists the same way wherever it appears.
+
+**The cost is paid in text fidelity on multi-artist records, and it is accepted with the reason stated.** `display_credit` preserves the credit **as printed on the release** — the join phrase and any credited-as spelling. The joined artist names are the canonical ones. Measured against the fixture catalogue, `Jay-Z & Kanye West` renders as `JAY-Z, Kanye West`: the separator changes and so does the spelling. **Single-artist albums are unaffected and are the overwhelming majority**, so the divergence appears only where several artists are credited — and there it buys the thing the rule exists for, which is that **every** credited artist becomes reachable rather than only the first.
+
+**Parsing the credit string was never available.** It is a display string, not a delimited list, and treating it as one would invent structure the catalogue does not hold.
+
+**This trade is not new, and the record should not imply it is.** The album page has made it since it was built. What changes is where it applies, not what it does.
+
+**The cost is larger than the sentence above, and the fuller version was established at STEP D and ratified here rather than discovered later. [RETURNED TO STEP B AND RE-RATIFIED 2026-09-15]** The paragraph above is left as written because it is true; what it missed is that the divergence is not always cosmetic. `display_credit` is the credit **as released** and `artists.name` is the **current canonical** name, so where MusicBrainz has renamed an artist the two are **different names for the same person**, not two spellings of one. `AlbumGrid` already argues this case in writing — _"the record really was credited to Kanye West, and the catalogue is read-only downstream of MusicBrainz, so the two names legitimately differ"_ — and under this decision that credit line **is replaced by the current name, and on that artist's own page it disappears entirely**, because it then equals the page's subject and is suppressed.
+
+**That loss is accepted deliberately, with the alternative in front of it.** Linking the whole credit string to the primary artist would have preserved the as-released text exactly. It was rejected because on an artist page a collaboration credit would then link **back to the page being viewed** rather than to the collaborator — making the single most useful link on that surface the one the rule does not provide. **Reachability of every credited artist is the thing this decision exists to buy**, and it is bought here at a known price rather than an unexamined one.
+
+**The evidence is partial and is recorded as such.** The divergence is confirmed on the fixture catalogue as separator and casing (`Jay-Z & Kanye West` → `JAY-Z, Kanye West`). **The rename case is documented in `AlbumGrid` but was not verified against deployed data**, for which no read path exists from the development host.
+
+**Pseudo-artists are not linked, and this is a deferral rather than an answer. [DECIDED 2026-09-15]** A `Various Artists` credit renders as plain text. Every compilation in the catalogue carries it, so linking it would point many tiles at a single page.
+
+**The reasoning is recorded because the adjacent question must not be answered by accident.** `current-state.md` §11 holds _whether depth applies to pseudo-artists — `Various Artists` above all_ open, and states it must not be answered implicitly. `isExcludedFromExpansion` already prevents an artist-page view from enqueueing expansion for that identifier, so **a link would not itself have answered the depth question** — the suppression here is the narrower choice taken deliberately, so that neither the link nor its absence is mistaken for a ruling. It reuses the same single identifier, and **it is one identifier rather than a class**: MusicBrainz's other special-purpose artists are not covered, for the reason `artist-depth.ts` already records.
+
+**Scope.** The rule binds **Home**, **Browse**, the **list page's ranked rows**, the **artist page** and **search's album results**. It does not bind the **collection grid**, which carries no credit at all by §11.9.
+
+**[SEARCH DEFERRAL CLOSED 2026-09-15.]** This paragraph previously excluded search as _"a known inconsistency for the duration of that deferral"_. The deferral lasted one cycle and is now discharged, so the rule binds every catalogue surface that prints a credit. **The sentence is corrected rather than deleted**, because the inconsistency was real while it stood.
+
+**The upstream panel is excluded by structure, not by choice, and that is a stronger statement than a deferral.** `UpstreamCandidate` carries a flat `credit` string fetched from MusicBrainz for albums **the catalogue does not hold**. There are no `album_artists` rows to resolve, and frequently no artist page to point at — so the panel **cannot** link a credit even in principle, and will not become able to by any decision short of ingesting the album. **This is not revisited when search's local results change.**
+
+**[CORRECTED 2026-09-15 — this said the artist page was unaffected, and that was wrong.]** The artist page suppresses a credit only when it **equals** its own subject, so **collaborations and renames both still render there** and it shares the same `AlbumGrid`. It was in scope whichever way the decision above went. The original sentence is corrected rather than silently replaced because it was the premise of a scope answer.
+
+**Two surfaces that print no credit at all were also found, and they are why this costs less than expected.** Browse's _Popular_ section and an unranked list both render caption-free grids, so neither needs an artist relation and neither changes.
+
 ## 7. Explicitly deferred
 
 | Deferred                    | Reasoning                                                                                                                                                                                                                                                        |
@@ -420,6 +615,20 @@ Listed rather than assumed. Each names who it blocks.
 
 **~~8.3 — What "popular this week" means.~~ RESOLVED** — defined below, by me rather than by you, so it's the most likely thing in this document to want changing once there's real activity to look at.
 
+**One half of it is now answered, and it is a question this document had never asked. [DECIDED 2026-09-13]** §8.9 decided that **membership never depends on popularity**, and that the absence of an external signal implies nothing about an album's merit. **The converse was unaddressed: does a high external score justify prominence?** Browse behaved as though it does — that is what the fill ordering asserts.
+
+**Answered narrowly: external prominence is a legitimate way to _complete_ a chart, and not a reason to _lead_ a surface.** The external fill and its floor of 20 stand exactly as decided; what changes is that the section carrying mostly-external results is no longer the page's lead. See `design-reference.md` §11.11.
+
+**Hardened from a narrow answer into a standing principle. [DECIDED 2026-09-16]** The paragraph above answered this **contingently**, as part of a cold-start treatment with an exit. It is now unconditional: **an external popularity score exists only to stop a surface looking empty, and never orders a lead section.** Not "not yet", and not "not while the internal chart is thin" — **never**.
+
+**What may still lead is a different thing entirely.** longplayr's own engagement data — what its users actually collect and return to — remains a legitimate basis for prominence. **This decision is about the external signal alone**, and it must not be read as a ruling on the internal one.
+
+**The consequence is that `design-reference.md` §11.11's exit condition narrows rather than disappears.** That section frames "Recently added leads" as reopening when the internal chart reaches §8.3's floor of twenty. **It may still reopen on that trigger** — but what would take the lead is internal activity, and **the external fill can never take it back.**
+
+**Deliberately still not settled:** how longplayr's own engagement popularity and external source prominence reconcile, or whether they become one field or two. §8.9 holds that open, and **this decision does not close it** — it constrains what the external half may be used for without deciding how the two are stored.
+
+**Measured, because the decision rests on a number rather than a preference.** On 2026-09-13 the internal `popular_this_week` chart held **7 entries against a caller limit of 24** — with **4 profiles, 29 collection entries and 2 ratings** in the entire product. **The lead section was therefore roughly 70% external fill.**
+
 **Popular this week.** Count of **distinct users** who added an album to their collection or marked a relisten, where the _event_ occurred in the last 7 days — measured by `added_at`, not the user-supplied `listened_on`. Ranked descending; ties broken by all-time collection count, then album identifier for stability.
 
 Distinct users is the load-bearing choice: it stops one person relistening an album twenty times from manufacturing a chart position, and it means a user backfilling three hundred albums contributes at most +1 to each.
@@ -434,7 +643,37 @@ Ranking by the week's own ratings would be far too noisy at this scale — a sin
 
 **Cold-start fallback.** When either chart yields fewer than 20 albums from internal activity, the remainder is filled from the external popularity source. This is precisely what the `PopularitySource` abstraction exists for, and it's what makes the discovery surface work on launch day when there is essentially no internal activity at all.
 
+**The 20 is a floor on chart length. It is not a cap, and it is not derived from any consumer's request. [DECIDED 2026-09-05]** This clarifies the sentence above rather than amending it — the rule and its purpose are unchanged, and what is settled is a relationship the sentence never addressed. **The chart holds every qualifying internal album in internal rank order**; external entries complete it to 20 **only when internal activity yields fewer than that**, and are appended after the internal results rather than interleaved. **Internal results are never truncated to 20**, so a chart with 30 qualifying albums is 30 long. Like the feed's page size, the floor is subject to supply: 20 come back whenever 20 exist to come back.
+
+**A consumer's own limit is independent of the floor and caps separately.** Browse calls `getPopularAlbums(24)` and that 24 is a **rendering cap**, never a fill target: at an empty internal corpus Browse renders the 20 the floor produced, and the section grows toward 24 as longplayr's own activity accumulates. **The 24 is not a product decision and never was** — it is a grid default shared verbatim with _Recently added_, a section with no chart semantics at all, which is why it must not be read as setting the chart's length. **Do not reinterpret the 20 as a target derived from the caller's limit.**
+
 Recomputed hourly into a cached table rather than per request.
+
+**Slice 1 of Phase 5 is "Popular this week", and the definition above is implemented exactly as written. [DECIDED 2026-09-05]** This section anticipated wanting to change _"once there's real activity to look at"_, and **there is none** — the only internal collection data in existence is the twelve-entry staging design fixture. Revising thresholds against a corpus of one fixture user would be preference wearing the clothes of evidence. **This is not a judgement that the thresholds are right, only that nothing available can establish that they are wrong.** The trigger for revisiting them is unchanged and has not fired.
+
+**What slice 1 delivers.** Collection additions and relistens, distinct users, seven days, measured by `added_at`; **persisted as a cached chart and recomputed on a schedule rather than per request**; the cold-start fallback **completing the chart to a floor of 20** when internal activity yields fewer, subject to external supply; and **Browse's existing Popular section as the first consumer**, keeping its own caller limit of 24 as a rendering cap.
+
+**The chart reads collection data, not the feed, and that follows from this section rather than from convenience.** This section requires backfilled collection data to count — _"interest is still interest"_ — while the `activity` table exists precisely to **exclude** backfills, which is a `CLAUDE.md` non-negotiable. Sourcing the chart from `activity` would silently contradict a decided product rule. **Charts and the feed ask different questions about the same act.**
+
+**Excluded from this chart, restated because each was checked rather than assumed.** Ratings belong to _Highest rated this week_ and not here. **Album likes are excluded by this section already.** Reviews are not named by it. `list_created` postdates this section entirely and is a feed event rather than a collection interaction, so it does not count. Follows, review likes and list likes are not statements about an album.
+
+**Distinct-user counting is the entire anti-domination rule.** No weighting, decay or recency curve is decided and none is needed: this section's own two consequences — twenty relistens moving a chart by one, a three-hundred-album backfill adding at most +1 to each — follow from the count alone.
+
+**The deployed recomputation cadence is daily, and the hourly intent above stands.** Vercel's Hobby plan permits one cron execution per day. This is a **platform constraint recorded as a divergence, not a revision**: if the plan changes, hourly needs no further product decision. See `architecture.md` §8.
+
+**Slice 3 consumes this chart on the home page, and ships with it alone. [DECIDED 2026-09-05]** The home surface defined in §6 reads the same result Browse reads, at twelve albums, and **does not wait for _Highest rated this week_**. §3's core-loop table names "Popular / highly rated this week" as what serves discovery for a new user; that table records what serves each step rather than requiring every named item to exist at once, so shipping one is **partial delivery of that row rather than a contradiction of it**, and the row stays partially served until slice 2 lands. **Nothing about the chart, its floor, its refresh or its schedule changes for this**, and slice 3 introduces no migration.
+
+**[OPEN — raised 2026-09-05] _Highest rated this week_ as defined above is not computable from the current schema, and this is recorded rather than solved.** The definition needs to know when an album most recently received a rating, and nothing records that.
+
+- **`collection_entries` carries no rating-specific timestamp.** Its only timestamps are `added_at`, which is row creation, and `updated_at`.
+- **`updated_at` cannot stand in for it.** The trigger behind it is `BEFORE UPDATE … FOR EACH ROW` with no `WHEN` clause, and its whole body sets `updated_at = now()`, so it moves for a like, an edited `listened_on`, and a relisten — the relisten-count denormalisation issues its own `UPDATE` against the row.
+- **`activity` cannot establish it either.** `activity_one_rated_per_entry` admits at most one `rated` event per entry, so **re-rating creates no new event** and the surviving event's `created_at` is the _first_ rating's time. Clearing and re-rating deletes and recreates the event, producing a timestamp whose product meaning is not obviously the intended one.
+- **Backfilled ratings produce no `activity` event at all**, which is the same reason the sibling chart had to read collection data rather than the feed.
+- **The cold-start fallback is semantically unresolved for this chart.** The external source is a ListenBrainz listen-count signal; filling a _ratings_ chart from a _popularity_ signal is a category difference this section does not address.
+
+**None of this is decided here, and slice 3 does not touch it.** What "a new rating" means, whether a timestamp column is added and what a backfill of it would mean, whether the chart discriminator is widened, and what the fallback should be, **all belong to the slice 2 decision cycle.**
+
+**Deferred to later Phase 5 slices and not decided here.** _Highest rated this week_; the home discovery surface; **blending** internal and external signals rather than filling; and whether discovery charts carry an editorial voice. **§8.9's question of whether longplayr popularity and external prominence become one field or two is untouched and remains open** — slice 1 adds a materialised chart, and a stored query result is not a second popularity signal.
 
 **~~8.4 — Rate limit for self-service catalogue additions.~~ RESOLVED.** **30 per hour, 100 per day, per user.** **[DECIDED]**
 
@@ -458,8 +697,10 @@ This matters because the alternative would be a surprise: rating an album you'd 
 
 Markdown is deliberately excluded from v1: it adds a sanitisation surface, an editor, and a preview mode, for a product where the writing is short by nature. No spoiler mechanism — the concept doesn't transfer meaningfully to music. **[INFERRED on formatting; you specified length only.]**
 
-**8.8 — Handle rules and reuse.**
-Character set, length, reserved names, and whether a deleted account's handle becomes available again. Interacts with the hard-delete decision.
+**8.8 — Handle rules and reuse. [REUSE HALF RESOLVED 2026-09-18; the rest stays open.]**
+Character set, length and reserved names are **unchanged and still provisional**.
+
+**The reuse half is decided: a deleted handle is reserved permanently and never becomes claimable again.** Taken on the impersonation case — a freed handle makes every old link and mention resolve to a stranger, with nothing in the product to signal the substitution. The mechanism, the tension it creates with hard deletion, and the answer to that tension are recorded in `data-model.md` §9.5.
 
 ---
 
@@ -495,6 +736,36 @@ Character set, length, reserved names, and whether a deleted account's handle be
 - **Cap 2 retained** on the popularity seed as a temporary mechanism
 - **Additive expansion only.** No destructive reseed and no catalogue deletion: `collection_entries`, `favourite_albums` and `want_to_listen` all cascade from `albums`, so deleting a catalogue row deletes user data
 
+### Closing a gap means fixing it upstream **[DECIDED 2026-09-16]**
+
+**When the catalogue is missing something, longplayr's job is to notice the gap and route someone to fix it at the source** — never to author the metadata itself. A missing cover goes to Cover Art Archive; a missing release or artist goes to MusicBrainz. longplayr then collects the result through the ingest path it already has.
+
+**This is now a stated principle rather than an occasional habit**, which is the question F-008 raised: the answer kept being _"add it upstream"_ without that ever being written down.
+
+**It costs no rules, and that is why it works.** The catalogue stays read-only downstream of MusicBrainz, artwork stays single-sourced, nothing user-authored is stored here, and the material becomes permanent and benefits every consumer of those databases rather than only this product.
+
+**The first surface it authorises: an album page with no cover offers a route to add one. [DECIDED 2026-09-16]** The image lands at Cover Art Archive and the existing `fetch_artwork` job collects it with no code change. This is the public half of the operator worklist already shipped (`architecture.md` §17b) — the worklist tells the maintainer what is missing; this lets anyone looking at the record do something about it.
+
+**The prompt's rules, settled 2026-09-16.** It appears **only where Cover Art Archive has answered and holds nothing** — `absent`. Not on `pending`, where the fetch has not run and art may well be waiting; not on `failed`, which is our own error and is already being retried. **Every prompt shown is therefore a real task**, and the rule has a useful side effect: it makes the difference between _not fetched yet_ and _none exists_ visible to a reader for the first time, which is part of what F-038 asks for.
+
+**It is shown to everyone, signed in or not.** The work happens at MusicBrainz and needs an account **there**, not here, so a longplayr session is not what gates it and requiring one would turn away help.
+
+**No prompt is shown when the album has no representative release**, because there is no page to send anyone to. The operator worklist lists those rows with the reason, since a count that disagrees with its list is an operator's problem; **a reader does not need that and "no release to link to" is jargon on an album page.**
+
+> **⚠️ The prompt required a second decision to work at all, and it was found before building.** An album marked `absent` was **never re-checked** — `found` and `absent` were both treated as settled. So a cover uploaded after being prompted would have been **invisible to longplayr forever.** `absent` now re-enters the artwork sweep behind a staleness window; `architecture.md` §7 carries it and the reasoning, including why Cover Art Archive's **absence of any rate limit** makes it affordable. **A prompt without that is worse than no prompt.**
+
+**Recorded as direction and deliberately not scheduled:** the same treatment for a **missing release** — a reader who knows an album should be there is routed to add it to MusicBrainz. **Marked explicitly as a decision for later** at the point it was raised, and it must not be inferred into scope from the artwork decision above.
+
+> **⚠️ An unresolved conflict was opened by this decision and must not be answered by inference. [OPEN 2026-09-16]**
+>
+> The principle assumes anything longplayr wants is admissible upstream. **That may not hold.** The examples raised were **DJ mixes, remixes and bootlegs** — material MusicBrainz might not accept.
+>
+> **If longplayr ever holds what MusicBrainz will not, it must author that metadata**, which `CLAUDE.md` forbids outright: _"The catalogue is read-only downstream of MusicBrainz. No user-authored metadata, ever."_ **There is no third option**, so this is a genuine collision between a new principle and a non-negotiable.
+>
+> **The premise may also be largely wrong, and verifying it could dissolve the conflict entirely.** MusicBrainz appears considerably more permissive than assumed — secondary release-group types reportedly include **DJ-mix, Remix, Live, Compilation, Soundtrack, Mixtape/Street and Demo**, with **Bootleg** available as a release status. **This is unverified to this project's standard and must not be relied on**; it is recorded as a `[VERIFY]` row in `architecture.md` §18.
+>
+> **The question to answer is scope, not tooling:** can longplayr ever hold material MusicBrainz will not? It is filed as a question rather than settled here.
+
 **Singles: the boundary is decided, the permanence is not. [AMENDED 2026-08-23]** `CLAUDE.md` previously carried _"Singles are never ingested"_ as a non-negotiable. The exclusion stands for the initial boundary; **the permanence does not.** Completionism should not exclude material by release type as a matter of principle, and there are cases it must eventually reach: an artist who released only singles, a standalone single whose track appears on no album, a unique B-side, and obscure regional or promotional releases carrying material relevant to the eventual completion concept.
 
 **The distinction that has to be preserved is between the single _release_ and the unique _recordings_ it contains.** A conventional single whose A-side already exists on an album may never need to be a separate catalogue object; a standalone recording or unique B-side may eventually need representing as a discovery or completion object, or as a catalogue release. **Which of those is right is undecided and must be asked.** It converges on questions already open — `data-model.md` §11.10 on recording identity, and §10.7 with §11.12 on a track becoming a catalogue and discovery object without becoming a social one. Nothing here adds a `recording_mbid` column, and deferring stays cheap because stored payloads already preserve recording MBIDs (`architecture.md` §19.5).
@@ -509,6 +780,52 @@ Character set, length, reserved names, and whether a deleted account's handle be
 **Membership never depends on either.** An album must not become invisible or second-class because no external source has heard of it: measured on 2026-08-23, **all 27 self-service albums carried `popularity_score = null` and all 335 seeded albums carried a score**, an exact correlation, which put every hand-added record last in search and excluded it from Browse Popular outright. **Absence of an external signal must never gate membership, search visibility or discovery, and must never be read as low merit.** It may break ties.
 
 **`popularity_score` is not being redefined as engagement.** Whether these become one field or two is undecided, and it interacts with `architecture.md` §8, whose `PopularitySource` model assumes **one active source writing one field** — a shape that cannot hold two coexisting signals. Note also that longplayr's own popularity is **already partly specified**: §8.3's "Popular this week" counts distinct users who added or relistened, measured by `added_at`. **It deliberately excludes album likes**, which the direction above would include, and that divergence must be reconciled when the formula is decided rather than assumed away.
+
+**On-demand artist depth. [DECIDED 2026-09-07]**
+
+**The 62.5% finding above is addressed by expanding an artist's discography when someone opens their page**, rather than by a larger seed, a raised cap or a new source. The evidence is unchanged and is not restated: 163 of 261 artists holding exactly one album, against a Phase 1 definition of done that requires clicking through to an artist and browsing their discography.
+
+**It is triggered by first view, once per artist.** Opening an artist page enqueues an expansion **after the response**, for an artist that has **not previously had one attempted**. There is **no staleness rule and no revisit** in this decision, and failures are governed entirely by the existing job-queue retry policy rather than by a new one.
+
+**The guarantee is "once per artist for as long as its job record survives", and that is the approved rule rather than an approximation of it. [RATIFIED 2026-09-07]** There is no artist-level column recording expansion, and this slice deliberately adds none, so "has this been attempted" is read from the discovery job's own history in `ingestion_jobs`. **That makes the rule conditional on those rows persisting**, and the wording above is narrowed here to say so rather than promising a permanence the mechanism does not provide.
+
+**The condition holds today, established by measurement rather than assumed.** No production code deletes a job row — every access in the service layer is an insert, a select or a status update, and neither cron route purges. The five test files that empty the table are fenced to a local database by a setup guard that refuses to run against anything else. Nothing in any document records an intent to purge, prune or archive jobs, and the queue's own repair decision returns stranded rows to `pending` rather than deleting them. Growth creates no pressure either: roughly two to three rows per album, on the order of two thousand at the present catalogue.
+
+**What losing those rows would cost, since that is the question the narrower wording raises.** One MusicBrainz browse request per artist, once, incurred as those artist pages are next viewed and drained at background priority behind interactive work. **No album is duplicated and no data is corrupted** — re-expansion is idempotent, de-duplicating by release-group MBID and counting already-held albums rather than recreating them. **One effect is a repair rather than a cost**: an artist whose single attempt terminally failed, and which is otherwise permanently unexpanded, would get a fresh one.
+
+**A discography now refreshes on view when it is stale. [DECIDED 2026-09-16 — amends "no staleness rule and no revisit" above]** Opening an artist page re-queues expansion when the last one was long enough ago. **Work follows attention**: an artist nobody looks at costs nothing, and an artist people do look at stays current. This answers F-029, which observed that a release issued after an artist's first expansion would otherwise **never** appear.
+
+**It repairs terminal failure as a side effect**, exactly as the paragraph above anticipates — an artist whose single attempt exhausted its retries stops being permanently unexpanded.
+
+> **⚠️ The hazard this must be designed against, carried forward to its implementation cycle.** The _once per artist_ rule exists precisely to stop a page view restarting the retry policy — `attemptStateFor` has always warned against it, and the sweep owns failure retries for that reason. **A staleness window must not become that loop under another name.**
+>
+> **The distinction to preserve is that a refresh and a retry are different events.** A refresh is scheduled against elapsed time since a **successful** expansion; a retry is a response to failure and belongs to the queue. **If the implementation cannot tell them apart, it is wrong**, and the correct move is to return that to STEP B rather than ship the approximation.
+>
+> **Settled 2026-09-17, and the hazard above is what shaped all three answers.**
+
+**The window is 30 days, matching the artwork re-check.** `architecture.md` §7 already chose that figure for re-examining a settled-absent cover, and **one staleness idea is easier to reason about than two.** Seven days would roughly quadruple upstream traffic against a limit where exceeding one request per second returns `503` for **every** request from this address — and most artists release nothing in any given week.
+
+**Only a _successful_ expansion goes stale, and this is the whole answer to the hazard.** A terminally failed artist stays the recovery sweep's job. **So a page view can never restart the three-attempt policy**, and a refresh and a retry remain different events rather than the same event under two names. **Refreshing failures was rejected** despite repairing stuck artists sooner: it would re-queue a failing artist every time its window elapsed and somebody visited, which is a slow version of exactly the loop this rule exists to prevent.
+
+**The reader is told nothing.** The discography already shown is complete as far as the product knows; a refresh looks for **additions**. The existing status line — _"Fetching the rest of this discography…"_ — belongs to a genuinely unfinished first fetch, and reusing it would **claim the grid is incomplete when it is not**.
+
+**One thing the queue already anticipated.** The partial unique index covers only `pending` and `running`, and its own comment says _"a re-sync, say"_ — **a completed job does not block re-queueing**, so this needs no schema change. `ingestion_jobs.updated_at` supplies the completion time, so **no migration**.
+
+**The alternative was widening the boundary to permit an artist-level column, and it was declined.** That would make the guarantee unconditional and put artist state on the artist, at the cost of a schema change and a deployed migration. It remains available if a purge is ever contemplated, and **contemplating one is the trigger to revisit this**.
+
+**"Needs expansion" means no expansion has been attempted — not an album count.** An artist already expanded is as complete as the current boundary allows however few albums that yields, and **some artists genuinely have one album**; a count threshold would re-fire on them forever while an attempt record fires once and stops.
+
+**It populates the catalogue.** Discovered release groups are ingested as **minimally hydrated album rows**, exactly as the curated tranche does — not fetched and displayed as upstream results. The alternative would put objects on the artist page that cannot be collected, rated, reviewed or listed, in a surface that otherwise means _held_. It also makes the improvement shared: one reader opening an artist page enriches the catalogue for everyone.
+
+**The boundary is used unchanged and is not reopened.** Expansion applies `withinCurrentDepth` exactly as it stands, so **live albums, compilations, soundtracks and DJ-mixes stay outside it**. The 285-album difference this section already records **remains deferred and is not resolved here** — deciding it under cover of a reach improvement would be a boundary change wearing a different name, and nothing about the value of this depends on it.
+
+**Provenance does not matter.** The rule applies to every artist the catalogue holds, **whether they arrived through curation or through a self-service add**. `CLAUDE.md` holds that once an artist is included the goal is eventual completion of their in-scope body of work; an artist present because a user added one of their albums **is included**. The job kind's `curated` name is an artefact of where the capability was first used, not a policy boundary.
+
+**Pseudo-artists are excluded from automatic expansion, and that is a scope deferral rather than a ruling.** `Various Artists` above all. Whether depth applies to pseudo-artists is recorded as open and must not be answered implicitly — which is precisely what letting the trigger fire on every artist page would do the first time someone opened one. **If that question is later answered affirmatively the exclusion lifts without reopening anything decided here.**
+
+**The seeding cap is untouched, because it governs a different path.** `DEFAULT_MAX_PER_ARTIST = 2` belongs to the cold-start selection path and its own note already calls it a cold-start device rather than a catalogue rule; the expansion path never consults it. **A seeded artist held at two albums may therefore end up with a full discography**, which is intended and consistent with there being no permanent per-artist cap.
+
+**What this decision does not claim.** It does not make the artist catalogue complete, does not reopen the depth boundary, does not resolve pseudo-artist policy, does not introduce re-expansion or staleness, and does not establish that every MusicBrainz release group for an artist is now held. **It adds on-demand expansion within the boundary that already exists.**
 
 **Scheduling. [DECIDED 2026-08-23]** Catalogue composition is a **Phase 1 reopening, not Phase 5 work and not building ahead.** Phase 1's definition of done requires "click through to the artist, browse their discography", and a discography of one album does not satisfy it — the same shape of finding as the reachability reopening. **Discovery charts remain Phase 5 and remain undecided**, including whether they carry an editorial voice, which collides with §2's "not a score authority" non-goal. Nothing here decides how Browse Popular should behave once the null filter stops being defensible.
 
@@ -537,19 +854,52 @@ The curated starting set now exists in part. Its **first tranche is the 28 artis
 | **Ingest the 28 now**     | **RESOLVED.** Deferring had no exit criterion — this section decided there is **no target size** and that the list emerges from curation, so no measurable state exists at which the set becomes "ready". Against that, the tranche is verified in one run and **reversible today**, since no user holds a collection, favourite or wishlist entry on any curated album. That reversibility expires when real users arrive.                                                                                                                 |
 | **`K` may remain absent** | **RESOLVED.** The catalogue represents artists **through the albums it holds** — `artists` rows exist only via `album_artists`, created by album ingestion. K yields no album, so no artist row, so no page. The cause is **scope, not depth**: both her release groups are singles. **K stays in `CURATED_ARTISTS`** with her human-verified identity, so she is already present if the singles boundary ever moves. **Making artists exist independently of albums is a separate product and data-model change and is not part of this.** |
 | **Browse Popular**        | **DEFERRED, not accepted and not resolved.** Ingestion proceeds with current behaviour because nothing regresses: Popular is unchanged, and Recently added — which applies no null filter — surfaces the curated albums. **The question gets more pressing as the curated share grows**, since the lead section stays a pure external-chart artefact. It is not to be answered by implementation under pressure to unblock ingestion.                                                                                                       |
-| **Artwork backlog**       | **DEFERRED as an operational matter. Not a blocker.** No correctness or operational constraint exists: Cover Art Archive imposes no rate limit, the drain route already accepts a larger batch without code change, and a missing cover renders the designed placeholder. The honest cost is that curated albums show placeholders until the queue drains, which affects how the tranche **looks**, not whether it is **correct**.                                                                                                          |
+| **Artwork backlog**       | **[FALSIFIED then RESTORED 2026-09-07 — see below the table.]** **DEFERRED as an operational matter. Not a blocker.** No correctness or operational constraint exists: Cover Art Archive imposes no rate limit, the drain route already accepts a larger batch without code change, and a missing cover renders the designed placeholder. The honest cost is that curated albums show placeholders until the queue drains, which affects how the tranche **looks**, not whether it is **correct**.                                          |
+
+**The artwork-backlog deferral above was falsified, and is restored rather than revised. [2026-09-07]**
+
+**It was not wrong when written.** It rested on artwork competing with nothing: Cover Art Archive imposes no rate limit, so a slow artwork queue cost appearance and not correctness. **On-demand artist depth (`aba3a07`) introduced a competitor into the same priority band**, and each successful expansion enqueues roughly eight artwork jobs whose `id` outranks the next artist's discovery job. Measured on the deployed database after three artist pages: 20 pending jobs, 18 of them artwork, with 2 discovery jobs never attempted. **At that point the backlog was no longer only about how the catalogue looks — it was stopping metadata being fetched at all.**
+
+**What restores the deferral is separating the bands, not draining faster.** Bulk artwork now enqueues below metered work (`architecture.md` §7, _Queue fairness_), so **bulk** artwork can no longer displace discovery. Artwork a reader is actually waiting on — a self-service add, or an album page being opened — still outranks it, which is the rule working rather than an exception to it. **Throughput is unchanged and is deliberately still deferred**: roughly four artwork jobs clear per nightly cron run, and a large backlog still takes days. With contention gone, that is once again a question of appearance rather than correctness — which is exactly what this cell claimed.
+
+**The lesson worth keeping is about the shape of the deferral, not this instance.** A deferral resting on "nothing else competes for this" expires silently the moment something does, and nothing in the queue announces that. **The next kind to share a band will falsify it again.**
 
 **What ingestion does not settle.** It does not make the 28 a whitelist, does not close the curated list, does not decide the expansion policy for later tranches, and does not endorse the current Browse composition. **A tranche being ingested is not the set being finished.**
 
 **Still unresolved:** the rest of the curated list — the first tranche above is decided, the remainder is not; the definition and algorithm for "complete"; the eventual treatment of singles; regional duplicates, alternate editions, remixes, promos, appearances and reissues; which further release types are admitted and when — **`broadcast` is rejected in code and discussed in no document**; how Discogs would supplement MusicBrainz as enrichment; the longplayr popularity formula and whether likes count; whether the two popularity concepts are one field or two; how discovery consumes popularity; and whether discovery charts receive an editorial voice.
 
-**8.10 — Upstream search: breadth, and whether it matches artists. [PARTLY RESOLVED — raised 2026-08-21; the reachability half decided 2026-08-22]**
+**8.10 — Upstream search: breadth, and whether it matches artists. [PARTLY RESOLVED — raised 2026-08-21; the reachability half decided 2026-08-22; the breadth half decided 2026-09-06. Artist matching remains open, and attribution of the failures observed in use remains unestablished]**
 
 Two limitations of the "not in longplayr yet" panel, both observed in use, neither previously recorded.
 
-**It shows at most five candidates**, hard-coded, with no way to ask for more — and it appears at all **only when the local catalogue returns fewer than five album matches**. So an album that exists upstream can be unreachable simply because five local records matched the same words. The local catalogue search itself returns up to 20 albums, 8 artists and 5 users, so the five is specific to the upstream panel.
+**It shows at most five candidates**, hard-coded, with no way to ask for more. The local catalogue search itself returns up to 20 albums, 8 artists and 5 users, so the five is specific to the upstream panel.
+
+**[MECHANISM ESTABLISHED 2026-09-06] The paragraph above is an incomplete account of the breadth limit rather than a wrong one, and the half it omits is the larger one.** The display cap was recorded; **the size of the pool that cap slices was not, and appears nowhere in this document.** `searchUpstream(query, limit)` requests **`limit * 2`** release groups from MusicBrainz, so the caller's display limit of five produces an upstream pool of **ten**. That pool is then filtered twice before anything is shown — through `classify().inScope`, and again to remove every MBID the catalogue already holds — and only the survivors are sliced to the display limit.
+
+**Three consequences, established by reading the code rather than inferred from any observation.** A displayed count below five is produced by **filtering**, not by upstream supply, so **an observed four-result panel cannot be attributed to the display cap alone** and establishes nothing about how many matches exist upstream. The pool is fixed at ten regardless of catalogue size while the already-held filter removes a growing share of it, so **the defect deepens as the catalogue does**. And the multiplier is undocumented — no comment, no document, no stated reason — which is **the structural defect being corrected**, rather than the number five.
+
+**[CORRECTED 2026-09-05]** This paragraph also read _"and it appears at all **only when the local catalogue returns fewer than five album matches**. So an album that exists upstream can be unreachable simply because five local records matched the same words."_ **That gate was removed on 2026-08-22 and shipped**, and the sentence has been describing behaviour that no longer exists since. `shouldOfferFallback` takes no result count at all — the panel is offered for any non-empty query from a signed-in visitor — and its own comment records that a future caller cannot reintroduce the gate without changing the signature. **The five-candidate cap is untouched and remains open**; only the unreachability half was fixed. The original text is preserved here rather than deleted.
 
 **It does not match artist names.** The typed string is handed to MusicBrainz's Lucene index for release groups, whose default field is the release-group **title** — so typing an artist returns titles containing that word, not that artist's albums. Field-qualified syntax (`artist:"…"`) is the documented route and would likely work today as an undocumented power-user trick, but **this must be verified against the live API before anything depends on it** — the `referencedTable` finding is the standing reminder that a documented behaviour is not a verified one.
+
+**Breadth is decided. [DECIDED 2026-09-06]**
+
+**The panel's job is to let a user reach the specific record they came for.** It is a retrieval tool — not a discovery surface and not a representative sample — and its success criterion is reachability of a known target rather than breadth of selection. This is the footing the reachability half was already decided on in 2026-08-22, and it is stated explicitly so that no implementation settles it by default.
+
+**Fetch depth and display limit become independent, because they answer different questions.** How much MusicBrainz is asked for is a question about surviving two filters; how much is shown is a question about a section deliberately subordinate to the local results above it. A multiplier let the second silently determine the first.
+
+- **MusicBrainz is asked for 25 release groups**, by an explicit constant rather than `limit * 2`. **A deeper fetch costs nothing against the constraint that governs everything else here**: the rate limiter serialises _requests_, not results, so twenty-five rows and ten rows are the same single request. Twenty-five is MusicBrainz's own default limit, and that is why it was chosen — it depends on no assumption about the API's maximum, which cannot be read from bundled documentation and cannot be verified live under the contact rule. **It is a judgement of proportionate headroom — two and a half times the display — and is not an empirically established sufficient depth.**
+- **The panel displays up to 10 surviving candidates.** Ten is `searchUpstream`'s own signature default; the caller's five was the undocumented narrowing. Local catalogue search returns up to 20 albums, so ten keeps the panel visibly subordinate. **It is not an empirically optimal number**, and no measurement supports it over any nearby one.
+
+**Nothing else about the panel's matching changes.** The query string handed to MusicBrainz is unchanged — no field qualification, no artist matching. `classify().inScope` and the already-held filter keep their current semantics, and MusicBrainz's own relevance ordering is preserved. **The response's `count` and per-result Lucene `score` remain unused and are deliberately not surfaced**: `count` counts upstream matches _before_ both filters, so any figure shown would state a denominator the panel cannot deliver from, and ranking or filtering on `score` would be the broader relevance redesign `architecture.md` reserves.
+
+**"Show more" is deferred with a reason, not merely left unaddressed.** Once the pool is twenty-five and the display is ten, a show-more would be **meaningful** rather than a re-slice of the same ten — which is what it would have been before this decision. It is still not built, because its value cannot be assessed until a deeper fetch has been observed, and **both outcomes argue against building it now**: if depth plus a larger display resolves the reported failures it is unnecessary interaction on a subordinate section, and if it does not then the residual failures are artist-shaped and a show-more over a title index would not have fixed them either.
+
+**Artist matching is not decided here and is not implemented.** The paragraph above stands unchanged, its precondition included: field-qualified syntax **must be verified against the live API before anything depends on it**, and this decision does not discharge that. It was examined and deliberately left. Re-ranking the fetched results by their `artist-credit` is available at no cost, since the credits are already in the search response and the panel already displays them — but **it cannot reach an album the title index never returned**, which is precisely the failure case. **It belongs to a successor slice and must be taken deliberately.**
+
+**What this decision does not establish.** That deeper fetching resolves the failures reported in use. It repairs one of at least two mechanisms capable of producing them, on the strength of the code rather than of an attribution, and **which mechanism was responsible in any observed search remains unknown**. Establishing it means observing the populated panel against the live API, which requires a real `MUSICBRAINZ_CONTACT` — a maintainer decision outside this slice, and not to be worked around. **The reported problem therefore stays open after this decision is implemented.**
+
+**Aliases and phonetic matching stay a separate item.** This section already records that alias work and upstream matching are related and "should not be collapsed into one item without deciding to". That decision is taken here, and it is **not to combine them**: alias work improves _local catalogue_ matching where this decision improves _upstream reach_, and it carries a new table, a migration, an endpoint no code path has ever called, and a rate-limited backfill whose benefit is untested. It remains a separate candidate at unchanged status.
 
 **Observed in use 2026-08-21, and worse than the two limitations above suggest.** Searching for **"the warning" (Hot Chip)**, an album not in the catalogue, returned a page of albums already held — mostly titles beginning with "The" — and **offered no route to add the one being looked for**. Reproduced at the database level; **three faults compound**, and only the third makes the album unreachable:
 
@@ -557,7 +907,19 @@ Two limitations of the "not in longplayr yet" panel, both observed in use, neith
 2. **The `simple` text configuration keeps stopwords.** `websearch_to_tsquery('simple', 'the warning')` yields `'the' & 'warning'`, so "the" is a required lexeme rather than being discarded — which degrades precision for every title containing an article.
 3. ~~**The upstream panel is suppressed by exactly the flood the first two produce.**~~ **RESOLVED 2026-08-22.** It rendered only when the local catalogue returned **fewer than five** albums, so noisy local matches removed the only route to the record. **This was the fault that turned a ranking annoyance into a dead end**, and it is the one now decided: the fallback is available for every signed-in query regardless of local result count (§6). **Faults 1 and 2 are untouched** — they still produce the noisy results; they can simply no longer hide the way out.
 
-**Still unresolved, and deliberately not decided alongside the reachability fix:** whether the panel gets a "show more"; whether the fuzzy threshold should rise, be length-aware, or be dropped when the query contains a leading article; whether the text configuration should switch to `english` for stopword removal, and what that costs for non-English titles — the catalogue is deliberately international, and `simple` was chosen for that reason; whether the query should search title _and_ artist, and if so whether that is separate inputs, a blended Lucene query, or a heuristic; and whether any of it is worth doing before the search latency in `current-state.md` §8 is addressed, since every additional upstream candidate is fetched in the render path.
+**The panel gets a "show more", and it spends no upstream request to do it. [DECIDED 2026-09-16]** This resolves the first item in the list below, which had been open since 2026-08-21.
+
+**The mechanism is what makes it cheap.** The upstream search already fetches **25** release groups in one request and filtering leaves roughly fifteen, of which **ten** were rendered — so several candidates were being retrieved and thrown away. The panel now keeps all survivors and reveals the remainder behind an expander. **No additional MusicBrainz request is made, and no client JavaScript is required.** Against a limit where exceeding one request per second returns `503` for **every** request from the address, spending a request per expansion would have been the wrong trade.
+
+**Fetch depth is untouched at 25.** Deepening it is free in request count — one call with a larger `limit` — but the breadth decision of 2026-09-06 settled that number deliberately, and reopening it is wider than this slice.
+
+**The panel stays subordinate.** Ten remains what it shows first, for the reason already recorded: catalogue results above it return up to twenty, and the fallback must not out-length them. **Showing every survivor unconditionally was rejected on exactly that ground.**
+
+**When everything has been shown, the panel says so. [DECIDED 2026-09-16]** A search whose survivors all fit states that MusicBrainz returned nothing further, rather than leaving the reader to infer it from a missing control. **This is a different condition from finding nothing at all**, which keeps its existing "try a different spelling" advice.
+
+**What this does not establish.** §8.10 records that **which mechanism caused the failures observed in use is unestablished**, and it stays that way: the panel cannot be populated against real data locally or in CI while `MUSICBRAINZ_CONTACT` is a placeholder. **This fixes a documented limitation without evidence that it was the one encountered**, and that distinction is recorded rather than smoothed over.
+
+**Still unresolved, and deliberately not decided alongside the reachability fix** — **[AMENDED 2026-09-16: the "show more" item is now resolved above and is struck from this list in substance, though the wording is preserved.] [AMENDED 2026-09-06: the first item below is now _deferred with a stated reason_ rather than simply open, and the item on searching title and artist is unchanged and still open. The list is preserved as written; see the breadth decision above]**: whether the panel gets a "show more"; whether the fuzzy threshold should rise, be length-aware, or be dropped when the query contains a leading article; whether the text configuration should switch to `english` for stopword removal, and what that costs for non-English titles — the catalogue is deliberately international, and `simple` was chosen for that reason; whether the query should search title _and_ artist, and if so whether that is separate inputs, a blended Lucene query, or a heuristic; and whether any of it is worth doing before the search latency in `current-state.md` §8 is addressed, since every additional upstream candidate is fetched in the render path.
 
 **Follow-ups from manual testing of the shipped fix, 2026-08-23.** Observations from using the deployed product, recorded as **unresolved**. None is decided, none is scheduled, and none should be inferred into scope.
 
@@ -568,10 +930,12 @@ Two limitations of the "not in longplayr yet" panel, both observed in use, neith
 - **The page is substantially faster** because local results no longer wait. Confirmed, and recorded so a future reader knows the change achieved what it claimed.
 - **The remaining ~20-second MusicBrainz wait is still too long.** Making it non-blocking was not a latency fix and was never claimed to be. This is **a separate future performance problem**, tracked alongside the add-path latency in `current-state.md` §8. The candidate levers — streaming was one, queueing the tracklist fetch is another — are unexamined here.
 - **Search should not require pressing Enter.** The interaction is **undecided**: search-as-you-type, an explicit button, clearer instruction, or something else. Search-as-you-type in particular interacts badly with a rate-limited upstream call, which is a reason to think rather than a reason to reject.
-- **Five upstream suggestions are not enough.** Revisit the limit, and whether the answer is "show more", a different limit, or another discovery mechanism entirely.
+- **Five upstream suggestions are not enough.** Revisit the limit, and whether the answer is "show more", a different limit, or another discovery mechanism entirely. **[DECIDED 2026-09-06 — a different limit, and not "show more": the panel fetches 25 and displays up to 10. The observation was right and its implied cause was incomplete — the binding constraint was the pool of ten behind the cap, not the cap alone. See the breadth decision above.]**
 - **Upstream candidates should ideally show artwork.** Currently they render the `AddSlot` placeholder, which is deliberate — it distinguishes "could be added" from "held, no cover" — so this is a change to a considered decision rather than a gap. Cover Art Archive is keyed by release-group MBID, which the candidates carry, so the data is reachable; the cost is per-candidate requests on a path already slow.
 
 **These are follow-ups to a shipped feature, not architectural direction.** They belong to Search, not to `product-spec.md` §10.
+
+**[CORRECTED 2026-09-06] The paragraph below is too strong in one sentence, and is preserved rather than rewritten.** It concludes that _"with the gate gone, catalogue growth no longer degrades reachability"_. **A second growth-sensitive mechanism was established on 2026-09-06 and that paragraph did not know of it**: the already-held filter removes a growing share of a **fixed** upstream pool as the catalogue deepens, so catalogue growth did still degrade reachability — by a different route from fault 3, and one the gate's removal left untouched. **The breadth decision above enlarges the pool rather than eliminating the sensitivity**, since the filter scales with catalogue size and twenty-five does not.
 
 **The interaction with §8.9 is what made this urgent, and it is now defused.** A larger curated catalogue would have made fault 3 _more_ likely, not less — more local records means more chances that five match loosely enough to hide the fallback. With the gate gone, catalogue growth no longer degrades reachability. Faults 1 and 2 still mean a bigger catalogue produces noisier results, which remains a reason to settle them before a large reseed, but it is no longer a reason a record becomes unreachable.
 

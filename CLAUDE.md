@@ -2,7 +2,13 @@
 
 A social music platform: users record the albums they've listened to, rate and review them, build lists, follow each other, and discover music through that activity.
 
-**Current state: Phase 2 complete to its definition of done. Phase 3 is feature-complete — all five slices built: 1 Follows, 2 Activity writes, 3 the following feed, 4 review likes, 5 Notifications. Phase 4 has started: slice 1, Lists, is built, pushed and CI-verified, and slices 2 (list likes) and 3 (list activity) are not. The last CI-verified commit is `a1c9550` (run #80).** See `docs/current-state.md` for exactly where things stand and what to do next. `docs/development-plan.md` defines what belongs to which phase — do not build ahead of the current phase without saying so.
+**Current state [UPDATED 2026-09-18 — the previous line named `80e5c44`, fifteen pull requests out of date, which is the "actively misleading" bar this line sets for itself]: Phases 0 to 4 are complete. Phase 5 is _not_ complete and must not be described as such** — slices 1 (Popular this week) and 3 (the home discovery surface) are built and CI-verified; **slice 2, highest rated this week, is deferred by decision**, not outstanding work: `product-spec.md` §8.3 sets a five-rating threshold per album and the product holds two ratings in total, so the chart would be empty and fall through to external fill. It reopens when the internal chart reaches twenty entries from real activity — a trigger it shares with the Browse hierarchy in `design-reference.md` §11.11.
+
+**Phases 6 and 7 are entirely unbuilt, and that is the largest thing this line has been failing to say.** Phase 6 is safety and admin — reporting, blocking, suspension, and content status enforced across every read path. Phase 7 is launch readiness, and includes **account deletion as a hard delete with a complete cascade**, which is a non-negotiable below and is not built. **Neither phase appeared in a STEP A ranking between §72 and §86**, because selection drew only on `docs/product-feedback.md`. **STEP A must weigh the phase plan alongside the feedback backlog.**
+
+**`main` is at `44b03ac`** (PR #21, CI #136 `completed/success`, zero flaky), with nothing open and nothing pending.
+
+**This line goes stale fast and is not the source of truth. `docs/current-state.md` is** — it is reconciled at every STEP K, and this line is updated only when it would actively mislead. See `docs/current-state.md` for exactly where things stand and what to do next. `docs/development-plan.md` defines what belongs to which phase — do not build ahead of the current phase without saying so.
 
 ---
 
@@ -92,7 +98,7 @@ Listed in authority order. When two disagree, the higher one wins.
 npm run db:start && npm run db:env   # local Supabase (Docker), then write .env.local
 npm run dev                          # http://localhost:3000
 npm run verify                       # fast loop — no database, no browser
-npm run verify:full                  # what CI runs — use before commit and push
+npm run verify:full                  # what CI runs — optional locally since 2026-09-15
 ```
 
 **Two levels of verification, and the difference matters.**
@@ -101,7 +107,17 @@ npm run verify:full                  # what CI runs — use before commit and pu
 
 `npm run verify:full` is the CI-equivalent: everything `verify` does, then the integration suite against the local database, then the fixture catalogue seed, then Playwright. It is the same sequence CI runs, in the same order.
 
-**Substantive changes go through `verify:full` before commit and push.** `verify` alone is not sufficient evidence that a change is safe to land — it cannot see a broken query, a broken RLS policy or a broken page. Both suites can also still be run on their own: `npm run test:integration`, `npm run test:e2e`.
+**STEP F runs `npm run verify`, and nothing that needs a database or a browser. [AMENDED 2026-09-16]** Integration and end-to-end belong to CI.
+
+**This is the same move made twice, one step further.** On 2026-09-15 `verify:full` left this machine on the reasoning that _"`verify` alone cannot see a broken query, a broken RLS policy or a broken page"_ is **correct and now satisfied by CI rather than by this machine**. That argument does not weaken when the suite is targeted rather than complete — a targeted end-to-end run is the same browser, the same dev server and the same database on the same host.
+
+**The reason is the maintainer's machine, and it is not a preference.** This is the computer they use for everything else, and Playwright makes it unusable while it runs. `architecture.md` §12 measured **eight cycles in which local end-to-end failures never once identified a real defect**; spending the machine on evidence CI produces anyway on a clean runner is a cost with no established benefit.
+
+**What this gives up, stated rather than glossed.** A broken query or a broken page is now found by CI in roughly fifteen minutes rather than locally in two, and finding it there **reopens the cycle** under the rule below — which has happened once, in `current-state.md` §79, and was manageable. **That is the trade: slower feedback on a real defect, in exchange for a machine the maintainer can use.**
+
+**Do not run integration or end-to-end locally unless the maintainer asks.** Not as a sanity check, not to chase a flake, and not to compare failure sets — a red CI run is the evidence for that, and `verify:full` is not to be run at all without being asked.
+
+**A direct render probe is the cheap alternative and is usually better.** Starting the dev server and fetching a page with `curl` costs a fraction of a browser suite and has repeatedly produced stronger evidence than Playwright did — §76, §78 and §80 were each verified that way, and §80's two defects were found by it. **Prefer it, keep it to the pages actually changed, and stop the server afterwards.**
 
 > **⚠️ `npm run test:integration` DELETES ALL CATALOGUE DATA.**
 >
@@ -111,17 +127,29 @@ npm run verify:full                  # what CI runs — use before commit and pu
 
 **Always verify from a clean build.** `rm -rf .next && npm run verify`. This is a standing requirement, not a suggestion: `PageProps` and `LayoutProps` are generated into `.next/types`, so a stale directory can make typecheck pass locally while failing in CI. That exact discrepancy has already put a red commit on `main` once.
 
-**Migrations deploy before the code that needs them. Pushing is deploying.**
+**Migrations deploy before the code that needs them. Merging is deploying. [AMENDED 2026-09-15 — this said "Pushing is deploying", which stopped being true when work moved to a branch.]**
 
 Vercel deploys on push, but a migration only reaches the database when someone runs `npx supabase db push --linked`. Push first and the live app queries tables that do not exist. **This has happened twice** — §42 and §46 of `docs/current-state.md` — and the second took **every profile page down for every visitor**, found by opening the site rather than by any check that ran.
 
 **CI cannot catch it, and a green run is not evidence.** CI applies migrations to a _fresh_ database and passes. `verify:full`, CI, and the deployed schema are **three separate things**.
 
-The order is therefore: **apply the migration, confirm it, then push the code.** A `pre-push` hook enforces it (`scripts/check-migrations-deployed.mjs`, wired through `core.hooksPath=.githooks`), and `npm run db:pending` runs the same check by hand. It fails open when Supabase is unreachable — being offline is not evidence of a problem — so **it reduces the risk rather than removing it**. `git push --no-verify` bypasses it deliberately.
+The order is therefore: **CI green on the exact commit, then apply the migration and confirm it, then merge.** That is the gate at **STEP J**.
 
-**There is no branch protection.** GitHub gates it behind a paid plan for private repositories, and paying or going public purely for that has been declined. Nothing mechanically prevents a red commit landing on `main`, so **`rm -rf .next && npm run verify:full` before pushing is the actual safety net.** Treat it accordingly.
+**This is stricter than the order it replaces, not looser.** Previously a migration was applied _before_ the push and therefore before anything had been verified. Now it is applied only once CI has passed the exact tree that needs it.
 
-This was learned the expensive way. The rule here previously named `verify` as the compensating control, which was wrong: `verify` does not run Playwright, so a commit that broke two end-to-end assertions passed the documented pre-push check and left `main` red for three commits before anyone noticed.
+A `pre-push` hook still runs `scripts/check-migrations-deployed.mjs` (wired through `core.hooksPath=.githooks`), and `npm run db:pending` runs the same check by hand. **On a branch push that check will now report a pending migration, and that is expected rather than a failure to fix** — the migration is applied at STEP J, not before STEP I. It fails open when Supabase is unreachable, so **it reduces the risk rather than removing it**. `git push --no-verify` bypasses it deliberately.
+
+### Where the full gate runs **[DECIDED 2026-09-15]**
+
+**Work happens on a branch and reaches `main` only through a green CI run.** `ci.yml` already triggers on `pull_request`, and its two jobs carry no `needs:` between them, so the full suite runs in parallel on clean runners **before anything reaches `main`**.
+
+**There is no branch protection**, and that is why this matters rather than why it cannot work. GitHub gates it behind a paid plan for private repositories, and paying or going public purely for that has been declined. **Branch protection would _enforce_ this; its absence does not prevent it.** The previous rule reasoned from that absence to _"`verify:full` before pushing is the actual safety net"_, and the step it skipped is that **a branch does not require protection to be useful.**
+
+**What changed the answer was measurement, not preference.** Across eight cycles on 2026-09-13 the local end-to-end suite failed **9, 5, 2, 9, 7, 14, 19 and 6** times on eight different trees. **Every failing set passed on isolated rerun. CI was green on all eight. Not one was a real defect.** Host load rose 6.15 → 12.51 and runtime 10.5m → 25.3m. On one identical tree: **25.3 minutes locally against 11.2 on CI, with CI absorbing nothing** — zero retries, every test first attempt. The full record is `architecture.md` §12.
+
+**This does not license ignoring a red run.** It moves the run somewhere red means something: **a red CI run blocks a merge.**
+
+**The history that produced the rule this replaces is still worth carrying.** An earlier version named `verify` as the compensating control, which was wrong: `verify` does not run Playwright, so a commit that broke two end-to-end assertions passed the documented pre-push check and **left `main` red for three commits before anyone noticed.** Under the branch model that commit never reaches `main` at all — which is the outcome that rule was reaching for and could not deliver from this host.
 
 ### Conventions established in Phase 0
 
@@ -148,21 +176,64 @@ Bundled docs live in `node_modules/next/dist/docs/` — read them before assumin
 
 ## Development cycle
 
-Every coherent feature change or product slice follows these steps, in this order, with these exact names. Do not rename, merge, skip or invent steps. At the end of each step, provide a concise summary of what was done, what was learned or decided, and whether the step is complete, blocked or ready for the next step. Do not proceed to the next step without asking the user.
+Every coherent feature change or product slice follows these steps, in this order, with these exact names. Do not rename, merge, skip or invent steps. At the end of each step, provide a concise summary of what was done, what was learned or decided, and whether the step is complete, blocked or ready for the next step.
 
-| Step  | Name                | Responsibility                                                                                                                                                                                                                                      |
-| ----- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **A** | Discover / Reassess | Rank candidate work from the current project state and any triaged product feedback, then investigate the leading candidate's behaviour, defects, dependencies, scope risks and unanswered questions. No code changes                               |
-| **B** | Decide              | Resolve the product, scope and tradeoff decisions the selected slice requires. No implementation                                                                                                                                                    |
-| **C** | Document            | Record those decisions, their rationale, evidence and boundaries in the authoritative documentation. No implementation                                                                                                                              |
-| **D** | Plan / Review       | Produce the implementation and verification plan, then independently challenge its boundary, tests, risks and assumptions before coding. No implementation                                                                                          |
-| **E** | Implement           | Implement exactly the approved plan and nothing outside its boundary                                                                                                                                                                                |
-| **F** | Verify              | Run the required local verification and establish the actual test state of the implementation                                                                                                                                                       |
-| **G** | Review              | Independently review the implementation against the approved decision, boundary, tests, evidence and repository state. **No modifications during review**                                                                                           |
-| **H** | Commit              | Commit only the reviewed implementation, after STEP G returns **READY TO COMMIT**. Keep unrelated work and other cycles' documentation out of the commit                                                                                            |
-| **I** | Push                | **Apply any pending migration to the deployed database first — pushing is deploying.** Then push only the reviewed commit. A push may be deliberately deferred, provided the local commit and repository state are recorded clearly                 |
-| **J** | CI                  | Verify CI against the exact pushed SHA to a terminal state where possible. **Never claim CI success without evidence of a completed successful run**                                                                                                |
-| **K** | Checkpoint          | Reconcile `docs/current-state.md` with the actual repository, remote and CI state. Record what the completed cycle changed, what was verified, what remains open and any evidence limitations. **Then close with the plain-language summary below** |
+### Which steps wait for the maintainer
+
+**Every step still ends with its summary.** What follows governs only which of those summaries stop and wait for an answer.
+
+**Gates — the cycle stops and does not proceed until the maintainer answers.**
+
+| Step                           | Why it gates                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **00, A and B**                | Selection and product decisions. What gets built, and inside what boundary, is the maintainer's to settle, and **STEP B is the last point before a boundary hardens into documentation and code**                                                                                                                                                  |
+| **J, always before the merge** | **Merging is deploying.** The merge is what puts code in front of users, and where the cycle carries a migration the migration is applied to the deployed database at this step — the one action in a cycle that no local command undoes. **[MOVED FROM STEP I 2026-09-15]**: a branch push deploys nothing, so there is nothing to gate at STEP I |
+
+**Interrupts — the cycle stops because something happened, not because a step finished.** Raise immediately and wait:
+
+- any step returning a conflict to an earlier step under the rule below;
+- **STEP F** producing a red verification state **it cannot attribute away from this cycle's own change** — see below;
+- **STEP G** returning anything other than `READY TO COMMIT`;
+- anything meeting the urgent bar in **Product feedback** — data integrity, security, authentication, destructive behaviour, or a serious regression on a deployed environment.
+
+**Everything else proceeds without asking.** C, D, E, F, G, H, J and K run through when nothing above applies, because they execute a boundary the maintainer has already approved at STEP B.
+
+**This relaxes when the cycle stops, and nothing else.** Steps still may not be renamed, merged, skipped, reordered or collapsed, and each still produces its own report before the next begins — proceeding without asking is **not** permission to run two steps in one turn. The maintainer may re-gate any step at any time by saying so; the above is the default, not a constraint on them.
+
+#### A red STEP F interrupts only when it cannot be attributed
+
+**[NARROWED AGAIN 2026-09-16.]** With integration and end-to-end on CI, **STEP F is now format, lint, typecheck, unit tests and a build** — none of which flake. So a red STEP F is almost always a real defect, and the attribution machinery below applies chiefly to **a red CI run**, where it is unchanged and still the standard.
+
+**This section narrowed on 2026-09-15 and did not go away.** STEP F now runs `npm run verify` plus targeted suites rather than the whole of `verify:full`, so it produces a red run far less often — but **when it does, the standard below is unchanged and is still the standard.** It also governs any `verify:full` run performed by choice.
+
+**A red run is not by itself the interrupt.** End-to-end flakes under machine load are a known and documented condition — `current-state.md` §8 records seven of nine runs losing between one and seven tests that way — so stopping on every red run would fire the interrupt almost every cycle and make it worthless.
+
+**STEP F proceeds only where it establishes attribution positively, and by measurement rather than assertion.** The established pattern, and the standard to meet:
+
+- the changed code **provably cannot execute** in the failing tests, shown from the run's own output rather than reasoned about;
+- those same tests **pass on an isolated rerun**, with nothing modified to make them do so;
+- the **failure sets differ across runs on an identical tree**, which is the signature of non-determinism rather than of a defect.
+
+**Where attribution cannot be established, stop and ask.** "It is probably the machine" is not attribution — it is the assumption that attribution exists to test, and it has already been wrong once: the `8.02 ratings` failure in `current-state.md` §8 looked exactly like a flake and was a deterministic failure caused by database residue from an aborted run.
+
+**Proceeding is never reclassification.** A red run is recorded as red, a suite exiting non-zero is never reported as a pass, and the limitation travels into STEP G, the commit and the checkpoint.
+
+**CI is still not the answer to a red local run, and the reason has changed. [AMENDED 2026-09-15]** This previously said CI _"runs **after** the push"_, which was the sharper half of the objection and stopped being true when the gate moved: CI now runs **before the merge**, so it gates rather than reports. **What survives is the other half**: `playwright.config.ts` sets `retries: 2` on CI against `0` locally, **so CI can absorb a flake a local run exposes.** The two remain different signals with different blind spots — which is why a green CI run is recorded with its flaky and retry counts, and why **zero flaky on a first attempt is the figure that makes it corroboration rather than an outvote.**
+
+| Step   | Name                    | Responsibility                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------ | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **00** | Cycle Intake and Triage | Establish the actual starting state, reconcile the previous cycle including any gate still pending, triage relevant feedback and existing open work, and prepare a **neutral candidate field** for STEP A. **Never selects or recommends the next cycle**                                                                                                                                                                                                                                                                                                                                                  |
+| **A**  | Discover / Reassess     | Rank candidate work from the current project state and any triaged product feedback, then investigate the leading candidate's behaviour, defects, dependencies, scope risks and unanswered questions. No code changes                                                                                                                                                                                                                                                                                                                                                                                      |
+| **B**  | Decide                  | Resolve the product, scope and tradeoff decisions the selected slice requires. No implementation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **C**  | Document                | Record those decisions, their rationale, evidence and boundaries in the authoritative documentation. No implementation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| **D**  | Plan / Review           | Produce the implementation and verification plan, then independently challenge its boundary, tests, risks and assumptions before coding. No implementation                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| **E**  | Implement               | Implement exactly the approved plan and nothing outside its boundary                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **F**  | Verify                  | Run the required local verification and establish the actual test state of the implementation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **G**  | Review                  | Independently review the implementation against the approved decision, boundary, tests, evidence and repository state. **No modifications during review**                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **H**  | Commit                  | Commit only the reviewed implementation, after STEP G returns **READY TO COMMIT**, **on a working branch rather than on `main`** — branch from current `main` at the start of the cycle. Keep unrelated work and other cycles' documentation out of the commit                                                                                                                                                                                                                                                                                                                                             |
+| **I**  | Push                    | Push the branch and open a pull request. **A branch push is not a deploy, so this step no longer gates on migrations.** Record the branch, the commit SHA and the PR number. A push may be deliberately deferred, provided the local commit and repository state are recorded clearly                                                                                                                                                                                                                                                                                                                      |
+| **J**  | CI and merge            | Establish the external CI state for the exact pushed SHA. **A merge requires a completed successful run on that SHA — `CI PENDING` is never a merge.** Then, and only then: **apply any migration to the deployed database and confirm it**, then merge to `main`, which is the deploy. **The order is CI green → migration applied → merge**, because a migration for a branch that never merges is a schema change with no code to use it. **Never claim CI success without evidence of a completed successful run.** The cycle may still close with an unmerged branch, provided that state is recorded |
+| **K**  | Checkpoint              | Reconcile `docs/current-state.md` with the actual repository, remote and CI state. Record what the completed cycle changed, what was verified, what remains open and any evidence limitations. **A cycle whose CI has not finished may be closed _provisionally pending CI_ under the rules below — never described as fully verified.** **Then close with the plain-language summary below**                                                                                                                                                                                                              |
 
 **When reporting progress, lead with the current step and the cycle name**, on two lines — `STEP D: Plan / Review` then `Cycle: Search reachability` — before anything else.
 
@@ -182,15 +253,53 @@ Three parts, kept brief:
 
 **Do not collapse Decide, Document, Plan / Review, Implement, Verify and Review into one turn merely because the implementation looks straightforward.** The separation exists for two reasons: it stops implementation assumptions becoming product decisions by default, and it provides an independent review before anything is committed. A slice that seems obvious is exactly the one where an unexamined assumption travels furthest.
 
+### A step returns a conflict it cannot honestly resolve
+
+**When a step finds that the boundary it was given cannot be honestly satisfied, it names the exact conflict and returns it to the step that owns the decision.** It does not widen scope to make the work fit, does not resolve the conflict by taking the obvious default, and does not proceed while noting a reservation in passing.
+
+**This is the process working, not failing.** A later step routinely holds information the deciding step did not: STEP B decides against the documentation, STEP D inspects the actual code, STEP F runs what it can and CI runs the rest. A boundary that was sound when it was set can be shown impossible two steps later, and surfacing that is the whole reason the steps are separate.
+
+| What was discovered                                                          | Returns to |
+| ---------------------------------------------------------------------------- | ---------- |
+| The product, scope or tradeoff decision cannot hold as approved              | **STEP B** |
+| The decision holds, but the documentation records it wrongly or incompletely | **STEP C** |
+| The decision holds, but the plan cannot deliver it within the boundary       | **STEP D** |
+
+**A return is not `BLOCKED`.** `BLOCKED` means a required gate cannot be satisfied and the cycle does not proceed. A return re-enters the cycle at an earlier step carrying new evidence, and the cycle continues from there.
+
+**A return is not a rewind.** Per **Historical integrity** below, the earlier decision is not edited away to match the new one. The new evidence and the revised decision are recorded separately, and the superseded decision is marked at the point of change — so the record shows that the boundary moved, when, and on what evidence.
+
+**The failure this prevents is already named for open questions, and is generalised here to boundaries.** `product-spec.md` §10 holds that answering an open question silently — by taking the obvious default, by following the reference product, or by reasoning from the rest of the spec — is a scope violation rather than a judgement call. The same is true of a boundary conflict discovered mid-cycle.
+
+**Worked example, hypothetical.** STEP B approves a feature inside an explicit no-migration boundary, with a guarantee of _at most once per subject_. STEP D finds that no table carries the state that guarantee needs, and that the only mechanism available infers it from rows another concern owns and may remove. What the code can deliver is therefore _at most once, unless those rows are cleaned_ — narrower than what was approved.
+
+**The correct action is to state that gap precisely and return it to STEP B.** What is not correct is inventing a migration inside a no-migration boundary, or shipping the approximation and mentioning it in passing.
+
+**Returning is not a verdict that the work is wrong.** STEP B may ratify the narrower guarantee deliberately, having seen it stated; it may widen the boundary; or it may change the approach. **All three are valid outcomes**, and the point of the return is that the choice is made rather than defaulted into.
+
+**Examples in this document are hypothetical, or drawn from closed cycles. They never describe work in flight** — a governing document that names an open cycle stops being a rule and becomes a verdict on it, and a later step will read it as one.
+
+### Naming a feedback item, in STEP 00 and STEP A **[ADDED 2026-09-16, at the maintainer's instruction]**
+
+**Never refer to a feedback item by its ID alone.** `F-019` means nothing to a reader who does not have `docs/product-feedback.md` open, and both of these steps exist to be read by the maintainer rather than by the agent that wrote them.
+
+**Every mention carries a short plain description the first time it appears in a report** — the ID, then a few ordinary words for what it actually is. `F-019, MusicBrainz aliases — alternate artist spellings that would make search forgiving of typos` rather than `F-019`. Afterwards in the same report the ID alone is fine.
+
+**Keep the description plain.** It says what the thing is in ordinary language, not what the entry argues, how it would be built, or which sections govern it. One clause is usually enough and a sentence is the ceiling.
+
+**This applies to the candidate field in STEP 00 and to the ranking, investigation and recommendation in STEP A** — the two places where a list of bare IDs is otherwise most likely to appear. It is a reporting rule and changes neither step's responsibilities.
+
 ### Choosing the next slice
 
 STEP A owns **discovery, ranking and recommendation of the next slice**, not the final product decision.
 
-At the beginning of STEP A: review the current project state and any **triaged** product feedback, identify the possible next pieces of work, weigh their dependencies, risks and evidence, rank them, and recommend the strongest candidate with the reason it should be next. Rank on user impact, correctness risk, dependencies, product readiness, technical leverage and unresolved decisions. **STEP B then decides** whether that candidate and its scope are accepted, or picks another.
+At the beginning of STEP A: take STEP 00's candidate field as input **without inheriting its ordering, grouping or emphasis as a recommendation**, review the current project state and any **triaged** product feedback, identify the possible next pieces of work, weigh their dependencies, risks and evidence, rank them, and recommend the strongest candidate with the reason it should be next. Rank on user impact, correctness risk, dependencies, product readiness, technical leverage and unresolved decisions. **STEP B then decides** whether that candidate and its scope are accepted, or picks another.
 
 **Raw feedback is not cycle scope.** An observation becomes a candidate only after deliberate triage, and a candidate becomes scope only at STEP B.
 
-**Do not create a separate "slice selection" or "pre-development" step.** Slice selection is the first responsibility of STEP A.
+**There is no separate _slice-selection_ step. [CORRECTED 2026-09-04]** Slice selection is the first responsibility of STEP A, and no step may be invented to take it over.
+
+**STEP 00 is not that step, and it is not an exception to this rule.** This line previously read _"Do not create a separate 'slice selection' or 'pre-development' step"_, which contradicted STEP 00 once STEP 00 became part of the workflow. The substance is unchanged and the wording is corrected: **STEP 00 establishes state and prepares a neutral candidate field; it never selects or recommends a slice.** The moment a step ranks candidates or names a recommendation, it is doing STEP A's job.
 
 ### Product feedback
 
@@ -220,15 +329,44 @@ When a cycle has reached STEP H and the implementation commit has passed the req
 - CI results from the previous cycle remain explicitly marked as **pending** until STEP J completes;
 - STEP K is completed or explicitly deferred only with the outstanding CI state clearly recorded.
 
+**Under the branch model a cycle may also close with its branch unmerged**, and that is a legitimate outcome rather than an unfinished one — provided the branch, the SHA, the CI state and the fact that it is unmerged are all recorded. **An unmerged branch has deployed nothing**, so it blocks nothing; what it must never do is go unrecorded. **[2026-09-15]**
+
 **For documentation-only changes, do not trigger a separate CI wait merely to validate documentation.** Documentation may be committed locally and pushed together with the next implementation push when appropriate.
 
 **When multiple local commits are waiting to be pushed, preserve their separation and review history.** Do not squash, amend or combine them merely to reduce CI runs unless explicitly approved.
 
 A new implementation cycle may therefore begin while the previous cycle's CI is pending, but its starting state must identify the pending commit(s), the expected CI target SHA and any unresolved verification state.
 
-**Once STEP J has verified CI for a pushed commit, that verified state is the next cycle's starting point.** Do not rerun CI merely to re-establish the previous cycle's baseline, and do not wait on the previous cycle's checkpoint before beginning STEP A — the CYCLE HANDOFF carries the state a new session needs. CI takes roughly 13 minutes; nothing is gained by spending it twice on the same tree.
+**Once STEP J has verified CI for a pushed commit, that verified state is the next cycle's starting point.** Do not rerun CI merely to re-establish the previous cycle's baseline, and do not wait on the previous cycle's checkpoint before beginning STEP 00 — the CYCLE HANDOFF carries the state a new session needs. CI takes roughly 13 minutes; nothing is gained by spending it twice on the same tree.
 
 **A green run verifies only the commit it ran on.** It establishes the completed previous cycle's state and says nothing about a new cycle's changes, which run their own A–K verification.
+
+#### The CI gate is asynchronous, and PENDING is never PASS
+
+**STEP J and STEP K stay conceptually distinct and are not merged.** STEP J establishes what the external CI evidence says; STEP K decides the cycle's closeout state from the complete evidence available at that moment. The only thing that is asynchronous is the CI gate itself.
+
+**Five states, and they are not interchangeable:**
+
+| State            | Meaning                                                                                                                              |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| **`VERIFIED`**   | The implementation passed its required local verification and independent review — STEP F and STEP G. **Says nothing about CI**      |
+| **`CI PENDING`** | A run exists for the exact pushed SHA and has not reached a terminal state. **This is not a pass and must never be recorded as one** |
+| **`CI PASSED`**  | A **completed successful** run on the exact pushed SHA, with the run number and totals recorded as evidence                          |
+| **`CI FAILED`**  | A completed run that did not succeed                                                                                                 |
+| **`BLOCKED`**    | A required gate cannot be satisfied, so the cycle does not proceed                                                                   |
+
+**STEP J with CI still running.** Record `CI PENDING` with the run number and the exact SHA it is testing, and hand off. **Do not wait purely so the cycle can continue** — waiting is warranted only when the CI result changes what happens next. If no run exists, or a run was cancelled or is incapable of producing a result, that is what STEP J records instead.
+
+**STEP K with CI still pending.** The cycle may be closed **provisionally pending CI**, provided all of the following hold:
+
+- the implementation has passed the required verification and review gates;
+- the pending CI state is explicitly recorded, naming the exact commit SHA awaiting it;
+- no known blocker requires the CI result before the next cycle starts;
+- **the cycle is not described as fully verified anywhere** — not in the checkpoint, not in the handoff, not in the plain-language summary.
+
+**Resolving the gate afterwards.** If the pending run **passes**, the gate clears and the cycle becomes fully verified and closed; record that it cleared and nothing else needs reopening. If it **fails**, the cycle is **reopened for investigation and remediation under the normal workflow**, and the failure is assessed **before any new work that could conflict with it or obscure it**.
+
+**The next cycle's intake carries it.** A pending CI result does not by itself prevent the next cycle from beginning. **STEP 00 must identify any previous-cycle gate still pending and carry it as an unresolved state rather than ignoring it silently**. Where the pending run has since passed, STEP 00 records that the gate cleared and does not otherwise revisit the closed cycle.
 
 ### Cycle scope
 
@@ -256,7 +394,7 @@ Use exactly these five headings:
 | **What remains open** | Unresolved defects, decisions, risks, follow-ups and intentionally deferred work                                                    |
 | **Next cycle**        | The recommended next slice or investigation, with a concise reason. If CI or checkpoint work remains pending, state that explicitly |
 
-**It must carry enough state for a new session to begin STEP A immediately** — without waiting for another CI run and without reconstructing the repository state from the previous session:
+**It must carry enough state for a new session to begin STEP 00 immediately, and STEP A directly after it** — without waiting for another CI run and without reconstructing the repository state from the previous session:
 
 - under **Evidence** — the implementation commit SHA; the CI run number, the exact SHA it verified, its conclusion and the relevant test totals; any retries, flakes or failures; and the local `HEAD` / `origin/main` relationship;
 - under **What remains open** — known uncommitted files and which cycle each belongs to, documentation intentionally left uncommitted, and outstanding findings and evidence limitations;
@@ -283,3 +421,9 @@ This extends the non-negotiable above it — that rule polices _data access_, th
 Items marked **[OPEN]** in the docs are unresolved by design — raise them, don't resolve them silently. Items marked **[VERIFY]** in `docs/architecture.md` §18 must be checked against current documentation before the code that depends on them is written.
 
 **No Claude Code infrastructure** — agents, skills, hooks, MCP servers, worktrees — until there's a demonstrated need. See `docs/claude-code-environment.md`.
+
+**Never put content in a fenced code block in a chat response.** Ordinary markdown is fine and wanted — headings, bold, italics and lists all copy normally. The problem is specifically the code snippet box: on mobile it renders as its own separately selectable region, so a reply containing one cannot be captured with a single select-all and has to be copied in pieces.
+
+**This is a copy-paste requirement, not a style preference.** Replies are routinely copied out of a session into other files, frequently on a phone, and a fence in the middle of a reply forces the copy to be gathered section by section.
+
+It applies to **everything that would otherwise be fenced** — shell commands, code, migrations, and drafted text intended for another session. Write them as ordinary text in the flow of the reply, indented or quoted if they need setting apart. **Inline code with single backticks is fine**, since it does not create a separate block. This governs chat responses only; files in `docs/` keep their existing formatting.

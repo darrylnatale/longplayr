@@ -115,6 +115,64 @@ _Why Supabase Auth._ It's already present, it handles password hashing, session 
 
 _Risk, stated plainly._ **This is the most expensive decision in the project to reverse.** Migrating identity providers after launch means moving real user accounts, and it cannot be done transparently. The mitigation is that our `User` table holds the profile and is keyed to the provider's identifier, so application data survives a provider change even though credentials wouldn't.
 
+### Email confirmation: the path exists, the switch stays off **[DECIDED 2026-09-15]**
+
+**Decision: the signup action honours `needsEmailConfirmation` and sends an unconfirmed account to a dedicated page. `enable_confirmations` is left `false` everywhere.**
+
+**The defect this fixes exists today, independently of whether confirmation is ever turned on.** `signUpWithPassword` already computes `data.session === null` and returns it as `needsEmailConfirmation`; **the action discards the value** and redirects to `/onboarding` regardless. With confirmation enabled there is no session, so `/onboarding` bounces the user to a sign-in form. **Somebody who has just created an account is asked to sign in, with no mention of an email and no explanation.** The information needed to do better was already being produced and thrown away.
+
+**Why the switch stays off.** `enable_confirmations` lives in `supabase/config.toml`, which is version-controlled, so **flipping it changes the local stack and CI together** — and **roughly sixteen end-to-end specs sign up and expect a session.** That is the same blast radius as the confirm-password field, for a setting whose real home is production.
+
+**So the code becomes correct for both states and the configuration is left alone.** Enabling confirmation then becomes a deployment change the code already handles, rather than a code change made under time pressure at launch. **`current-state.md` already records that production must have it on**; this removes the code work from that critical path.
+
+**The cost, stated rather than discovered: the confirmed path stays untested end to end.** A service-layer test can assert the branch, and **only flipping the switch exercises the whole journey.** No coverage is claimed beyond that.
+
+**Two things deliberately out of scope.**
+
+**An SMTP provider is not chosen.** That is a service decision with its own cost and deliverability characteristics, not a code decision, and it belongs to the maintainer.
+
+~~**There is no resend-verification path, and that is a real hole rather than an omission. [OPEN]**~~ **[RESOLVED 2026-09-15 — and one half of the reasoning was wrong.]** Without a resend, a user whose email never arrives is **permanently stuck**: they cannot sign in, and signing up again returns _"that email is already registered."_ That much held. **What did not hold was the claim that a resend "needs rate-limiting or it becomes a mail-bombing vector"** — Supabase already applies a 60-second per-address window to `/auth/v1/resend`, so the unbounded vector that sentence describes does not exist. **The warning against enabling confirmation in production stands, for a different and larger reason** — see below.
+
+### Resend, and the limit that actually matters **[DECIDED 2026-09-15]**
+
+**Decision: use `supabase.auth.resend()` and add no rate limiting of our own.**
+
+**Verified against Supabase's own documentation rather than assumed** — the class of claim §18 exists for, and recorded there with its date:
+
+| Scope                          | Limit                                                |
+| ------------------------------ | ---------------------------------------------------- |
+| Built-in email provider        | **2 emails per hour, project-wide**                  |
+| `/auth/v1/resend`              | **60-second window per user**, whatever the provider |
+| Custom SMTP or Send Email hook | The 2/hour cap becomes **configurable**              |
+
+**Building our own limiting was considered and rejected.** It would mean **inventing an anonymous-keyed rate limiter this codebase does not have** — `product-spec.md` §8.4's limits are per _user_, and a resend request comes from someone who is not signed in — **in order to duplicate a control the vendor already applies.**
+
+**Relying on a vendor default is acceptable only because it is written down and dated.** These are defaults that can change; §18 is where that gets re-checked rather than remembered.
+
+**The response is identical whether or not the address has an account**, at a real cost to helpfulness. _"No account with that address"_ is the more useful sentence and **tells an attacker which addresses are registered.** longplayr is otherwise all-public — **but a handle is public and an email address is not**, which is why enumeration matters here despite that.
+
+#### The built-in email provider cannot support a launched product **[OPEN — larger than the resend question]**
+
+**Two emails per hour is project-wide, not per user.** With confirmation enabled on the built-in provider, **the third person to sign up in any hour receives nothing** — and no resend can help them, because the bucket is empty for everyone.
+
+**So custom SMTP is a prerequisite for enabling confirmation at all**, not an improvement to it. `deployment.md` records verification email as a launch prerequisite; **this is the constraint that makes the SMTP choice part of it rather than adjacent to it.** No provider is chosen here.
+
+### Password policy: length, and deliberately nothing else **[DECIDED 2026-09-15]**
+
+**Decision: a 12-character minimum on signup, no composition rules, and a breach-list check deliberately not built.**
+
+**Composition rules are absent by decision, not by oversight**, and that is the part worth recording — otherwise someone adds them later believing the gap accidental. **Requiring a digit, a symbol or a capital is counterproductive**: it pushes people towards predictable substitutions — `Password1!` satisfies every such rule — while adding little real entropy, and it is the reason password requirements are widely resented and widely worked around. **Length is the lever that works.**
+
+**Sign-in and signup no longer share a validation schema, and that split is a prerequisite rather than a refinement.** Both ran `parseCredentials` with the same 8-character rule, so **raising the minimum would have locked out every existing account with a shorter password** — not with a wrong-password error, but with a validation message before the credentials were ever checked. Three test accounts on staging were created under the old rule.
+
+**Sign-in validates only that an email is well-formed and a password is present.** Whether it is the _right_ password is Supabase's job, and **whether it meets today's policy is nobody's** — a policy is a rule for choosing a password, not a rule for presenting one you already have. Applying it at sign-in would mean a policy change silently revoking credentials.
+
+**A breach-list check is the genuinely effective addition and is deliberately out of scope. [OPEN]** Checking a candidate password against a corpus of known-breached ones catches the failure length does not: a long password that is already public. **It means an external API call on every signup, a new third-party dependency, and a privacy question** — even under k-anonymity, a hash prefix of a user's password leaves the system. **That deserves its own decision rather than riding along with a form change.**
+
+**The minimum is not claimed to be optimal.** Twelve is a considered number, not a measured one; no dictionary, entropy estimate or breach corpus informed it. **What is decided is the shape — length only — and the shape is what should be argued with if it is wrong.**
+
+**Unchanged:** Supabase Auth owns hashing, session management and verification; `src/services/auth/` remains the only route to it; and no existing stored credential is touched.
+
 ---
 
 ## 7. Catalogue and ingestion
@@ -141,6 +199,34 @@ So artwork comes from Cover Art Archive alone. This is a better fit than it firs
 - Release-group endpoints match our Album entity directly, needing no extra lookup.
 
 The cost is coverage gaps on obscure releases. Rather than guess at the size of that gap, **ingestion records whether artwork was found**, so coverage is a number we can query after seeding and revisit with evidence. The placeholder is a real design deliverable, not a grey box.
+
+#### Store only the sizes that are served **[DECIDED 2026-09-13]**
+
+**Decision: `ARTWORK_SIZES` becomes `[250, 500]`.** 1200 is no longer fetched or stored.
+
+**Measured cause, not a tidy-up.** Each artwork job loops its sizes **sequentially**, and per size does a Cover Art Archive fetch — which `307`-redirects to archive.org, so two round trips — followed by a separate Storage upload. **Three sizes meant six serial round trips per album, at roughly 9–10.6 seconds, measured twice.** Against the cron's 45-second budget that is about **four covers a night**.
+
+**Which sizes are actually served, established from the call sites. [CORRECTED 2026-09-13 — the first version of this section claimed 250 and 1200 were both unserved, which was wrong.]**
+
+| Size   | Served by                                                                                                                                                                       |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `250`  | `lists/[id]`, `search`, `CollectionTile`, `FeedItem`, and `AlbumGrid` at `standard` and `dense` — `SOURCE = { standard: 250, dense: 250, relaxed: 500 }`. **The dominant size** |
+| `500`  | the album page, `FavouriteRow`, `AlbumGrid` at `relaxed`                                                                                                                        |
+| `1200` | **Nothing.** It appears only in comments                                                                                                                                        |
+
+**So the saving is one size of three, not two.** Roughly **7 seconds a job** instead of 10.6, giving about **six covers a night** rather than four. **That is a ~30% cut in per-job cost, and it is an improvement rather than a fix** — see the open item below.
+
+**This supersedes a recorded intent, deliberately.** The constant's comment read _"500 is our display size; 1200 is for detail."_ **That intent was never wired up** — the album page, the one surface where a detail size would live, passes `size={500}` explicitly.
+
+**Why dropping a size is safe here and would not be for user data.** **Artwork is re-fetchable from Cover Art Archive at any time.** The catalogue is read-only downstream, CAA is canonical and imposes no rate limit, and `enqueueMissingArtwork` already sweeps the whole catalogue. **So this defers a size rather than forecloses it** — if a detail size is ever wired up, one sweep backfills every album. The reversal cost is a single run. **Files already stored are untouched** and cost nothing.
+
+**`ArtworkSize` derives from the array, so the type narrows with it — and that is load-bearing rather than tidy.** A request for a size we no longer store becomes a compile error instead of a runtime 404. **It is also what caught the error this section had to be corrected for**: narrowing to `[500]` failed typecheck in four places, which is how the six `size={250}` call sites were found after a grep had missed them.
+
+**Concurrency is not superseded and remains a live candidate. [CORRECTED 2026-09-13]** An earlier draft of this section claimed `product-feedback.md` F-031's parallel-fetch proposal was made redundant by dropping sizes. **That was true only of the one-size version.** With two sizes there are still two independent fetches and two independent uploads, so **F-031's mechanism stays available on top of this change** and would plausibly bring a job nearer the cost of its slower size.
+
+**The cron's count cap is deliberately unchanged.** `DEFAULT_BATCH_SIZE` stays 10. An earlier draft raised it to 25 on the reasoning that at 3.5 seconds a job the count would bind before the budget; **at 7 seconds ten jobs cost about 70 seconds, so the budget still binds first and the count never mattered for artwork.** Raising it would only help runs of cheap jobs, which is a different argument and is not made here.
+
+**What this does not fix, recorded so six a night is never read as a solution. [OPEN]** **Per-job cost is necessary and nowhere near sufficient.** Measured 2026-09-13: **211 of 932 albums — 22.6% of the catalogue — held no cover**, with pending artwork jobs growing 54 → 174 → 207 over six days. Six a night clears 207 in about thirty-five nights _if nothing is added_, and every discography expansion adds more. **The harder ceiling is cadence** — and see _Cadence is per cron, not per day_ below. **[CORRECTED 2026-09-13: this item originally read "once a day, capped by the hosting plan", which drew the wrong inference from a real constraint.** One cron expression is capped at once a day; the number of cron entries never was. The ceiling was self-imposed.**]** It sits beside the deferred kind-aware claiming above rather than replacing it.
 
 ### Rate limiting
 
@@ -285,9 +371,9 @@ Also required: the deadline check precedes the claim, and moving it after must f
 
 **[OPEN] — the search `after()` drain may run with little or no remaining budget**, given an add measured at about a minute against a 60-second ceiling. Suspected, unquantified, not measured in this cycle. It is capped at one row by the claiming change regardless, which is the useful demonstration that the invariant protects callers we cannot measure.
 
-**Queue fairness remains `[OPEN]` and is untouched.** `claim_ingestion_jobs` still has no kind filter and still orders `priority asc, id asc`, so older artwork jobs precede newly queued curated work. One consequence deserves recording because it is not obvious: **reclaim returns a stranded row to `pending` with its original `id`, so a row reclaimed today lands behind every job enqueued before it.** The four reclaimed curated-discovery rows on staging sit behind roughly 288 artwork jobs. Reclaim works exactly as designed and still leaves them weeks away.
+**Queue fairness remains `[OPEN]` and is untouched. [RESOLVED 2026-09-07 — see _Queue fairness: artwork nobody is waiting for drops below metered work_ below. This paragraph is preserved exactly as written, because its prediction was correct: the failure it describes is the one that occurred.]** `claim_ingestion_jobs` still has no kind filter and still orders `priority asc, id asc`, so older artwork jobs precede newly queued curated work. One consequence deserves recording because it is not obvious: **reclaim returns a stranded row to `pending` with its original `id`, so a row reclaimed today lands behind every job enqueued before it.** The four reclaimed curated-discovery rows on staging sit behind roughly 288 artwork jobs. Reclaim works exactly as designed and still leaves them weeks away.
 
-**Deferred, unchanged, and not to be inferred from anything above:** kind-aware claiming and kind-specific batch sizes — both of which need the fairness question answered first, since a batch is an arbitrary mixture of kinds; artwork decomposition; resumable curated discovery; managed queue infrastructure, whose revisit criterion is still the one recorded under _Ingestion paths_ above; and **cron frequency, unchanged at daily and capped there by the hosting plan**.
+**Deferred, unchanged, and not to be inferred from anything above: [AMENDED 2026-09-07 — the precondition named here is now discharged; the deferral stands on cost instead]** kind-aware claiming and kind-specific batch sizes — both of which need the fairness question answered first, since a batch is an arbitrary mixture of kinds; artwork decomposition; resumable curated discovery; managed queue infrastructure, whose revisit criterion is still the one recorded under _Ingestion paths_ above; and **cron frequency — at the time, unchanged at daily. [CORRECTED 2026-09-13: "capped there by the hosting plan" was the wrong inference; see _Cadence is per cron, not per day_ below.]**
 
 **Staging recovery is not part of this cycle.** The rows stranded on staging remain recoverable through the mechanism already deployed, and remain unrecovered. No staging execution belongs in a code cycle — mixing them would make the resulting queue state unattributable to either.
 
@@ -310,6 +396,127 @@ Also required: the deadline check precedes the claim, and moving it after must f
 **What exposed it is not the same as what caused it, and only one is understood.** The condition reproduced on CI only when one particular integration test file preceded the affected suite; an inert file of identical byte size in the same position did not reproduce it. **Why that neighbour changes PostgreSQL's behaviour is unresolved and is not claimed here.** The cardinality defect is demonstrated independently of it.
 
 ---
+
+### Queue fairness: artwork nobody is waiting for drops below metered work **[DECIDED 2026-09-07 — resolves the `[OPEN]` queue fairness item above]**
+
+**Decision: a third priority band, `BULK_ARTWORK_PRIORITY = 200`, for artwork no reader is waiting on.**
+
+**The rule, and it is not "artwork is background work".** **Artwork created by a job more urgent than the background band inherits that urgency; artwork created by background or bulk work goes to the bulk band.** Self-service artwork stays at `INTERACTIVE_JOB_PRIORITY` under it — someone went and found a record longplayr did not hold, and the cover is the difference between a page that looks finished and one that looks broken. That is the case the interactive band was created for, and `tests/integration/self-service.test.ts` asserts it.
+
+**Five artwork enqueue sites; four change, one is deliberately exempt, and they are not treated alike. [CORRECTED 2026-09-07 — this section first described three uniformly bulk sites, which was wrong; see below.]**
+
+| Site                                               | Treatment                                                                      |
+| -------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Curated tranche, on album creation                 | **Bulk band.** This is the mechanism the measurement below identifies          |
+| Seed                                               | **Bulk band**                                                                  |
+| Post-ingest, inside the drain's `runJob`           | **Conditional** — inherits when the parent job is more urgent than background  |
+| `enqueueMissingArtwork`, when no priority is given | **Bulk band** by default; an explicit priority from a caller is still honoured |
+| Self-service add                                   | **Untouched.** Remains `INTERACTIVE_JOB_PRIORITY`                              |
+
+**Why the post-ingest site is conditional rather than bulk, and why that half is an improvement rather than a fix.** That site sits inside the `ingest_release_group` case, and **the album page enqueues that kind at `INTERACTIVE_JOB_PRIORITY` when a reader opens an unhydrated album.** Demoting it uniformly would have made the cover for an album someone is looking at arrive _later_ than before — the opposite of the rule this section states. Under the rule it instead inherits the parent's urgency, so **album-page artwork moves from the background band to the interactive one: sooner than it was, not merely no later.** That is a deliberate behaviour change, taken because it makes the two paths where a reader is waiting consistent — self-service artwork was already interactive, and the album page was the outlier.
+
+**`enqueueMissingArtwork` is included for a specific reason.** Its only caller, the artwork backfill utility, passes no priority, and its default mode queues without draining — up to 500 rows. Left at the background band, **the repository's own recovery tool would have recreated the starvation this decision removes.**
+
+**What made the open item urgent rather than theoretical.** On-demand artist depth (`aba3a07`) put `discover_curated_artist` into the same band as artwork. Each successful expansion creates one artwork row per created album — roughly eight — every one carrying a lower `id` than the next artist page's discovery job, so every one is claimed first. A page view drains one job. **The queue therefore diverged: success generated the backlog that starved the next success.** Measured on the deployed database after three artist pages were opened: 20 pending, 18 `fetch_artwork` and 2 `discover_curated_artist`, the latter still at `attempts = 0`.
+
+**This is the failure the item above predicted.** It recorded that "older artwork jobs precede newly queued curated work", and that four reclaimed discovery rows on staging sat behind roughly 288 artwork jobs. The prediction was correct; what changed is that a user-facing surface now depends on the starved kind.
+
+**Why a priority band rather than the alternatives, each rejected for a stated reason.**
+
+| Rejected                                  | Why                                                                                                                                                                                             |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Kind-aware claiming / per-kind batch size | Needs a kind filter on `claim_ingestion_jobs` — a change to the claim boundary itself, and the heavier of the two. **Still deferred below**                                                     |
+| A larger page-view drain count            | Increases concurrent MusicBrainz requests across serverless invocations, each holding its own module-level limiter. That exposure is unaddressed and this must not widen it                     |
+| A larger cron batch                       | `DEFAULT_BATCH_SIZE` is sized for metered jobs at about a second against a 60-second ceiling; raising it globally overruns the invocation, which is the stranding class this section fixed once |
+| More frequent cron                        | Capped at daily by the hosting plan, and **cadence is a separate ceiling from batch size** — it changes how often a run happens, never what one run can do                                      |
+
+**The accepted tradeoff, decided rather than discovered.** Artwork now drains only once pending metadata is exhausted, which is starvation in the opposite direction. It is **bounded rather than open-ended**: a `discover_curated_artist` job is enqueued once per artist ever, so the metered supply is capped by the number of distinct artists opened rather than being continuous. Accepted on that basis, and recorded here so it is not rediscovered as a surprise.
+
+**What this does not fix, stated so it is not assumed. Contention, not throughput.** The cron's 45-second budget against roughly ten seconds per artwork job still completes about four artwork jobs a night, so a large artwork backlog still clears slowly. That is the condition `product-spec.md` §8.9 deferred as affecting how the catalogue **looks** rather than whether it is **correct** — a judgement **falsified by contention and restored by this decision**, not by any change in throughput.
+
+**One migration, and it is a data operation rather than a schema change.** Existing `fetch_artwork` rows already `pending` at the default band move to the new one, so the fix takes effect on the deployed queue instead of waiting several nights for the legacy rows to drain. **Its predicate must exclude the interactive band** — `priority = 100` is part of the match, not an optimisation — or it would demote exactly the self-service case the rule above protects. No row is deleted, nothing else on the row is touched, and the statement matches nothing on a fresh database.
+
+**The deferred item's precondition is discharged, and it stays deferred.** Kind-aware claiming and kind-specific batch sizes were deferred above _pending the fairness question_, which this answers. They remain deferred — now on cost rather than on precondition, and as the answer to **both** directions of starvation rather than only this one.
+
+---
+
+### Cadence is per cron, not per day **[DECIDED 2026-09-13 — corrects an inference this document asserted three times]**
+
+**Decision: twelve cron entries invoke the drain, at two-hour spacing.** `vercel.json` gains eleven alongside the existing one.
+
+**The constraint was real and the inference from it was wrong.** Verified against Vercel's cron usage page (last updated 2026-07-15): **Hobby allows 100 cron jobs per project**, with a minimum interval of **once per day** and **per-hour scheduling precision (±59 min)**. The documentation is explicit that an over-frequent _expression_ fails deployment — `0 * * * *` is rejected. **What is capped is how often one entry may run. The number of entries never was.** This document described the daily cadence as a platform ceiling in three places; it was self-imposed, and those places are corrected rather than quietly updated.
+
+**Effect, and it is the only change in this area with an order-of-magnitude size.** The 45-second budget completes roughly six artwork jobs per invocation, so one entry is about **six covers a day** and twelve is about **seventy-two**. Against 211 albums without covers and a backlog that had grown 54 → 174 → 207 in six days, that is roughly **three days to clear** rather than thirty-five. **It accelerates the whole queue** — tracklists, expansions and hydration drain on the same invocations — not artwork alone.
+
+**Two-hour spacing is chosen for the jitter, not for tidiness.** With ±59 minutes of precision, an entry at `0 4` fires anywhere in 04:00–04:59, so **hourly spacing admits a worst case where one drain is still running as the next fires.** Concurrent drains would each hold their own module-level MusicBrainz limiter and could collectively exceed one request per second — the exposure recorded above and still unaddressed. **Two-hour windows cannot overlap, so that exposure is untouched**, which was the whole reason for preferring this over draining from page views. Twenty-four entries were considered and declined for that reason rather than on effect.
+
+**Yesterday's cooling-off is what makes twelve sweeps a day safe**, and that interaction is worth recording because it was not designed for it. Each drain runs all three sweeps; twelve would re-queue a failing artist twelve times, except **the 24-hour cooling-off in _Recovery sweeps_ below already prevents exactly that** — a failure at 04:00 is four hours old at 08:00 and is skipped. A bound chosen for one reason turns out to be load-bearing for another.
+
+**Even hours, and `refresh-charts` keeps 05:00** — an odd hour, so it sits outside every drain window, and §—'s requirement that recomputation and the drain not share a failure domain is unaffected.
+
+**The same mechanism is now available to the chart cadence, and is deliberately not used.** §8 records the chart recomputation as _"intent is hourly; the deployed cadence is daily, a Hobby-plan cron constraint."_ **That divergence is closeable the same way** — twelve entries would give two-hourly recomputation. A seven-day window does not need it, so charts are left alone. **But the constraint must stop being described as immovable there too.**
+
+**Batch size and budget are deliberately unchanged.** At roughly seven seconds an artwork job, ten already exceed the 45-second budget, so **more invocations is the lever and a larger batch is not.**
+
+**One real meter, named rather than discovered.** Cron jobs invoke functions, so twelve a day counts against Hobby function usage. Twelve is trivial against that allowance, and it is a meter rather than a cap.
+
+### The status line's states **[DECIDED 2026-09-13 — DECIDED AND DELIBERATELY UNBUILT]**
+
+**Nothing below is implemented.** It is recorded so the decision is not lost while a diagnostic surface is built first — the same state `product-spec.md` §10 exists to hold. **Do not read this as describing current behaviour.**
+
+**The defect.** `attemptStateFor` collapses _succeeded_ and _terminally failed_ into one `settled` value, so a terminally failed artist shows **no status line at all** and presents a truncated discography as complete. **Radiohead sat in that state for six days.** Four actual states currently produce two renderings.
+
+**Decided: three renderings, from four states.**
+
+| State                                                  | Rendering                                                                             |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| Never attempted · backing off · re-queued by the sweep | _"Fetching the rest of this discography from MusicBrainz. Look again in a moment."_   |
+| **Terminally failed, awaiting the sweep**              | **"Couldn't finish fetching this discography from MusicBrainz. It will be retried."** |
+| Succeeded                                              | Nothing                                                                               |
+
+**Three collapse into one because the reader's action is identical** — come back — and the fourth differs in kind. **The horizon stays on the first and is deliberately absent from the second**: _"look again in a moment"_ is now both true and actionable, since _A later view drains too_ made refreshing claim a job, while the sweep's timing depends on cron jitter and queue depth and cannot be promised.
+
+**The split lives in `attemptStateFor` as a fourth value.** It already reads every row's status, so this costs no extra query, and its only production caller is `expansionStateFor`.
+
+**This reverses the unification in _A later view drains too_, deliberately and for a different reason.** That decision found the page _"promising activity it had disabled"_ and made the status condition and the work condition identical. **This splits them again**, because a terminally failed artist warrants a **message** and must not warrant **work**: enqueueing on failure from a page view would restart the three-attempt retry policy on every visit — exactly what `attemptStateFor`'s docstring warns against, and what the sweep now owns. **The earlier decision's point was that the two must not disagree about the same state; a state where we speak and do nothing is not that.**
+
+**`last_error` is never shown to a reader.** It is upstream diagnostic text and belongs only on the operator surface in §17a.
+
+### An absent cover stops being terminal **[DECIDED 2026-09-16]**
+
+**`ARTWORK_RETRYABLE` has always been `['pending', 'failed']`, with `found` and `absent` described as settled.** That was correct while nothing outside the system could change the answer. **It stops being correct the moment longplayr invites people to upload the missing cover** (`product-spec.md` §8.9): a reader adds art to Cover Art Archive, and an album marked `absent` is **never looked at again**, so the placeholder stays forever and the contribution is invisible.
+
+**This was found before implementation and is the reason the decision changed rather than the feature shipping broken.** A prompt that sends someone to do work the product can never observe is worse than no prompt at all.
+
+**Decided: `absent` re-enters the sweep behind a staleness window, read from `artwork_updated_at`.** No migration — that column already exists and is written on every attempt, including on absence.
+
+**One verified fact makes this affordable, and it is the opposite of the MusicBrainz situation.** §18 confirms **Cover Art Archive has no rate limit**. The one-request-per-second cap that the job queue, the drain cadence, the batch sizing and the whole F-026–F-030 cluster exist to manage **does not apply here at all.**
+
+**So the real cost is drain budget, not API quota**, and that is what the window is sized against. A drain completes roughly six artwork jobs per invocation across twelve invocations a day. Re-checking the settled-absent set too often would spend that budget on albums whose answer has almost certainly not changed, starving first-time fetches — **the same starvation the bulk priority band was introduced to prevent.**
+
+**The consequence to state honestly: a contributor does not see their cover appear immediately.** They see it when the window elapses and a drain reaches the job. **A view-triggered re-check would have made it near-immediate and was considered**; the periodic sweep was chosen instead because it works whether or not the contributor ever returns to the page.
+
+**Idempotence is unchanged and comes for free.** The partial unique index over `pending` and `running` already rejects a duplicate job, so a re-queued album cannot accumulate work.
+
+### Recovery sweeps, and the cron finally calls them **[DECIDED 2026-09-13]**
+
+**Decision: a third sweep, `enqueueFailedExpansions`, and the daily cron calls all three sweeps before it drains.**
+
+**What was broken.** A terminally failed `discover_curated_artist` job reads as `settled` through `attemptStateFor`, so the artist page shows **no status line** and nothing ever retries. **Radiohead spent three attempts inside 47 minutes against MusicBrainz load shedding** — `remaining=13/15`, so nowhere near our own rate — and was permanently capped at three albums while presenting a truncated discography as complete. **`current-state.md` §59 recorded permanent settlement as approved behaviour; that approval was withdrawn on 2026-09-12** (`product-feedback.md` F-034). A transient upstream error is not evidence that an artist has no discography, and it contradicts the completion-oriented depth principle in `CLAUDE.md` and `product-spec.md` §8.9.
+
+**The bound is a cooling-off period, and an attempt cap was ruled out rather than merely not chosen.** **Any hard cap reintroduces permanent exclusion** — a cap of nine simply postpones it by three cycles — which is the behaviour that was declared a defect. **Only a cooling-off period never permanently excludes.** A failed expansion becomes re-queueable **24 hours** after its last failure: it matches the cron's own cadence, so a transient outage is retried the next night rather than in a week, and the cost for a genuinely unfixable artist is **three MusicBrainz requests a night against a daily budget of 86,400.** There is deliberately **no ceiling on total attempts over time.**
+
+**Expansion state is read from job history, not from a column — and that is proportionality, not preference.** Both existing sweeps read an entity column: `enqueueMissingArtwork` reads `albums.artwork_status`, `enqueueMissingTracklists` reads `releases.tracklist_status`. **`artists` carries no equivalent**, which is why `expansionStateFor` derives state from `ingestion_jobs` at all. **An artist-level column remains the better long-term answer** — it would fix the unindexed scan §59 records in a request path, and make the ratified _"for as long as its job record survives"_ guarantee permanent rather than contingent — **but this defect affects exactly one artist**, against a migration, a backfill and every write path. **The column keeps its recorded triggers: a contemplated purge (§59), and this sweep's scan becoming slow.**
+
+**The cron calling the sweeps is the half that decides whether any of this is worth shipping. [RESOLVES the `[OPEN]` item in `current-state.md` §11]** That item asked _"whether the daily cron should sweep for missing artwork and tracklists itself."_ **The evidence answers it: five `fetch_artwork` jobs have sat `failed` since August**, recoverable the whole time by a command that exists and that nobody ran. **A third hand-run sweep would have delivered nothing.**
+
+**Measured before deciding, so the cost is known rather than assumed.** On the deployed data the artwork sweep queues about **nine** jobs — five `failed` plus roughly four albums `pending` without a job, since it already skips anything outstanding — and the expansion sweep queues **one**. The sweeps are sub-second database queries, so **they run before the drain inside the existing route**, which lets newly swept work drain in the same invocation. **A separate cron route was considered and rejected**: it doubles the auth and configuration surface for no measured need, and the sweeps do not compete meaningfully for the 45-second budget.
+
+**`failed` only, and the guard rail matters more than the choice.** A sweep over `failed` jobs is **recovery**. A sweep over `succeeded` ones is a **refresh policy** — that is `product-feedback.md` F-029, it is undecided, and `product-spec.md` §8.9 explicitly records _"no staleness rule and no revisit"_. **The two differ by one value in a `where` clause**, which is exactly how F-029 would get answered by accident, so both the code and this record state the exclusion rather than implying it.
+
+**Re-queued expansions take `DEFAULT_JOB_PRIORITY`**, the same band a first view uses. Nobody is waiting on a swept expansion, so the §7 invariant above — background expansion must never delay an interactive operation — is untouched.
+
+**What this does not address.** Nothing about artwork **throughput** or **cadence**; the `[OPEN]` ceiling under _Store only the sizes that are served_ stands. Nothing about `attemptStateFor`'s scan. And **the first cron run after deployment performs all three sweeps**, which on current data is about ten new jobs.
 
 ### Credit reconciliation and the completeness test **[DECIDED 2026-08-25]**
 
@@ -366,6 +573,48 @@ The final state on success is identical, and the delete's predicate does not dep
 
 **What this does not decide.** Which release types a curated artist's discography admits is a depth-policy question (`product-spec.md` §8.9), enforced separately from the scope filter below and deliberately narrower than it.
 
+#### A fourth trigger for this path, and the priority rule it needs **[DECIDED 2026-09-07]**
+
+**The path above already exists; what it lacked was a trigger from the application.** `discoverAndIngestArtist` browses an artist's release groups, applies `withinCurrentDepth`, creates what is missing and reconciles credit-less rows; the `discover_curated_artist` job kind and the drain's dispatch to it are built and covered. **Nothing in `src/app/` enqueued it** — it ran only for tranche seeding. An artist page now enqueues it on first view for an artist not previously expanded. The product decision is `product-spec.md` §8.9 and §6; this records the architectural consequences only.
+
+**It is the same shape as the album page's hydration trigger, with one deliberate difference.** Both render from held data, enqueue in `after()` so the response is sent first, and rely on the partial unique index over `(kind, target_mbid)` to make a duplicate enqueue a no-op. **The difference is priority.** The album page uses `INTERACTIVE_JOB_PRIORITY` because a tracklist is wanted on the page being read _now_; a discography expansion benefits a **later** view by definition, so it runs **below interactive work**.
+
+**The invariant, and it is the one implementation must preserve:** background artist expansion **must never delay an interactive operation**. It is enqueued and never awaited in the request; it sits below interactive priority; and **at most one expansion is outstanding per artist**. The limiter serialises every MusicBrainz request globally at one per second, so an expansion given interactive priority would queue ahead of a reader's own search or self-service add — which is the failure this rule exists to prevent.
+
+#### A later view drains too, and the artist page was the outlier **[DECIDED 2026-09-07]**
+
+**Decision: an artist page with an expansion still outstanding drains one job, exactly as a first view does.** Previously both the enqueue and the drain sat behind the `start` state, so **every view after the first did nothing at all and refreshing could not help by construction.** The only other drains were another artist's first view, an album's first view, a self-service add, and the daily cron.
+
+**This is a consistency fix, not a new rule.** The album page has always gated on `hydration_status === 'pending'`, which stays true on every view until hydration succeeds — its own comment reads _"Safe to run on every view of a pending album."_ The paragraph above describes the artist page as "the same shape as the album page's hydration trigger, with one deliberate difference", and names that difference as **priority**. It was not the only difference, and the second one was unintended.
+
+**Observed in use before it was found in code. [2026-09-07]** An artist page sat on its outstanding-expansion line for several minutes; opening further artists then visibly hydrated the earlier ones one at a time, each first view draining one job in `priority asc, id asc` order.
+
+**The invariant above is untouched, and that is why this shape was chosen.** Priority does not change — only how often a drain runs — so an expansion still sits below interactive work and still cannot queue ahead of a reader's own search or self-service add. **Promoting the viewed artist's job to interactive priority was considered and rejected** for exactly that reason; it would have required reopening the invariant rather than preserving it.
+
+**One premise beside the invariant did not survive contact with use.** The paragraph above says a discography expansion _"benefits a **later** view by definition."_ It does not: a reader who is told to look again is waiting on this view. **That claim is superseded** — the priority decision it was offered in support of stands, on the invariant's own reasoning rather than on this premise.
+
+**What this deliberately does not give: a bounded guarantee.** `claim_ingestion_jobs` has no target filter, so a refresh drains the **oldest** pending job rather than this artist's. A reader behind a backlog of three refreshes three times. **A target-filtered claim is the escalation** — it would satisfy the invariant too, since it selects within a band rather than raising priority — and it is deferred because it changes the claim boundary, which has needed correction twice, and costs a migration.
+
+**An accepted exposure, recorded rather than waved through.** A page view is an unauthenticated trigger, so anything that can reach an artist page — a crawler included — can now cause a drain as well as an enqueue. **Accepted because the album page has carried exactly this exposure since Phase 1**; this equalises the two surfaces rather than introducing something new. `product-spec.md` §8.4's 30/hour limit is per user and does not cover it.
+
+**A second effect, found after the decision and worth stating because it was not the reason for it.** `drainJobs` runs `reclaimStaleJobs` before it claims anything, and that reclaim **only fires when a drain starts**. With the artist page gated on `start`, a job killed mid-run and left `running` was recoverable only by another artist's first view or the daily cron. **Measured 2026-09-12: one `discover_curated_artist` row had been `running` and untouched for sixteen hours** — the 90-minute threshold had long passed and nothing had run a drain to apply it. Its artist's state reads `outstanding`, so under this decision a later view of that page recovers it. **So this change unsticks stranded rows as well as starved ones.**
+
+**What it does not fix, and that is now a defect rather than approved behaviour. [2026-09-12]** A terminally failed expansion reads as `settled`, so this decision deliberately excludes it — `expansion !== 'settled'` cannot reach it. **Radiohead exhausted three attempts inside 47 minutes against MusicBrainz load shedding and is permanently capped at three albums, with no status line to say so.** `current-state.md` §59 recorded permanent settlement as approved; **that approval is withdrawn — see `product-feedback.md` F-034.** The repair is assigned to the next cycle as a **sweep**, matching `enqueueMissingArtwork`, `enqueueMissingTracklists` and `enqueueMissingPayloads` — of which there is no expansion equivalent, which is exactly why artwork exhausted by a transient error is recoverable and an expansion is not. **A sweep rather than retry-on-view keeps the unauthenticated page-view trigger out of it and leaves the ratified once-per-artist guarantee intact.** `settled` therefore keeps a single meaning in this decision on purpose.
+
+**A second candidate mechanism is unresolved and this does not address it.** Neither route sets `maxDuration`, so the `after()` drain runs under the platform default — already `[OPEN]` above. A large expansion pages at 100 release groups per request through the one-per-second limiter and then inserts sequentially; if that exceeds the ceiling the job is killed mid-run and left `running` until the 90-minute reclaim. **Whether that occurred was not established, and if it is the real cause this decision will not fix it** — which is itself the test.
+
+**The scope carries no schema change, and the attempt record therefore lives in the job history. [RESOLVED 2026-09-07]** `artists` holds no hydration or depth column, and the partial unique index covers only `pending` and `running`, so "already attempted" is not recoverable from outstanding work alone. It is read instead from **every** `discover_curated_artist` row for that artist whatever its status — none means never attempted, any `pending` or `running` means outstanding, anything else means settled. **`failed` counts as settled**: the queue has already spent its three attempts behind 30s, 5min and 30min backoffs, and re-reading that as "never attempted" would restart the policy from a page view.
+
+**Two mechanisms, doing two different jobs, and conflating them is the mistake to avoid.** The **row history** gives at most one attempt ever; the **partial unique index** gives at most one _outstanding_ attempt, atomically, under concurrent first views — both requests read `none`, both insert, the second violates the index, and `enqueueJob` treats `23505` as success while rethrowing every other error. Neither substitutes for the other.
+
+**This makes the product rule conditional on retention, which was raised in review, examined and ratified deliberately** — see `product-spec.md` §8.9 `[RATIFIED 2026-09-07]`. The condition holds: no production code deletes a job row, no cron purges, the test cleanups that do are fenced to a local database, and nothing records an intent to purge. **The queue was designed to permit requeueing completed work** — its index comment says so explicitly — so this is a use the table's design does not protect, and the narrowed wording in §8.9 says so rather than claiming otherwise. Losing the rows costs one redundant browse per artist and corrupts nothing, because re-expansion is idempotent.
+
+**The consequence for a future purge is therefore a product question, not a cleanup detail.** Introducing one would silently re-enable expansion for every artist; the decision to revisit the artist-level column belongs at that point.
+
+**One known cost, recorded rather than fixed.** The history read filters on `kind` and `target_mbid` across all statuses, which no index supports — the unique index is partial on `pending`/`running`, and the claim index leads with `status`. It is a sequential scan in a request path on a table that grows with every job. Negligible at two thousand rows, and unfixable inside a no-migration boundary; **an artist-level column would resolve it incidentally.**
+
+**What this does not decide.** Whether an expanded artist is ever re-expanded, and on what signal. The partial index was written so completed jobs do not block requeueing later, which **permits** a re-sync policy without being one.
+
 ### Scope enforcement
 
 Albums, EPs and mixtapes are ingested; singles are not. **Enforced at ingest** — an out-of-scope release group should never become a row, rather than the exclusion being carried in every read.
@@ -386,6 +635,16 @@ They read as one list in `scope.ts`, which is exactly how a future session would
 ### Self-service additions
 
 Users search MusicBrainz in-app and add any in-scope release directly, with **no admin approval**. Guarded by the scope filter and a per-user rate limit, with every addition recorded in `CatalogueAddition` for audit. **[DECIDED — C4]**
+
+**Fetch depth and display limit are separate concerns. [DECIDED 2026-09-06]**
+
+The upstream panel asks MusicBrainz for **25** release groups and displays up to **10** of the survivors. Two numbers with two reasons, where there was previously one: `searchUpstream` derived its fetch from the caller's display limit by an undocumented `limit * 2`, so a display choice silently set the retrieval depth.
+
+**They answer different questions.** Fetch depth is sized against what the two filters beneath it remove — `classify().inScope`, then every MBID the catalogue already holds — and **a deeper fetch is free against the constraint that shapes the rest of this section**, because the rate limiter serialises requests rather than results. Display depth is sized against a section deliberately subordinate to the local results above it. Coupling them let the second decide the first, and left the pool shrinking as the catalogue grew, since the already-held filter scales with catalogue size and a fixed multiplier does not.
+
+**No abstraction is introduced.** Two explicit constants replace one multiplier. The search path, the relevance ordering, both filters and the query string handed to MusicBrainz are all unchanged, and the response's `count` and Lucene `score` stay unused. `product-spec.md` §8.10 owns the product reasoning and the evidence limits.
+
+**Two questions stay deferred and are not resolved by this.** Whether the panel gets a "show more" — meaningful now that the pool exceeds the display, and still not built — and whether upstream search matches artist names, still blocked on verifying field-qualified Lucene syntax against the live API. **§7a records the established route for that class of verification**: staging, where the contact is real, since local cannot make live calls by design.
 
 ---
 
@@ -434,18 +693,48 @@ _Why an abstraction rather than direct calls._ At launch there is no internal ac
 
 _Risk._ ListenBrainz has a smaller dataset than commercial alternatives, so early rankings may look unfamiliar for popular music. **[VERIFY — confirm available statistics endpoints and their shape during implementation.]**
 
+### The internal source arrives as a separate cached chart, not as a second writer of `popularity_score` — **[DECIDED 2026-09-05. Implemented in `67949e8`, CI #91.]**
+
+Phase 5 slice 1 builds `product-spec.md` §8.3's _Popular this week_. **The tension recorded above is respected rather than resolved**: one active source still writes one `albums.popularity_score`, and this slice does not make it two.
+
+**`albums.popularity_score` is unchanged and keeps its meaning.** It remains the external-source prominence signal, written only by the catalogue seed — and it has **four consumers, not one**: Browse discovery, `search_albums`' tie-breaking within a tier, and three job-prioritisation queries in `jobs.ts`. Repurposing it would change search results and ingestion order as a side effect of a discovery change. **That is the reason the chart is a separate read model, and it is a measured reason rather than a stylistic one.**
+
+**A materialised chart is not a popularity signal.** It is the stored answer to one query. **`product-spec.md` §8.9's "one field or two" question is therefore untouched and stays open**, and nothing here forecloses either answer.
+
+**The chart's inputs are collection and relisten data, never the `activity` table.** §8.3 requires backfilled collection data to count; `activity` exists to exclude backfills. The two cannot be the same source, and choosing `activity` because it is the obvious "activity" table would contradict a decided product rule.
+
+**Persistence and scheduled recomputation are architecture here, not implementation detail** — §8.3 decides a cached table rather than per-request computation, and §9's caching table already records it.
+
+**The deployed cadence diverges from the hourly intent, on a platform constraint.** Vercel's Hobby plan caps cron at once per day, so recomputation is **daily**. Recorded as a divergence rather than rewritten as an hourly-to-daily decision: §8.3's intent is hourly and stands.
+
+**The external source fills; it does not blend.** Below 20 internal results the remainder comes from the existing `PopularitySource`, with internal entries keeping their positions. **`BlendedSource` remains a future shape and no blending architecture is introduced by this slice.**
+
+**The 20 is a floor, not a cap, and the consumer's limit is a separate thing. [DECIDED 2026-09-05]** External entries **complete the chart to 20** when internal activity yields fewer, appended after the internal results; when it yields 20 or more, **no external entry is added at all**. **Internal results are never truncated merely to satisfy the floor** — a chart with more than 20 qualifying albums stays that long. A caller's limit caps what that caller renders and never sets the fill target: `getPopularAlbums(24)` renders at most 24 of whatever the chart holds. **Nothing here changes the boundaries above** — the materialised chart stays internal-only, `albums.popularity_score` stays the external signal with its existing consumers, no blending is introduced, and §8.9's one-field-or-two question remains open.
+
+**Browse Popular is the first and only consumer in this slice**, which answers — **for the internal case only** — the question this section raises above. An album with internal activity can appear regardless of its external score, so null stops acting as a visibility gate for it. **The external fill still cannot offer a null-score album, and that half is unresolved**: there, null means the source genuinely has nothing to say, which is the legitimate case.
+
+**Not decided here.** Whether recomputation is invoked from a new route or the existing drain; the chart's table, columns, keys, indexes or retention; query shape; and component structure. Those belong to implementation.
+
+### A second consumer, and no second signal — **[DECIDED 2026-09-05. Phase 5 slice 3. Implemented in `8f4aa00`, CI #92.]**
+
+The home surface defined in `product-spec.md` §6 becomes the chart's second consumer. **It reads the same `getPopularAlbums` result Browse reads**, at a smaller caller limit, rather than querying the chart itself — two callers, one service function, one answer. That is the whole architectural content of the slice: **no new table, no new function, no migration, no change to the refresh, the schedule, the floor or the fill.**
+
+**The caller limit doing the work here is the one this section already separated from §8.3's floor.** Home passing twelve is a use of that separation rather than a new rule; the floor stays a chart property and the limit stays a caller property.
+
+**`albums.popularity_score` is untouched again**, and §8.9's one-field-or-two question is untouched with it. **No blending is introduced**; `BlendedSource` remains a future shape.
+
 ---
 
 ## 9. Caching
 
 Deliberately minimal. Correctness first; caching added where measurement justifies it.
 
-| Layer                  | Approach                                                                                      |
-| ---------------------- | --------------------------------------------------------------------------------------------- |
-| Catalogue pages        | Cached server-side with periodic revalidation — catalogue data changes rarely                 |
-| Artwork                | Served from Supabase Storage behind a CDN, immutable URLs                                     |
-| Discovery charts       | Recomputed hourly into a cached table, not per request. Definitions in `product-spec.md` §8.3 |
-| Feed, profiles, search | Not cached — personal or query-dependent                                                      |
+| Layer                  | Approach                                                                                                                                                                                                  |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Catalogue pages        | Cached server-side with periodic revalidation — catalogue data changes rarely                                                                                                                             |
+| Artwork                | Served from Supabase Storage behind a CDN, immutable URLs                                                                                                                                                 |
+| Discovery charts       | Recomputed into a cached table, not per request. Definitions in `product-spec.md` §8.3. Intent is hourly; **the deployed cadence is daily**, a Hobby-plan cron constraint rather than a revision — see §8 |
+| Feed, profiles, search | Not cached — personal or query-dependent                                                                                                                                                                  |
 
 **No Redis, no separate cache layer at MVP.** Adding one before there's a measured problem means operating infrastructure to solve a hypothetical.
 
@@ -691,6 +980,22 @@ _Why this._ The main thing environments buy is **rehearsing migrations before th
 
 **CI: GitHub Actions on every pull request** — lint, typecheck, unit and integration tests, build. **[INFERRED]** This is ordinary practice rather than a course-derived recommendation, and it's what makes every other quality mechanism trustworthy.
 
+### 11.1 The pre-push migration check warns truthfully, and its reach has shrunk **[DECIDED 2026-09-15]**
+
+**`scripts/check-migrations-deployed.mjs` guards a failure that has happened twice** — code deployed ahead of its migration, which on 2026-09-04 took every profile page down for every visitor (`current-state.md` §42, §46). It refuses a push when the deployed database is behind.
+
+**Its stated premise stopped being true when work moved to a branch.** The check asserts _"Vercel deploys on push, so pushing is deploying"_. That holds for `main` and is **false for a branch**, which is now where all work happens — and the gate change of 2026-09-15 moved migration application from STEP I to **STEP J**, after a green CI run and before the merge.
+
+**So its instruction had become actively wrong.** It told the developer to run `supabase db push --linked` _before_ pushing, which would put schema on the deployed database **before CI had ever parsed the migration** — precisely the ordering the amendment reversed. Found in real use, not by inspection: it blocked the push in §74 and had to be overridden.
+
+**Decided: the message becomes ref-aware; the blocking behaviour does not change.** Git hands a `pre-push` hook its target refs on stdin, and the script had never read them, so it could not tell a branch push from a push to `main`. It now does, and says something true for each case — for `main`, that pushing deploys and the migration must land first; for a branch, that **the push deploys nothing**, that the migration belongs at STEP J, and that `--no-verify` is the expected way past.
+
+**Behaviour is deliberately untouched, and that is a scope decision rather than an oversight.** `CLAUDE.md` records that a branch push _"will now report a pending migration, and that is expected rather than a failure to fix"_. Making the hook stop blocking on a branch would be better engineering **and would make that sentence stale**, so it is left to the maintainer as its own decision.
+
+**The honest limitation, recorded rather than papered over: this hook can no longer prevent the outage it was built for.** Under the branch model the deploy happens **at merge time on GitHub**, which no local hook observes. The real protection is STEP J's ordering — CI green, migration applied, then merge — and the hook is now a **reminder rather than a gate**. A fix that implied otherwise would be worse than the stale message it replaces.
+
+**The failure mode being designed against is not a missed migration but a trained reflex.** Crying wolf on every branch push teaches the developer to reach for `--no-verify` without reading, and a guard that is always overridden has already stopped working.
+
 ---
 
 ## 12. Testing
@@ -868,7 +1173,239 @@ The failing tests had a **median clean duration of about 4.6s**. A 1.8-second te
 
 ---
 
+### Extending the database-backed fixture technique to session establishment — **[DECIDED 2026-09-04. Implemented in `a9da122`, CI #86.]**
+
+**This revisits the stance above — _"no further tests should be converted on the current evidence"_ — and does not overturn it.** That stance reasoned about **flake probability**, having just demonstrated that baseline duration does not predict failure: a 1.8s test exceeded 30s while the 12.9s slowest remaining test passed. **That finding is unchallenged and still holds.**
+
+**What changed is that a different justification now exists, and it did not exist on 2026-08-28.** The memory finding recorded in this section establishes that this host runs the suite under severe memory pressure with **monotonic within-run degradation** — 7.9s for tests 1–20 against 24.5s for tests 81+, against a flat 108/108 in 12.4m on CI. Under that mechanism, reducing total work has value **independently of flake**, because a shorter suite spends less time in the degraded region.
+
+> **This does not establish that fixture conversion reduces failure or flake rate, and no such claim is authorised.** The 2026-08-28 conclusion stands unamended: **reduced duration has never been shown to reduce failures.** Setup-time reduction, total suite duration, memory and swap behaviour, and failure rate are **four separate claims** and evidence for one is not evidence for another.
+
+#### What was approved
+
+**A first slice only, converting session establishment — not application operations.** **18 of the 72 `signUp(page)` call sites, 25%, across two files.** **[Superseded in count on 2026-09-04: 17 are eligible. The line is left exactly as approved — 18 is the number of call sites reviewed, and the reduction is recorded in _The eligible count is 17, not 18_ below.]**
+
+| Spec                         | Call sites             | Why this file                                                                                                                                                                                                                   |
+| ---------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `profile-collection.spec.ts` | **11 across 12 tests** | Highest density in the suite, and **already contains both `createUserViaApi` and `signIn`** — the conversion invents no mechanism. It is the precedent's own file, converted only in part                                       |
+| `follows.spec.ts`            | **7 across 7 tests**   | **Already contains `createAccount` with postcondition assertions.** Needs only a sign-in helper, **copied rather than extracted**, following `auth.spec.ts`'s own recorded habit of copying so files stay recognisably the same |
+
+**Helper availability was weighted above call-site count**, which is why the two highest-count alternatives were not chosen.
+
+**Every call site in scope discards the page the signup helper lands on.** Each is immediately followed by a navigation — `page.goto(…)`, or a helper that begins with one. **Established by reading all of them, not assumed**, and it removes the principal conversion hazard: no test depends on the post-signup landing page.
+
+> **⚠️ That paragraph was wrong, and it is corrected rather than deleted. [CORRECTED 2026-09-04]** _"Established by reading all of them, not assumed"_ was true for `follows.spec.ts`, `lists.spec.ts` and `listened-on.spec.ts` and **was not true for `profile-collection.spec.ts`, which had not been read call site by call site when that sentence was written.** The per-site review required by the eligibility rule then found one site that does **not** navigate away. **The claim of thoroughness was the error, not the conclusion for the sites it had actually covered** — and it is exactly why the rule says eligibility must be established per call site rather than inferred from a count.
+
+#### The eligible count is 17, not 18 — **[SUPPLEMENTARY DECISION 2026-09-04, following the STEP D eligibility review]**
+
+**The two-file scope is unchanged. Only the eligible-site count moves, and it moves down.**
+
+| Spec                         | Call sites | **Eligible** |
+| ---------------------------- | ---------- | ------------ |
+| `profile-collection.spec.ts` | 11         | **10**       |
+| `follows.spec.ts`            | 7          | **7**        |
+| **Total**                    | 18         | **17**       |
+
+**`tests/e2e/profile-collection.spec.ts:112` is excluded.** It asserts on the page the signup flow itself lands on, before any navigation:
+
+```ts
+const user = await signUp(page);
+
+// The profile starts with the real empty state, not a zeroed scaffold.
+await expect(page.getByText('Your collection is empty.')).toBeVisible();
+```
+
+**The reason is substantive, not mechanical.** Inserting `page.goto('/${user.handle}')` would preserve the assertion **text** while changing what the assertion **establishes** — from _the state of the page a new user lands on after onboarding_ to _the state of the profile page when separately visited_. The comment beside it, _"not a zeroed scaffold"_, reads as being about that immediate post-signup moment. **Preserved text is not preserved coverage**, and this slice authorises neither adding navigations to manufacture eligibility nor accepting a coverage change to protect a count.
+
+**This is a conservative application of the existing boundary, not a rejection.** The test remains legitimate coverage of the post-signup landing state and remains a candidate for a later decision that addresses the coverage question directly rather than incidentally.
+
+**No compensating scope.** No additional spec, no additional call site, and no conversion of `collect` or `rate` to the `collectViaApi` / `rateViaApi` helpers that already sit in the same file. **The slice is smaller than first stated, and that is the correct outcome** — the eligibility rule found a site the count had assumed.
+
+**One mechanical consequence.** `signUp` **remains** in `profile-collection.spec.ts` with its one surviving caller. It is still removed from `follows.spec.ts`, where conversion leaves it with none.
+
+#### The eligibility rule, unchanged in substance
+
+> **A UI operation stays in the UI when the test asserts something about it.**
+
+Six conditions must **all** hold before a call site is converted:
+
+1. The test asserts **nothing** about signup, onboarding, handle claim, or the auth forms.
+2. The test **navigates away** before asserting anything that depends on the signup landing page.
+3. The API fixture creates **both** the `auth.users` row and the `profiles` row, and **asserts its own postconditions**. There is no trigger that creates a profile, so this is required rather than defensive.
+4. Created email addresses remain registered in the existing `createdEmails` cleanup mechanism, so `afterAll` still deletes them.
+5. The session is established **through the real login form**. No persisted storage state and no injected authentication state is introduced.
+6. **Eligibility is established per call site by reading that test's assertions.** A call-site count is not evidence of eligibility.
+
+#### Excluded from this slice
+
+| Excluded                                                                                              | Reason                                                                                                                                                                                                                                                                                                                                                            |
+| ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`auth.spec.ts`**                                                                                    | Flow owner. Asserts signup, handle claim, sign-out, sign-in, reserved handles and public visibility                                                                                                                                                                                                                                                               |
+| **`collection.spec.ts`**                                                                              | Flow owner for the collection flow. Untouched by the 2026-08-28 conversion and untouched here                                                                                                                                                                                                                                                                     |
+| **`lists.spec.ts`**                                                                                   | **Deferred, not rejected.** Its own header records that lists are built through the interface deliberately — _"Writing rows directly would skip the surfaces this slice is mostly about."_ That governs list arrangements rather than session establishment, so conversion is **probably** compatible. **"Probably" is not a sufficient basis for a first slice** |
+| **`listened-on.spec.ts`**                                                                             | Has neither helper. Would require importing the pattern into a file with no existing API machinery                                                                                                                                                                                                                                                                |
+| Any test asserting signup, onboarding, handle claim or auth-flow behaviour                            | The eligibility rule itself                                                                                                                                                                                                                                                                                                                                       |
+| `storageState`, `globalSetup`, `test.use`, cookie or session injection                                | **Not authorised.** A shared persisted session couples tests to one another and weakens isolation                                                                                                                                                                                                                                                                 |
+| Converting `createList`, `addAlbum`, collection, rating or other application operations               | This slice converts **session establishment only**                                                                                                                                                                                                                                                                                                                |
+| Consolidating the **15 duplicated `signUp(page)` definitions**                                        | **Deferred.** It would touch all 15 files — a blast radius several times the slice — and is **not necessary** to complete the slice safely                                                                                                                                                                                                                        |
+| Docker, OrbStack, Colima, VM memory, container set, IDE processes, or any other machine configuration | **Outside this cycle entirely.** See the sequencing note below                                                                                                                                                                                                                                                                                                    |
+
+#### One consequence, accepted deliberately
+
+**Today, if signup broke, roughly 72 tests would fail. After conversion, fewer would.** That **localises** the failure rather than broadcasting it, which is better diagnostics and less redundancy. `auth.spec.ts` retains three full signup flows and **becomes the signup flow's sole guarantor — it must never be converted.**
+
+#### Required evidence for the slice
+
+| Evidence                   | Requirement                                                                                                                                                                                                 |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Behavioural assertions** | Every original assertion preserved; unchanged assertions remain **byte-for-byte** unchanged. **Non-negotiable**                                                                                             |
+| **Non-vacuous fixtures**   | Each API fixture asserts its own postconditions, ordered on a deterministic column. The precedent records both failures — a vacuous pilot, and an ordering on `rating` that has two nulls and no tiebreaker |
+| **Setup-time measurement** | Repeated **isolated** before/after runs, medians reported, for each converted spec                                                                                                                          |
+| **Machine state**          | Docker configuration, container set, free memory and swap recorded **at every measurement stage**                                                                                                           |
+| **CI**                     | Green on the pushed SHA                                                                                                                                                                                     |
+
+#### Measurement boundaries
+
+| Claim                         | Status                                                                                                                                           |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Setup-time reduction**      | **The only performance claim this slice may establish**                                                                                          |
+| **Total suite duration**      | **Not an acceptance criterion.** It must not be presented as established while this host cannot measure it reliably — a full run degrades itself |
+| **Memory and swap behaviour** | **Contextual evidence, not an acceptance criterion**                                                                                             |
+| **Failure and flake rate**    | **Not an acceptance criterion, and must not be claimed as improved by this work**                                                                |
+
+**No numeric threshold is set in advance, deliberately.** The precedent's 14.1s → 6.6s came from tests shedding a signup, four collects and two ratings; **session establishment alone is a smaller share**, and inventing a target from that number would be false rigour.
+
+**Expanding beyond the first slice requires a material measured median reduction**, with its magnitude scoped to the machine state it was measured in. **If the measured reduction is not material, stopping is a valid outcome** — closing a line of work with evidence is explicitly a legitimate result under `CLAUDE.md`, not a failure.
+
+#### Machine configuration is sequenced, not a blocker
+
+**Host remediation sits outside this cycle and is not a prerequisite that blocks A–K.** Blocking implementation on an out-of-cycle action with no timeline costs more than the confound it avoids, and the conversion work itself does not depend on it.
+
+- **Comparative measurements must be taken within a single, recorded machine-configuration state.**
+- **If the machine configuration changes mid-cycle, prior comparative measurements are invalid for comparison and must be retaken.** No before/after may straddle a machine change.
+- **Order-reversed passes are required**, because memory and swap state drift during execution. This is the direct lesson of the controlled A/B recorded above, where reversal **did not** fully remove the ordering confound — and may not here either, which must be recorded rather than hidden.
+- **Any figure produced is scoped to its recorded machine state and must not be generalised** — the same discipline this section applies to the 41% mean.
+- **The maintainer may perform host remediation before the measurement step and this is recommended for measurement quality**, but the cycle does not depend on it. **No machine change is authorised or performed by this decision.**
+
+#### What this decision does not touch
+
+- ~~**Whether a locally RED `verify:full` may satisfy the pre-commit requirement when CI passes** — **`[DEFERRED]`**, unchanged.~~ **RESOLVED 2026-09-13** — see _The full gate moves to CI on a branch_ below. The question is answered by moving the run rather than by licensing a red one.
+- **Whether the end-to-end gate should run the production build** — **`[OPEN]`**, unchanged. Nothing here bears on it.
+- **The 2026-08-28 dev-server rejection** — **intact**, and not reopened.
+- **The 41% production-versus-development result** — remains the observed mean of that experiment only, **not a general performance magnitude**.
+- **The host memory constraint** — remains an **environmental limitation, not a repository defect**.
+- **The fresh server per local run** — implemented and CI-verified, unchanged.
+- **`docs/product-feedback.md`** — maintainer-owned and untriaged. No entry is promoted or reclassified.
+
+**No production code, schema, migration, `playwright.config.ts`, CI workflow, `package.json` script, timeout, retry or assertion is in scope.**
+
 ---
+
+---
+
+### Waiting for a redirecting server action before navigating again — **[DECIDED 2026-09-05. Implemented in `3d62bfa`, CI #87.]**
+
+> **When a server action ends in `redirect()`, a test must wait for that navigation to become observable before initiating another navigation.**
+
+**Clicking such a control and immediately calling `page.goto` races the redirect.** When the redirect lands second it wins, leaving the test on the redirect's destination rather than the page it asked for — and the next locator waits out its full 30-second budget against an element that does not exist there. The failure surfaces at the locator, several lines away from the cause.
+
+#### The evidence, and what it is not
+
+**Known.** CI run #86 on `a9da122` passed but reported **two flaky tests, both in `list-likes.spec.ts`** — the first flaky results CI had produced; #84 and #85 each reported zero. Both failed at the **same operation**, `getByLabel('Email').fill(...)`, with `waiting for getByLabel('Email')`, at the line immediately following an unwaited `page.goto('/login')`. `signOut()` ends in `redirect('/')`. **The same failure occurred in the local `verify:full` run at the same line**, so it is present in two independent environments. `auth.spec.ts` performs the same sign-out and navigation but **waits for the signed-out state first**, and did not flake.
+
+> **Inferred, not reproduced.** The mechanism is an inference strongly supported by the failing locator, the redirect in the action, the contrasting waited pattern, and reproduction across two environments. **No instrumented reproduction was performed, and this must not be described as a definitively reproduced race.**
+
+**Implementation is justified on that evidence.** The correction is a single wait at each site, following a pattern already proven in this repository; the defect degrades the project's only mechanical gate; and **proof of the absence of flakiness is not obtainable and is not required.**
+
+#### The bounded audit, and its limits
+
+**A suite-wide audit was performed at decision time rather than deferred into implementation.** Every redirecting server action was enumerated with its test call sites:
+
+| Redirecting action                                                     | Call sites                              | Waits before navigating?               |
+| ---------------------------------------------------------------------- | --------------------------------------- | -------------------------------------- |
+| `signUp` → `/onboarding`, `chooseHandle` → `/{handle}`, `signIn` → `/` | the auth helpers across the suite       | **Yes** — 30 click → `toHaveURL` pairs |
+| `deleteListAction` → `/{handle}/lists`                                 | `lists.spec.ts:260`                     | **Yes** — `toHaveURL(…, NAV)`          |
+| `signOut` → `/`                                                        | `auth.spec.ts:95`                       | **Yes** — waits for the `Sign in` link |
+| `signOut` → `/`                                                        | **`list-likes.spec.ts:143` and `:169`** | **No**                                 |
+
+A mechanical scan for `.click()` followed within three non-blank lines by `page.goto` or `page.reload`, with no intervening `expect`, returned **three** hits. Two are the sites above. **`lists.spec.ts:91` was investigated and excluded**: its `Add` control calls `addAlbumAction`, which only `revalidatePath`s and **does not redirect**, so no competing navigation exists.
+
+> **This is a bounded method, not proof that no other race exists.** The scan is line-adjacency based. **Races expressed through different syntax, initiated by link clicks or form submissions, or separated by more than three lines would not have been detected.** Other occurrences are **unfound by a recorded method, not established as absent**, and may be considered separately later.
+
+#### Approved scope
+
+**Exactly two sites: `tests/e2e/list-likes.spec.ts:143` and `:169`.** At each, the test must wait for the signed-out state to become observable after clicking Sign out and before calling `page.goto('/login')`. **`auth.spec.ts` is the approved precedent** — the known-working pattern is to be followed rather than a new synchronization mechanism invented. **The exact wait is an implementation decision and is not fixed here.**
+
+**No other test site is implementation scope.** **`signOut()` is correct behaviour and is not changed** — the redirect is something the test must accommodate, not a product defect. **Explicitly excluded:** production code, schema, migrations, CI workflow, `playwright.config.ts`, `package.json`, timeouts, retries, worker counts, any other spec, any suite-wide refactor or re-audit, the remaining 55 `signUp` call sites, the performance measurement, and the documentation backlog.
+
+**This convention is recorded for future test authors. It is not authorisation for a suite-wide refactor or a second audit.**
+
+#### Verification standard
+
+| Evidence               | Requirement                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------------ |
+| **Repeated execution** | `list-likes.spec.ts` green for **at least 5 consecutive isolated runs**              |
+| **The defect is gone** | The unwaited pattern is **mechanically absent** at both sites — the same scan re-run |
+| **Assertions**         | Every existing behavioural assertion unchanged; only a wait is added                 |
+| **Nothing masked**     | No timeout, retry, worker or configuration change                                    |
+| **CI**                 | Evidence obtained for the pushed SHA, **with the flaky count recorded either way**   |
+
+**No behavioural negative control is required, and that is a decision rather than an omission.** Reverting the wait and expecting the flake to return is probabilistic and would not provide reliable evidence. **The deterministic static check replaces it.**
+
+> **Repeated green runs are consistent with the fix. They do not prove the absence of flakiness, and no statement may claim they do.**
+
+#### Not addressed here
+
+**The five other local `verify:full` failures** — `review-likes` ×3, `profile-favourites`, `want-to-listen` — are **unexplained and are not claimed to share this cause**. **`lists.spec.ts`'s `addAlbum` helper returns without asserting the add succeeded**; that is neither a race nor this class, and is recorded so it is not lost. The **`[OPEN]`** production-build gate question, the **`[DEFERRED]`** `verify:full` policy question, the **invalid/inconclusive** setup-time measurement and the host-memory constraint are all unchanged by this decision.
+
+---
+
+### The full gate moves to CI on a branch **[DECIDED 2026-09-13 — resolves the `[DEFERRED]` `verify:full` policy question above]**
+
+**Decision: the full suite runs on CI against a branch before anything reaches `main`. Locally, STEP F runs `npm run verify` plus the targeted suites for the area changed. `npm run verify:full` stops being a precondition for pushing.**
+
+**What resolves the deferral is measurement, not preference.** That question — _whether a locally RED `verify:full` may satisfy the pre-commit requirement when CI passes_ — was deferred deliberately, on the grounds that it would license ignoring a red run. **Eight consecutive cycles on 2026-09-13 supply the evidence it lacked.**
+
+| Run | End-to-end failures | Local runtime | CI on the same tree |
+| --- | ------------------- | ------------- | ------------------- |
+| 1   | 9                   | 10.5m         | green               |
+| 2   | 5                   | 13.5m         | green               |
+| 3   | 2                   | 16.3m         | green               |
+| 4   | 9                   | 18.9m         | green               |
+| 5   | 7                   | 22.7m         | green               |
+| 6   | 14                  | 25.3m         | green               |
+| 7   | 19                  | 25.3m         | green               |
+| 8   | 6                   | 15.8m         | green               |
+
+**Eight trees, every failing set green on isolated rerun, not one a real defect, and CI green on all eight.** Host load rose from **6.15 to 12.51** across the same period. **The sharpest single measurement: the same tree took 25.3 minutes locally and 11.2 on CI — with CI absorbing nothing**, every test passing first attempt and zero retries. CI is not more lenient; it runs two parallel jobs on clean runners while this host runs everything serially under load.
+
+**The deferral's own fear is answered rather than waved away.** It feared licensing the habit of ignoring red runs. **This does not license that** — it moves the run to a place where red means something. A red CI run still blocks a merge.
+
+**The mechanism already exists and is unused.** `ci.yml` triggers on `pull_request` as well as `push`, its two jobs carry no `needs:` between them so they run in parallel, and `concurrency` cancels superseded runs. **Nothing is built here; something already present starts being used.**
+
+**Why a branch rather than simply dropping the local gate.** Dropping it while still pushing to `main` accepts a red `main` and a bad deploy for the ~13 minutes CI takes — the exact failure `CLAUDE.md` records as having left `main` red for three commits. **A branch isolates `main` while the same discipline is exercised.** Branch protection is paid and was declined; **`CLAUDE.md` reasoned from its absence to "the local gate is the safety net", and the step that reasoning skips is that a branch does not require protection to be useful.**
+
+**One rule inverts, and it is the one this repository treats most seriously.** Today _"pushing is deploying"_, because `main` deploys to the live app. **A branch push does not deploy it**, so **migration-before-push becomes migration-before-merge.** That is safer rather than laxer: the migration is applied after CI has passed on the exact tree, instead of before anything has been verified. **What does not change is that CI applies migrations to a fresh database and therefore proves nothing about the deployed schema** — that warning must survive the rewrite verbatim, because it is the one CI cannot help with.
+
+**What this does not touch.** The **`[OPEN]`** production-build gate question is unchanged and is a separate decision. The 2026-08-28 dev-server rejection stands. **The host memory constraint remains an environmental limitation and not a repository defect** — and the maintainer's constraint that verification must not compete with the working machine is what rules out every remedy that depends on the host being idle.
+
+~~**`CLAUDE.md` is not edited by this decision.** STEP H, I and J are described there, and that document is the maintainer's. **This cycle produces proposed wording for them to apply; the process document is not rewritten by the agent the process governs.**~~ **SUPERSEDED 2026-09-15 — the maintainer instructed that the proposal be applied, and it was.** `CLAUDE.md` now carries the branch model at **Where the full gate runs**, the migration gate moved from STEP I to STEP J, and rewritten rows for STEP H, I and J. **The paragraph above is preserved because its reasoning held right up to the point the maintainer overrode it**, which is the only thing that should override it.
+
+---
+
+### 12.1 The local gate is now `verify` alone **[DECIDED 2026-09-16]**
+
+**§12 moved the full suite to CI on measurement.** This moves the targeted suites too, on the same measurement and one further argument.
+
+**The measurement has not changed.** Across eight cycles on 2026-09-13 the local end-to-end suite failed 9, 5, 2, 9, 7, 14, 19 and 6 times on eight different trees. **Every failing set passed on isolated rerun, CI was green on all eight, and not one was a real defect.** A targeted run is the same browser, the same dev server and the same database on the same host — **narrowing the selection does not change what is being measured.**
+
+**The further argument is that the host is the maintainer's working machine.** Playwright makes it unusable while it runs, and they have raised it twice. A cost paid in their working day, for evidence CI produces anyway on a clean runner, is not a trade worth defending.
+
+**What is given up, and it is real.** A broken query, RLS policy or page is now found in roughly fifteen minutes by CI rather than two minutes locally, and finding it there **reopens the cycle**. That happened once — `current-state.md` §79 — and cost one extra CI run and a separate commit. **It will happen again, and that is the accepted price.**
+
+**A render probe is the replacement, not nothing.** Starting the dev server and fetching the changed page with `curl` costs a fraction of a browser suite. **It has repeatedly produced better evidence than Playwright did**: §80's two defects — a 500 where a 404 belonged, and a sort control ordering by invisible data — were both found that way, and neither would have been caught by any assertion that existed. §76 and §78 were verified the same way.
+
+**The rule this leaves.** `npm run verify` locally. Integration and end-to-end on CI. **A red CI run blocks the merge and reopens the cycle**, which is where the attribution standard in `CLAUDE.md` now chiefly applies.
 
 ## 13. Observability
 
@@ -900,9 +1437,23 @@ Per `docs/claude-course-analysis.md` §10, the course's own advice — don't put
 ## 15. Privacy
 
 - **Everything user-generated is public** by decision. No viewer-permission filtering anywhere, which is a substantial simplification of every read path — and a deliberate bet, since retrofitting private accounts later is expensive.
-- **Hard deletion** removes all user-authored rows. Because averages are computed on read (§16), no recomputation is required.
+- **Hard deletion** removes all user-authored rows. Because averages are computed on read (§16), no recomputation is required. **[EXTENDED 2026-09-18 — see §15.1.]**
 - **Export** produces the user's collection, ratings, reviews and lists in a portable format.
 - **Email addresses are never public**, and blocking is labelled truthfully — it prevents interaction, it does not hide content.
+
+### 15.1 How the deletion actually executes **[DECIDED 2026-09-18]**
+
+**The cascade is already declared, and that is the finding that made this a slice rather than a phase.** Every user-bearing table cascades from `profiles`, and `profiles.id` references `auth.users(id) on delete cascade`. `reviews` and `relisten_events` carry no direct user reference and cascade transitively through `collection_entries`. **Deleting the auth user should therefore take everything with it today** — which is a claim about the schema, not a verified fact, and the point of the test below.
+
+**One deliberate exception, already in the schema with its reasoning beside it.** `catalogue_additions.user_id` is `on delete set null`: the audit record of what entered the catalogue survives as an anonymous row. **That is a considered decision, not the orphan `CLAUDE.md` warns about.**
+
+**The delete is issued against `auth.users`, not against `profiles`.** Deleting the profile row would leave the auth user behind — able to sign in, with no profile, indistinguishable from a half-finished onboarding. **The auth row is the root of the cascade and the only correct target.** It requires the service-role client at `src/lib/supabase/admin.ts`, which already exists.
+
+**The handle reservation is a `before delete` trigger on `profiles`, and the timing matters.** It must fire on a _cascaded_ delete rather than only on a direct one, because the delete this product issues is always a cascade from `auth.users`. A `before delete` row trigger fires in both cases; an application-level write before the delete call would not, and would also be skipped by any deletion issued from outside the app. **The trigger is the mechanism precisely because it cannot be bypassed.**
+
+**Verification is an integration test asserting no rows survive, across every table.** `CLAUDE.md` calls an orphaned row a privacy failure, so **the test is the deliverable here at least as much as the code is.** It enumerates tables explicitly rather than deleting and eyeballing: a new table added later must fail this test until somebody has thought about it.
+
+**No user-owned storage objects exist**, so nothing in Supabase Storage needs deleting. The single bucket, `artwork`, is catalogue-owned. **This stops being true the moment avatar upload ships** (`product-spec.md` §10.3), and whoever builds that owns extending this path.
 
 ---
 
@@ -1065,6 +1616,111 @@ Activity's sharp case — a `rated` event outliving a cleared rating — has no 
 
 Notifications remain a **desktop and global navigation destination** with their own link and count. The mobile treatment is the minimal badge required to expose unread state; **the tab bar is not otherwise redesigned**, and adding a fifth tab — which would narrow every tab and alter a component the design foundation locked — is rejected.
 
+#### The personal-surface location, supplied — **[DECIDED 2026-09-05. Implemented in `311bd70`, CI #89.]**
+
+**The decision above is completed here, not amended.** Everything it settles stands unchanged: four tabs, the unread indicator on **You**, **no fifth tab**, no other tab-bar redesign, and notifications reached on mobile through the personal surface. **What it never specified is _where_ on that surface** — and nothing was ever built there, so the sentence _"notifications are reached on mobile through the user's personal surface"_ described **an assumption rather than a route**. It is recorded that way rather than rewritten as though the location had already been chosen.
+
+**Approved: an owner-only link to `/notifications` in the profile page's identity block.** The **"You" tab continues routing to the profile**; `youDestination()` is unchanged. The exact markup is an implementation concern and is not decided here.
+
+**Why the identity block specifically.** It is where owner-only affordance already lives — the page computes `isOwnProfile` and renders the "You" chip there. **The placement is a decision, not a suggestion**: the profile is a long page, and a link below Favourites, Lists and Collection would satisfy reachability while failing discoverability.
+
+##### Three alternatives, rejected rather than deferred
+
+| Alternative                                    | Why rejected                                                                                                                                                                                                                                                                                                          |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A fifth tab**                                | **Already rejected by the decision above** — it would narrow every tab and alter a component the design foundation locked                                                                                                                                                                                             |
+| **"You" routes to `/notifications`**           | It would leave the profile — the owner's collection, favourites and lists — with **no mobile entry point at all**, trading one unreachable surface for another                                                                                                                                                        |
+| **"You" routes conditionally on unread state** | `MobileTabBar`'s own reasoning forbids it: _"'You' is a destination, not an authentication state… A tab whose name changes underneath the user is a tab they have to re-read every time."_ A destination that moves with notification state is the same fault, and it **strands the profile whenever unread is zero** |
+| **Un-hiding the header link on mobile**        | It adds a **second global mobile affordance** instead of implementing the personal-surface decision, and the mobile treatment was settled above as the minimal badge                                                                                                                                                  |
+
+##### Unread state is unchanged
+
+**The "You" tab's dot and its `sr-only` announcement stay exactly as they are**, and **the new link carries no count**. `unreadBadgeLabel` exists and is exported, so a count would be reuse rather than invention — but the mobile treatment is _"the minimal badge required to expose unread state"_, and that badge is the dot. **A second indicator on the same two-tap journey duplicates one piece of state in two places.** A count on the new link is **deferred, not rejected**.
+
+##### The tradeoff, accepted deliberately
+
+**Two taps: "You" → profile → notifications.** One-tap access would need a fifth tab or a mobile header affordance, **both rejected above, one of them by the existing decision.** Two taps is the cost of the four-tab shape, and it is a cost the decision above already accepted.
+
+##### Verification expectations
+
+**A viewport precedent exists and is to be followed rather than invented**: `tests/e2e/collection.spec.ts:281` already uses `setViewportSize({ width: 390, height: 844 })`.
+
+- At that viewport, a **signed-in owner can reach `/notifications` from their own profile** — the journey exercised, not asserted as DOM presence.
+- At the same viewport, **the header link is not visible**. This is what makes the new link load-bearing rather than redundant.
+- The link **does not render for a visitor** on another profile, nor when signed out.
+- **Desktop behaviour is unchanged**, and **`MobileTabBar` is untouched**.
+
+> **Assert visibility, not presence.** The tab bar is `md:hidden` and the header account block is `hidden … md:flex`, so both remain **in the DOM at every width** — a fact `auth.spec.ts` and `feed.spec.ts` already work around.
+
+##### Scope
+
+**Approved:** the owner-only identity-block link, plus the verification above. **Deferred:** an unread count on that link. **Rejected:** the three alternatives above.
+
+**Not in scope:** unread-indicator logic, `MobileTabBar`, the header, `unreadNotificationCount`, notification functionality, the notifications page, the profile's other sections, any information-architecture redesign, documentation reconciliation, and F-016, F-018, F-019, F-020, Phase 5 and the list-activity questions.
+
+#### Account actions on the personal surface — **[DECIDED 2026-09-05. Implemented in `a7eaa66`, CI #90.]**
+
+**This is a separate decision from the one above, and the distinction is the point.** That one placed **navigation** — a link to notifications. This one places an **action**. `architecture.md` §16.3's mobile decision governs reaching notifications and says nothing about account actions, so nothing here follows automatically from it.
+
+**The confirmed defect.** `signOut` is imported and used in **exactly one place** — `layout.tsx:134`, inside the `hidden … md:flex` container. `MobileTabBar` carries no account controls and the profile had none. **A signed-in user on a phone had no visible way to sign out at all.**
+
+**The container was enumerated rather than sampled.** Two `hidden … md:flex` blocks hold nine affordances between them. Browse, Search and Feed are duplicated by the tab bar; the profile and onboarding links by its "You" tab; sign-in and create-account by the signed-out home page body. Notifications was fixed above. **`Sign out` was the only affordance in either container with no mobile equivalent anywhere.**
+
+#### What was approved
+
+**A sign-out control on the signed-in owner's own profile, in the identity block, alongside the notifications link.** It uses the **existing `signOut` server action** in a form, matching the header's shape, and is gated by the **existing server-side `isOwnProfile`** — no new ownership logic. **"You" continues to route to the profile**, and the four-tab shape is untouched.
+
+**It renders at all widths. No responsive class.**
+
+#### Why here, and not a settings surface
+
+**`/settings` was considered seriously and is deferred rather than dismissed.** The name **is already reserved** in `handle.ts`, Phase 6 needs account deletion, and F-016 will eventually need password and email settings — a settings surface is coming. **But building it now, for one control, is building ahead of the phase that owns it**, which `CLAUDE.md` forbids without saying so explicitly.
+
+**The public-profile objection does not apply.** The control renders only when `isOwnProfile`, evaluated in a **server component**, so a visitor never receives it. And the tab bar's "You" already designates the profile as the personal surface: **the profile is not a public page to its owner — it is what the product already calls "You".**
+
+> **The trigger is named rather than left to judgement.** When a **third** owner-only account affordance arrives — account deletion, or F-016's settings — **that is the point to define an account surface** instead of adding another control. Deferred, not rejected. Grouping or restyling the affordances now on the identity block is deferred on the same terms.
+
+#### Why all widths, and the accepted duplication
+
+**Two reasons, and the duplication is deliberate rather than overlooked.** One rule for owner affordances on the personal surface is better than two, and the section above chose all widths for the same surface. And **`md:hidden` would reintroduce breakpoint-conditional visibility — the exact failure class both decisions exist to repair.** Adding a new instance of it to fix an old one is the wrong trade.
+
+**Desktop therefore carries two sign-out controls**, header and profile, leading to the same server action. **Accepted.**
+
+#### Why no confirmation
+
+**No dialog, no disclosure**, and each reason comes from the repository rather than instinct.
+
+- **The product has no confirmation convention at all** — no `window.confirm`, no `<dialog>`, no `role="dialog"`, nowhere in `src/`.
+- **Its one genuinely destructive action does something different.** `EditListForm` wraps _"Delete list permanently"_ in a `<details>` disclosure with danger styling. **That convention is for irreversible actions.**
+- **Sign-out is reversible.** Adding deletion ceremony would make a routine action harder on mobile than the single click it is on desktop — the opposite of the fix.
+
+Accidental touch is mitigated by placement rather than ceremony, and the cost of a mis-tap is one sign-in.
+
+#### Rejected, and kept distinct from deferred
+
+| Alternative                               | Why rejected                                             |
+| ----------------------------------------- | -------------------------------------------------------- |
+| **A `/settings` route now**               | Building ahead of Phase 6 and F-016 for a single control |
+| **A fifth mobile tab**                    | Rejected by §16.3 above; unchanged                       |
+| **Any `MobileTabBar` change**             | The four-tab shape is settled and no evidence reopens it |
+| **A `<details>` disclosure**              | That convention is for irreversible actions              |
+| **A confirmation dialog**                 | No such convention exists in the product                 |
+| **Mobile-only (`md:hidden`)**             | Reintroduces breakpoint-conditional visibility           |
+| **Behind a further personal entry point** | Would make mobile sign-out harder than desktop           |
+
+**Deferred, not rejected:** a dedicated account/settings surface, on the trigger above; and any grouping or restyling of the owner affordances.
+
+#### Verification expectations
+
+Reusing the **390×844** precedent.
+
+- **A signed-in owner at 390×844 actually signs out** — the evidence must be the **signed-out state**, not DOM presence and not merely a URL change.
+- **At 390×844 the header control is not visible**, distinguishing visibility from DOM presence: it remains in the DOM inside `hidden … md:flex`.
+- **The control does not render** for a visitor on another profile, nor when signed out.
+- **Desktop regression:** `auth.spec.ts` already exercises the header control at desktop width and **must continue to pass unmodified**. No second desktop sign-out journey.
+
+> **One hazard to check before writing anything.** A second control named "Sign out" makes any **unscoped** `getByRole('button', { name: 'Sign out' })` ambiguous on a profile page. The existing sites must be confirmed safe rather than assumed.
+
 #### `[OPEN]` — resolved at implementation review, recorded for the trail
 
 The four questions this section originally deferred were resolved during STEP D, against the code rather than by guess. **The mark-read dispatch** is a real link to a route that marks read and then redirects, with the write awaited inside `try`/`catch` so navigation proceeds regardless — and `prefetch` disabled, since a prefetched item would otherwise be marked read on hover. **The payload embed** works directly: every hop from notification to album is a single foreign key, so the two-FK trap does not apply — but the subject embeds must not use `!inner`, or every notification of the other type is silently filtered out. **Badge presentation** is a capped numeric count, and **empty-state copy** follows the feed's existing tone; both are implementation-level.
@@ -1158,6 +1814,81 @@ Hard delete, per `CLAUDE.md`. Profile → lists → items cascade downward. **Al
 
 **The dependency is one-directional and mechanical**, which is why slice 1 is worth doing alone: `list_liked` was deferred in Phase 3 because there was no table for the foreign key to reference at all, and slice 1 removes exactly that blocker without pre-empting either decision that follows it.
 
+### 16.6 List activity — creation only, and one feed **[DECIDED and IMPLEMENTED 2026-09-05]**
+
+**Shipped in `972b709` and deployed to staging.** The decision below was recorded before implementation and is unchanged by it; only this marker moved. **CI was still running when it was updated** — see `current-state.md` §52.
+
+**Phase 4 slice 3 emits a feed event when a list is created, and for nothing else.** The four other list mutations — editing title/description/ranked, adding an album, removing an album, reordering — write no activity.
+
+#### Why creation is the only interaction
+
+**`CLAUDE.md`'s rule is that an event is generated when a user acts, at the moment they act — not for every database mutation.** Four of the five mutations edit a thing that already exists.
+
+**The decisive repository fact is that events read live data.** `data-model.md` §7 and the `activity` migration both state it: _"Events reference live data; they never snapshot it."_ A `list_created` feed item therefore renders whatever the list holds **when the follower sees it** — its current title, its current albums, its current order. **Adding albums, renaming and reordering all improve the existing item; none of them needs an event of its own.** Reordering is the clearest case: the feed already shows the current order, so twenty reorders are one act of curation and zero events.
+
+| Mutation              | This slice                            | Why                                                                         |
+| --------------------- | ------------------------------------- | --------------------------------------------------------------------------- |
+| `createList`          | **Emits `list_created`**              | The interaction. `product-spec.md` §4 names list creation as feed contents  |
+| `updateList`          | **No event**                          | Editing current state; the live-data read already reflects it               |
+| `addAlbumToList`      | **No event — deferred, not rejected** | Genuinely interactive and genuinely unresolved. See the open question below |
+| `removeAlbumFromList` | **No event**                          | A correction, not an interaction                                            |
+| `reorderListItem`     | **No event**                          | Editing current state, and the feed reads the live order                    |
+
+> **"Not part of this slice" is not "will never produce an event."** Only `reorderListItem` is argued against on its merits. The other three are **deferred**, and whether any of them should ever speak is part of the open question below.
+
+#### `list_updated` is not built, and its enum value is not added
+
+**Deliberate restraint, for four reasons that are not interchangeable.** Creation-only activity **cannot produce an edit burst at all** — the property is structural rather than constrained. The `activity_one_rated_per_entry` partial unique index is an available precedent for bounding repeated events, **but a bounding mechanism does not answer what a list update should communicate.** `ALTER TYPE … ADD VALUE` is **one-way** — Postgres cannot remove an enum label — so adding a value on unresolved semantics is a permanent commitment. And **under-announcing is recoverable where feed flooding is not**; `CLAUDE.md` says flooding "cannot be undone".
+
+**This follows an existing sequencing precedent rather than inventing one.** `product-spec.md` §4 records Want to Listen as a named feed content deliberately shipped later — _"a sequencing boundary, not a reversal or a new product decision"_ — because open questions blocked it. The same applies here.
+
+> **No future `list_updated` mechanism is settled by this record.** What it means, which mutations it covers, and how often it may speak are all open.
+
+#### One feed, extended — not a second function
+
+**Decision: extend `feed_activity` in place.**
+
+**The repository fact that forces the change, and it is not visible from the signature.** The function ends with **two INNER joins** — `join collection_entries e on e.id = coalesce(a.collection_entry_id, r.collection_entry_id, v.collection_entry_id)` and `join albums al on al.id = e.album_id`. A `list_created` event has no collection entry, so **under the current function a list event would be silently dropped from the feed entirely.** Extension is therefore not additive.
+
+**Why not a second function.** Two independently keyset-paginated streams would have to be merged while preserving a total order across page boundaries. The existing pagination is carefully reasoned — _"Keyset, not offset. Row-wise and strict… `id` is unique, so the ordering is total"_ — and **a two-cursor merge is a materially larger correctness risk than changing two joins.**
+
+**Constraints the implementation must satisfy:**
+
+- the return type must accommodate **list-shaped items** alongside album-shaped ones;
+- the **album path must remain valid** — an album-typed event must still resolve to an album, stated as an explicit predicate rather than left to a join's side effect, following the function's own documented habit: _"Kept explicit so the intent is stated here rather than inferred from a constraint elsewhere"_;
+- **list events must resolve only when the list is readable.** `lists` carries `status content_status` with `lists_public_read` as `status = 'live' or user_id = auth.uid()`, and `feed_activity` is `security invoker`, so RLS hides a removed list and the predicate must drop the row rather than emit null fields;
+- **the `authenticated`-only grant must survive the drop/recreate.** The return type changes, so `create or replace` will not work. §16.5 established that privilege deliberately; **losing it silently would undo that work**;
+- **`FeedItem` must become discriminated.** `src/services/social/feed.ts` currently declares `album: { mbid; title; credit; hasArtwork }` as **non-nullable on every item**. Making the union explicit forces every consumer to handle list events at compile time.
+
+#### Deletion cascades; there is no tombstone
+
+**Deleting a list deletes its `list_created` event.** Every existing subject column on `activity` is `on delete cascade`, and the migration states the reason: _"Undoing the action removes the event, which is what the cascades below are for."_ Retaining the event would display a claim that has stopped being true, which `data-model.md` §7 forbids, and would leave an orphaned row, which `CLAUDE.md` calls a privacy failure. **No archival or tombstone model is introduced.**
+
+#### Two hazards, recorded because both fail quietly
+
+**`ALTER TYPE … ADD VALUE` is one-way.** Once `list_created` is deployed it is permanent; the last reversible moment is before the migration reaches the deployed database. It also **cannot be used in the transaction that adds it**, which the list-likes cycle verified by execution.
+
+**`activity_subject_matches_type` has no `ELSE`.** A `CASE` that falls through returns NULL, and **a CHECK constraint with a NULL result passes.** Adding an enum value without extending the `CASE` therefore leaves the new type **entirely unconstrained**. The four existing branches must also assert `list_id is null`, or a `listened` row could carry a stray list reference — the same rewrite the list-likes cycle applied to the notifications constraint.
+
+**Feed flooding is the phase's own "single most important test"**, because its failure floods every follower and is unrecoverable. **Creation-only scope avoids repeated-edit events structurally**, which is a stronger guarantee than a constraint.
+
+#### Why the feed surface is in scope, against the Phase 3 precedent
+
+Phase 3 slice 2 shipped the `activity` table and its write points with **no feed query and no feed surface** — and its migration says why: _"there is no feed query and no feed surface in this slice."_ **There were none to build.** One exists now, and **Phase 4's definition of done requires that a list's creation appear in followers' feeds.** A write-only slice would not meet it, so the precedent's reason does not transfer and neither does the precedent.
+
+#### Verification implications
+
+The new enum value and the extended constraint must be tested; **the four excluded mutations must generate no activity rows**; rapid successive list edits must produce no burst; `feed_activity` must remain correctly keyset-paginated; **the `authenticated`-only grant must be asserted present after recreation**; readable and RLS-hidden lists must resolve differently; deleting a list must remove its event; and the four existing activity types must retain their behaviour. **Exact tests and assertions belong to STEP D.**
+
+#### Open, and not answered here
+
+- **What `list_updated` should mean.**
+- **Which future list mutations, if any, should produce activity.**
+- **How frequently future update activity should be emitted.**
+- **Whether any `feed_activity` consumer outside `src/services/social/feed.ts` and `src/components/FeedItem.tsx` assumes `album` is always non-null.** Those two were inspected; the sweep was **not exhaustive**, and **STEP D must confirm before changing the return type.**
+
+---
+
 ### 16.5 The privilege boundary — a grant states intent, only a revoke enforces it
 
 **[DECIDED 2026-09-04. Nothing here is built.]** This records a boundary the repository already believed it had. It is a **grants decision only** — no RLS policy, no schema and no application code changes.
@@ -1231,6 +1962,34 @@ Also excluded: RLS policies of any kind; `auth`, `storage` and other non-`public
 
 ---
 
+### 16.7 `AlbumSummary` gains artists, and only where a credit is printed **[DECIDED 2026-09-15]**
+
+**`AlbumSummary` is the type every grid, list and search result uses.** It is a `Pick` over `Album` carrying `display_credit` — a denormalised string — and **no artist relation at all**. The linkable identity lives in `album_artists → artists`, which only the album page reads. That asymmetry is what made artist credits inert everywhere except one page (`product-spec.md` §6, _Reaching an artist from a credit_).
+
+**Decided: the artist embed is added to the queries whose results render a caption, and to no others.** `album_artists(position, artists(id, mbid, name))`, ordered by `position`, exactly as the album page already embeds it.
+
+**Widening the shared type unconditionally was rejected.** `AlbumSummary` is consumed by surfaces that print no credit — the collection grid carries none by `design-reference.md` §11.9, and the artist page suppresses one equal to its own subject. Adding the embed to the base type would make **every** consumer pay a join for a value most of them never render, on the product's highest-traffic reads. The caption-bearing shape is therefore a distinct type built on `AlbumSummary` rather than a widening of it.
+
+**The cost is smaller than first assumed, and the reason is worth recording. [MEASURED AT STEP D 2026-09-15]** Only four renderings print a credit: Home, Browse's _Recently added_, a **ranked** list's rows, and the artist page. **Browse's _Popular_ section passes no captions and an unranked list renders a caption-free grid**, so `getPopularAlbums` needs no change at all — and since discovery owns a separate column list and its own mapper, it stays lean without being asked to. `ALBUM_SUMMARY_COLUMNS` already feeds both `getRecentAlbums` and `getArtistByMbid`, so **two query sites carry the embed rather than three.** Browse renders 48 albums across its two sections and Home 12; the embed adds a few artist rows per album on the captioned half only. **The runtime figure is a measurement owed at implementation, not a claim settled here.**
+
+**The type enforces this rather than a convention asking people to remember it. [DECIDED 2026-09-15]** `AlbumGrid`'s props are a union in which **`showCaptions` accepts only the artist-bearing type**. If `design-reference.md` §11.11's trigger ever fires and _Popular_ becomes the captioned lead again, that surface **fails to compile** until its query carries artists — rather than silently rendering a caption of dead text. This is the same failure shape `artist-depth.ts` already corrected once, where an unenumerated state quietly took another's treatment; here it is closed by construction instead of by review.
+
+**Where the rule lives.** Which artists a credit resolves to, and in what order, is domain logic: a native client would need it to render a credit correctly, so by `CLAUDE.md`'s test it belongs in `src/services/` alongside the existing mapping, not in the component. **The component decides only what a link looks like.**
+
+**The pseudo-artist suppression is service-side for the same reason.** `isExcludedFromExpansion` already owns the single `Various Artists` identifier in `src/services/catalogue/artist-depth.ts`; the caption rule consults that same constant rather than introducing a second copy of it. **One identifier, one home** — duplicating it into a component is how the two would later disagree.
+
+### 16.8 `search_albums` returns the embed's own shape **[DECIDED 2026-09-15]**
+
+**Search could not take §16.7's route, and the reason is structural.** `searchCatalogue` reads the `search_albums` **RPC**, whose columns are fixed by a SQL function signature — there is no PostgREST embed to widen, and `AlbumHit` is its own type carrying `tier` and `popularity_score` rather than an `AlbumSummary`.
+
+**Two routes existed and the migration was chosen deliberately.** A second service-layer query could have taken the returned album ids and fetched `album_artists` for them, stitched in TypeScript — **no migration, one extra serial round trip on every search.** Instead the function aggregates artists itself, so the whole result arrives in **one round trip** on a latency-sensitive surface that `current-state.md` §8 already flags as slow. **The cost is that this cycle carries a migration and therefore re-gates STEP J**, which the alternative would have avoided.
+
+**The aggregate returns exactly the shape the PostgREST embed returns**, `{ position, artists: { id, mbid, name } }` ordered by `position` — so **`toCreditedArtists` serves both paths unchanged**. That is the point of the choice rather than a happy accident: two producers of the same value would otherwise drift, and the drift would be invisible because each surface looks right alone. Ordering is applied inside `jsonb_agg` _and_ re-applied by the mapper; the belt is cheap and the mapper is the one place the rule is stated.
+
+**The return type changes, so `create or replace` cannot be used.** Postgres refuses to alter an existing function's return type, so the migration **drops and recreates** — and a drop **takes the function's privileges with it**.
+
+**That makes §16.5 load-bearing here rather than incidental.** Measured before the change, `search_albums` was executable by `anon`, `authenticated` and `service_role`, with `PUBLIC` revoked. A recreated function starts from Postgres's default of `EXECUTE` to `PUBLIC`, so the migration **revokes from `PUBLIC` and then names all three roles explicitly** — reproducing the measured end state rather than trusting the recreate to inherit it. **Signed-out search is a shipped feature and signed-in search is the common case**, so dropping either `anon` or `authenticated` would be a live outage rather than a tightening.
+
 ## 17. Scalability — what breaks first, and when
 
 Honest ordering of what would need attention, rather than premature optimisation:
@@ -1245,19 +2004,76 @@ None of these need addressing before launch. All are listed so that when somethi
 
 ---
 
+## 17a. A temporary operator surface for the ingestion queue **[DECIDED 2026-09-13]**
+
+**Decision: an unlinked, `noindex` page showing queue state, gated by a secret query parameter matched against an env var, carrying its own removal trigger on the page itself.**
+
+**Why it exists.** Queue state has been observable only by querying the deployed database by hand. Across several cycles the maintainer has had to accept reported numbers — _"7 chart rows against a limit of 24"_, _"226 albums without covers"_, _"Radiohead re-queued as `#1630`"_ — with no way to see them. **§17 already names work that stops silently as a failure class this project worries about; this is the instrument for noticing it.**
+
+**Why a secret parameter and not a privileged user. [The load-bearing part of this decision]** `CLAUDE.md` holds that everything user-generated is public, with no private accounts, and longplayr has **no admin or operator role**. **Introducing a privileged-user model for a temporary page would outlive the page** — that is how a diagnostic becomes architecture. A secret parameter reuses the pattern `cron-auth.ts` already establishes, introduces no permanent concept, and is **temporary by construction**.
+
+**Its weakness, stated rather than discovered.** A secret in a URL lands in browser history, referrer headers and any intermediate proxy log. **That is an acceptable trade for a read-only diagnostic with a recorded removal trigger, and it would not be acceptable for anything that writes.** The page performs no mutation of any kind.
+
+**It fails closed in production and open in development**, mirroring `authoriseCronRequest` exactly, and for the same stated reason: a misconfigured deployment must not expose it.
+
+**What it shows.** Queue depth by kind and status; **the next jobs in the drain's own claim order** — `priority asc, id asc` filtered on `run_after <= now()` — so _"which is next"_ is answered by the same ordering the drain uses rather than by a plausible-looking approximation; per job, its kind, target, priority, `attempts`, `run_after` and `last_error`; **a plain-language state for each** — running, backing off until a time, waiting for a drain, or terminally failed awaiting the sweep; artwork coverage counts; and **when a drain last actually ran**, which is how the §7 cadence change is confirmed.
+
+**`last_error` is shown here and nowhere else.** It carries upstream diagnostics — `503 for /release-group … [zone=global remaining=13/15]` — which is operator text. `product-spec.md` §6 keeps it off reader-facing surfaces.
+
+**Queries live in `src/services/`**, per the no-SQL-in-components rule. `queueDepth` already exists; the claim-ordered read is new and is a read only — **it must not call `claim_ingestion_jobs`**, which would mark rows `running` and spend their attempts merely by someone looking at the page.
+
+**This is the first page in `src/app` to use the service-role client, and that is forced rather than chosen.** `ingestion_jobs` grants **only to `service_role`** with RLS enabled and no `anon` or `authenticated` grants, so **a non-admin client cannot read the queue at all** — there is no lesser-privileged option to prefer. Recorded because the pattern is new and a reader might otherwise copy it onto a page where it is _not_ forced. **Two things make it safe here and both must survive any edit:** the authorisation check runs **before** `inspectQueue()` is called, so an unauthorised request never reaches a service-role read; and the module contains **no write verb of any kind** — no `insert`, `update`, `upsert`, `delete` or `rpc`. **If either changes, the access model in this section is no longer adequate.**
+
+**Removal trigger, recorded because "temporary" without one is permanent. [OPEN until acted on]** The page is removed when either holds: the ingestion queue is no longer under active investigation, **or** longplayr takes its first real users — whichever comes first. **The page states this on itself**, so the trigger travels with the thing rather than living only here.
+
+**Not product scope.** This is a diagnostic tool, not a feature. It is recorded here rather than in `product-spec.md` deliberately, and **it must not be mistaken for the beginning of an admin surface** — Phase 6's moderation tooling is unrelated and unaffected.
+
+### 17b. The artwork worklist — the queue view's one actionable section **[DECIDED 2026-09-16]**
+
+**§17a gave the queue view counts; this gives it the one list a person can act on.** `/debug/queue` already renders `artwork_status` totals, so the maintainer can see that covers are missing and **not which albums**. The manual path has been _notice a placeholder, find the album on MusicBrainz, find the right release, upload_ — a search every time, for a gap that no amount of drain cadence closes.
+
+**Two groups, because they ask different things of the reader. [DECIDED 2026-09-16]** `absent` means **Cover Art Archive genuinely holds no image**, so a person must upload one — actionable, and each row carries a deep link. `failed` means **our own fetch broke**, and the artwork sweep re-queues it on any drain — **informational, and deliberately not presented as a task**. Collapsing the two would ask the maintainer to do work the system is still retrying, which is the worst thing a worklist can do.
+
+**The deep link is to a release, not a release-group, and that is a different identifier from anything the artwork path builds.** MusicBrainz's add-cover-art page hangs off a release; `artwork.ts` deals only in release-group MBIDs against `coverartarchive.org`. The target comes from `albums.representative_release_id → releases.mbid`.
+
+**`representative_release_id` is nullable, and those rows are shown rather than hidden. [DECIDED 2026-09-16]** An album without one has no page to link to. **It still appears, with the link disabled and the reason stated**, because a worklist that silently drops rows hides the exact problem it exists to surface and leaves a count that no longer matches reality — §17's failure class, reproduced by the instrument meant to detect it.
+
+**It reads and never writes, exactly as §17a requires**, and the two properties that make the service-role client safe on that page are unchanged: authorisation runs before the read, and the module contains no write verb. **No new access model is introduced** — the same secret query parameter, the same `notFound()` refusal, the same printed removal trigger. **A second temporary page would mean a second access story and a second thing to remember to delete.**
+
+**The embed must name its foreign key.** `releases.album_id` and `albums.representative_release_id` are two relationships between the same two tables, so a bare `releases(...)` embed fails outright — the hazard `CLAUDE.md` records, arriving here for the second time in the codebase.
+
+### 17c. Whether a missing release date was ever a capture fault **[DECIDED 2026-09-17]**
+
+**An album with no year is expected; an album whose payload had one is not.** `parsePartialDate` returns null on exactly two paths: the upstream value is **absent or empty**, and the upstream value is **present but fails the `YYYY(-MM)?(-DD)?` pattern**. The first is upstream truth — release groups, especially compilations, remix collections and live releases, frequently carry no first-release-date. **The second is silent loss**, and nothing in the product records whether it has ever happened.
+
+**Their position on the last page is designed behaviour and not a symptom.** The year sort places undated releases last deliberately, in both directions (`product-spec.md` §6). **What is unestablished is their emptiness, not their placement.**
+
+**§7a is what makes this answerable at all, and cheaply.** Every upstream response is kept **verbatim and indefinitely**, so the stored payload for an album can be compared against its columns **with no MusicBrainz round trip and no rate-limit exposure**. Without that decision this question would require re-fetching the catalogue at one request per second.
+
+**Decided: the comparison becomes a section on `/debug/queue` rather than a one-off script or a hand-run query.** The operator page already exists, already reads with the service-role client, already carries secret-link access and a `notFound()` refusal, and already prints its own removal trigger. **A one-off answer would be true on the day it was run and unreconsultable afterwards**, and the catalogue keeps growing — so the question would have to be re-asked by hand every time somebody wondered.
+
+**It reads and never writes, which is what keeps §17a's two safety properties intact**: authorisation runs before the read, and the module contains no write verb.
+
+**Remediation is explicitly a separate decision. [DECIDED 2026-09-17]** If payloads turn out to hold dates the columns lack, **this cycle reports it and stops.** A backfill rewrites catalogue rows from stored payloads — a different risk with a different blast radius — and **a fault discovered mid-investigation must not silently become a migration.** It gets its own entry, ranked against everything else.
+
 ## 18. Verification required before implementation
 
 Claims in this document that must be confirmed against current documentation rather than assumed:
 
-| Item                                             | Status                                                                                                                                                                          |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Apple / iTunes Search API terms**              | ✅ **Resolved.** Terms do not permit our use, and ~20 req/min is too tight. Rejected — see §7                                                                                   |
-| **Deezer API terms**                             | ✅ **Resolved.** Prohibits storing images. Rejected — see §7                                                                                                                    |
-| **MusicBrainz rate limit and User-Agent policy** | ✅ **Confirmed.** 1 req/sec per IP; `503` on all requests when exceeded; User-Agent with contact details mandatory                                                              |
-| **Cover Art Archive**                            | ✅ **Confirmed.** Release-group front endpoints at 250/500/1200px, `404` when absent, no rate limit                                                                             |
-| **ListenBrainz statistics endpoints**            | ✅ **Confirmed.** `/1/stats/sitewide/release-groups`, public, `range` and `count` parameters. ⚠️ **MBIDs are optional in responses** — entries without one must be filtered out |
-| **Supabase Auth capabilities**                   | ✅ **Confirmed in Phase 0.** Email/password working. Google OAuth still unbuilt — see `docs/deployment.md` §4                                                                   |
-| **Next.js caching semantics**                    | ⏳ Outstanding. Matters from Phase 1, when album pages become the first genuinely cacheable surface                                                                             |
+| Item                                             | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **fanart.tv terms and rate limits**              | ⚠️ **[VERIFY] — raised 2026-09-16.** Proposed as a second artwork source (F-012). **The keying objection that rejected iTunes and Deezer does not apply**: it is keyed by MusicBrainz ID, the same key §7 already fetches on, so the "wrong cover on the wrong album" failure is not in play. **Licensing, attribution and rate limits are unverified, and nothing may depend on it until they are.** The decision was explicitly deferred pending this row rather than made                                                                                                   |
+| **Discogs API terms**                            | ⚠️ **[VERIFY] — raised 2026-09-16, flagged by F-010 as absent from this table entirely.** Named as recorded direction in §7a and as an open enrichment question in `product-spec.md` §8.9, **while never having been checked.** Reportedly 60 req/min authenticated, but also reportedly forbids caching content longer than necessary and displaying content more than **six hours** staler than their own site. **If accurate that is incompatible with `upstream_payloads`**, which stores responses verbatim and indefinitely with no refresh policy                       |
+| **What MusicBrainz will and will not accept**    | ⚠️ **[VERIFY] — raised 2026-09-16.** Load-bearing for `product-spec.md` §8.9's _closing a gap means fixing it upstream_ principle, and for a **collision with a non-negotiable**: if longplayr ever wants material MusicBrainz refuses, it must author metadata, which `CLAUDE.md` forbids. **The premise may be wrong and checking it may dissolve the conflict** — secondary release-group types reportedly include DJ-mix, Remix, Live, Compilation, Soundtrack, Mixtape/Street and Demo, with Bootleg available as a release status. **Unverified; must not be relied on** |
+| **Apple / iTunes Search API terms**              | ✅ **Resolved.** Terms do not permit our use, and ~20 req/min is too tight. Rejected — see §7                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **Deezer API terms**                             | ✅ **Resolved.** Prohibits storing images. Rejected — see §7                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| **MusicBrainz rate limit and User-Agent policy** | ✅ **Confirmed.** 1 req/sec per IP; `503` on all requests when exceeded; User-Agent with contact details mandatory                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| **Cover Art Archive**                            | ✅ **Confirmed.** Release-group front endpoints at 250/500/1200px, `404` when absent, no rate limit                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| **ListenBrainz statistics endpoints**            | ✅ **Confirmed.** `/1/stats/sitewide/release-groups`, public, `range` and `count` parameters. ⚠️ **MBIDs are optional in responses** — entries without one must be filtered out                                                                                                                                                                                                                                                                                                                                                                                                |
+| **Supabase Auth capabilities**                   | ✅ **Confirmed in Phase 0.** Email/password working. Google OAuth still unbuilt — see `docs/deployment.md` §4                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **Supabase Auth email rate limits**              | ✅ **Confirmed 2026-09-15** against the Auth rate-limits guide: **2 emails/hour project-wide on the built-in provider**, configurable under custom SMTP or the Send Email hook; **`/auth/v1/resend` carries a 60-second per-user window whatever the provider**. The project-wide cap is why confirmation cannot be enabled without custom SMTP — see §6                                                                                                                                                                                                                       |
+| **Vercel Hobby cron limits**                     | ✅ **Confirmed 2026-09-13** against the cron usage page (updated 2026-07-15): **100 cron jobs per project**, minimum interval **once per day**, precision **per-hour (±59 min)**. **The cap is per expression, not per project per day** — see §7, _Cadence is per cron, not per day_. This document had asserted the opposite inference in three places                                                                                                                                                                                                                       |
+| **Next.js caching semantics**                    | ⏳ Outstanding. Matters from Phase 1, when album pages become the first genuinely cacheable surface                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 ---
 

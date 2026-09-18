@@ -183,6 +183,16 @@ Recorded here because this section otherwise reads as a single, closed reopening
 
 **Explicitly not delivered.** Labels, external links, track recording MBIDs and producer credits are **captured but not modelled** — they get columns when a feature needs them, from stored payloads, at no fetch cost. **Artist details remain unbuilt**, and they are the only item needing an extra request, one per artist, since `/artist/` has never been called at all. **That last fact became load-bearing on 2026-08-23** — see the third reopening below.
 
+**The same criterion, a second mechanism. [DECIDED 2026-09-06]**
+
+Recorded inside this reopening rather than as a fourth one, because it is **the same definition-of-done criterion and the same `product-spec.md` §8.10 item** — not a new area of Phase 1 work.
+
+**The criterion above is still unmet, by a route the reopening did not examine.** The panel asks MusicBrainz for only `limit * 2` release groups — **ten**, at the display limit of five — and then filters that pool twice, through the scope filter and again to remove everything the catalogue already holds. **The gate was one way a record became unreachable; a pool too small to survive its own filters is another**, and it is the one that deepens as the catalogue grows, since the already-held filter scales with catalogue size and a fixed multiplier does not.
+
+**Decided: fetch depth and display limit become independent — 25 fetched, up to 10 shown.** No migration, no schema change and no ingest change; the two filters, the relevance ordering and the query string are untouched. Product reasoning in `product-spec.md` §8.10, architectural consequence in `architecture.md` §7.
+
+**It does not close the criterion, and the reopening stays open after it ships.** Artist matching is still unbuilt and still blocked on live-API verification of field-qualified syntax, and **whether either mechanism caused the failures observed in use is unestablished** — which needs the populated panel observed against the live API, something local cannot do by design.
+
 **A third reopening, for catalogue depth. [DECIDED 2026-08-23]**
 
 **Phase 1's definition of done was found unmet a second time**, in the same shape as the reachability finding above and for the same reason: every Phase 1 case was exercised against fixtures or against a findable album, and the failure only appears at catalogue scale.
@@ -198,6 +208,12 @@ It requires: _"click through to the artist, **browse their discography**."_ Meas
 ~~**The blocking prerequisite is the curated starting set, and it is undecided.**~~ **UNBLOCKED FOR THE FIRST TRANCHE, 2026-08-24.** A curated starting set now exists in part: **28 artists, 353 albums under the current depth boundary**, verified read-only, and **approved for ingestion against staging** (`product-spec.md` §8.9). **That unblocks this tranche, not the reopening as a whole** — the rest of the curated list is still undecided, expansion policy beyond the first tranche is undecided, and whether depth ever extends to the artists already present from the popularity seed is undecided. **The prohibition that stood here still stands for everything beyond this tranche**: no substitute set may be manufactured from the chart-selected artists.
 
 **One capability is missing and is not to be built ahead of that.** Depth requires a browse-by-artist call the MusicBrainz client does not have — `musicbrainz.ts` exposes `getReleaseGroup`, `getRelease` and `searchReleaseGroups` only. Building it before the curated set exists would mean writing it to a guessed response shape and testing it against fixtures encoding the same guess, which is the failure recorded in `fixtures.ts`.
+
+~~**One capability is missing.**~~ **BUILT, AND THIS PARAGRAPH IS STALE. [CORRECTED 2026-09-07]** The paragraph above is preserved as written because its _reasoning_ held — the capability was correctly not built ahead of the curated set. **It was then built with it.** `musicbrainz.ts` now exports `browseReleaseGroupsByArtist` and `browseAllReleaseGroupsByArtist` with a `MAX_BROWSE_PAGES` ceiling, covered by roughly thirty cases in `musicbrainz.test.ts` and in production use in `curated-tranche.ts`. **Both of this reopening's stated blockers are therefore discharged**: the curated starting set was unblocked for the first tranche on 2026-08-24, and the browse capability exists.
+
+**On-demand artist depth is decided and addresses this reopening. [DECIDED 2026-09-07]** Opening an artist page enqueues a discography expansion, once per artist, for artists not previously expanded — ingesting minimally hydrated album rows within the **unchanged** `withinCurrentDepth` boundary, below interactive priority, with pseudo-artists excluded as a scope deferral. The product decision is `product-spec.md` §8.9 and §6; the architectural consequence is in `architecture.md` §7 under progressive hydration. **It does not close this reopening's larger question.** The depth boundary is not reopened, the 285-album difference stays deferred, pseudo-artist policy stays open, no re-expansion or staleness rule is introduced, and **the artist catalogue is not thereby complete** — what changes is that an artist page fills itself rather than staying at whatever the seed happened to leave.
+
+**The first defect in it was queue contention, and it is fixed rather than deferred. [2026-09-07]** On-demand depth put `discover_curated_artist` into the same priority band as `fetch_artwork`, and a successful expansion enqueues roughly eight artwork jobs that outrank the next artist's discovery job — so a page view drained one job and produced eight, and later artists were starved rather than failing. **Bulk artwork now enqueues below metered work**, which resolves the `[OPEN]` queue-fairness item that had predicted exactly this (`architecture.md` §7). **It changes nothing about this reopening's larger question**: the depth boundary is untouched, no re-expansion or staleness rule is introduced, and the artist catalogue is no more complete than it was.
 
 Sequencing against `product-spec.md` §8.10 faults 1 and 2, and against the enrichment queue backlog, is a further planning question and is not answered here.
 
@@ -376,6 +392,8 @@ Sequencing against `product-spec.md` §8.10 faults 1 and 2, and against the enri
 | **2 — List likes**            | `list_likes`, `list_liked` notifications                                                                                                                                                  | Needs slice 1's `lists.id` before `list_like_id` can reference anything. **`ListLike` was decided 2026-09-04** in `data-model.md` §5 — that dependency is discharged; nothing is built |
 | **3 — List activity**         | `list_created` / `list_updated`, feed integration                                                                                                                                         | Needs slice 1's identity, and needs the two decisions this phase owns: which edits are feed-worthy, and how repeated edits avoid a burst                                               |
 
+**Slice 3 was narrowed at implementation time. [DECIDED 2026-09-05]** The table above is **left exactly as planned on 2026-09-03** and is not rewritten. What it describes — `list_created` / `list_updated`, feed integration — was the intent; **the approved implementation is `list_created` only, plus the feed query and the feed surface.** `list_updated` is **not built and its enum value is not added**, because `ALTER TYPE … ADD VALUE` is one-way and what a list update should communicate is unresolved. **Phase 4's definition of done is still met in full** — it requires that a list's creation appear in followers' feeds, and nothing more. **The phase's stated content changes**: update activity becomes a later decision rather than part of slice 3. Not implemented; see `architecture.md` §16.6.
+
 **What slice 1 deliberately leaves, and why it is sequencing rather than rejection.** List likes, `list_liked` notifications, list activity events, feed integration, and the feed-worthiness and debounce decisions are all **kept in Phase 4** and assigned to slices 2 and 3 — the first two because their foreign keys cannot exist until `lists` does, the rest because their product semantics are undecided and belong to the slice that must resolve them. **Per-item commentary and collaborative lists remain out of v1** by the existing `product-spec.md` decision, and **private visibility does not exist** because lists are public. None of these is a rejected idea.
 
 **Architectural decisions settled here**
@@ -407,6 +425,32 @@ Sequencing against `product-spec.md` §8.10 faults 1 and 2, and against the enri
 - Home page for signed-out and no-follows states
 
 **Dependencies.** Phase 3 (activity data), Phase 1 (popularity abstraction).
+
+**Slicing. [DECIDED 2026-09-05]** Phase 5 is entered through slice 1. **This is sequencing within Phase 5, not a reduction of its scope** — every feature listed above remains in the phase, and the definition of done below is unchanged.
+
+| Slice                           | Contents                                                                                                                                                                                                                                        | Why it is separable                                                                                                                                        |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1 — Popular this week**       | The internal-activity popularity source, the persisted chart, scheduled recomputation, the external fill **completing the chart to a floor of 20** rather than capping it there, and **Browse's existing Popular section** as its only consumer | Settles what the internal signal **is** before a second surface consumes it. Depends only on Phase 2 collection data and Phase 1's abstraction, both built |
+| **2 — Highest rated this week** | The second chart, on the read model slice 1 establishes                                                                                                                                                                                         | Needs slice 1's chart and schedule. Its eligibility threshold is a separate rule with a separate failure mode                                              |
+| **3 — Home discovery surface**  | The signed-out and no-follows home states, and their relationship to Browse                                                                                                                                                                     | Needs a settled signal, and owns a composition decision that `product-spec.md` §3 and §6 constrain — including two empty states that say different things  |
+
+**Slice 1 does not meet Phase 5's definition of done, and must not be described as doing so.** The phase still requires a brand-new account with zero follows to land on a **populated home page**; **slice 3 owns that outcome.** Slice 1 changes what Browse Popular means and nothing about the home page.
+
+**Slice 1 shipped in `67949e8`, CI #91. [2026-09-05]** The chart, its refresh, the daily cron and Browse's consumption of it are built, deployed and CI-verified.
+
+**Slice 3 is taken before slice 2, and that is a decision rather than the plan's order. [DECIDED 2026-09-05]** The table above sequences highest rated second and describes it as _"the second chart, on the read model slice 1 establishes"_, which understates it: **`product-spec.md` §8.3's definition is not computable from the current schema**, because nothing records when an album most recently received a rating, and the section's cold-start fallback is a listen-count signal whose application to a ratings chart is unresolved. That is recorded as an `[OPEN]` question in §8.3 and **belongs to slice 2's own decision cycle**. Slice 3 has no such gap: its dependency is a settled internal signal, which slice 1 supplied. **The table is left as planned and is not rewritten**; the ordering changed, its contents did not.
+
+**Slice 3's scope, approved 2026-09-05.** The home page gains **one** discovery section showing **Popular this week** at twelve albums, read from the same `getPopularAlbums` result Browse consumes, rendered identically for signed-out visitors and signed-in users with a profile, with a route onward into the catalogue. **It does not vary with the viewer's follow graph**, the signed-in-without-a-profile state is untouched, and when Popular returns nothing **no section is rendered at all**. `/feed` is unchanged in every respect, Browse is unchanged, and **the slice introduces no migration**. The surface is defined in `product-spec.md` §6 and its architectural consequence in `architecture.md` §8.
+
+**Slice 3 meets Phase 5's definition of done. It does not make Phase 5 feature-complete, and the two must not be conflated.** The definition of done requires a brand-new account with zero follows to land on a populated home page and navigate into the catalogue, which slice 3 delivers. **The feature list above names two charts and only one will exist**, so `Popular this week and highest rated this week` remains outstanding and **Phase 5 must not be described as complete** while slice 2 is unresolved.
+
+**Slice 2 is deferred on measurement, not on preference. [DECIDED 2026-09-13]** §8.3 sets a **five-rating chart-eligibility threshold per album**. Measured on the deployed database on 2026-09-13: **4 profiles, 29 collection entries, and 2 rated entries in the entire product.** So _highest rated this week_ would produce an **empty internal chart** and fall through to the same external fill — **adding a second mostly-mainstream section to the very surface `design-reference.md` §11.11 has just de-emphasised for being mostly-mainstream.**
+
+**This is the revisit this section already anticipated.** §8.3 records its definitions as _"defined against imagined data"_ and _"the most likely thing in this document to want changing once there's real activity to look at."_ **There is no real activity yet.** Building the chart before there is would ship a surface that cannot do its job and would make a known problem worse.
+
+**Phase 5 therefore stays incomplete, and that is recorded rather than worked around.** The feature list names two charts and one exists. **The trigger to revisit is the same one §11.11 carries: the internal chart reaching §8.3's floor of 20 from real activity** — at which point both the deferral and the Browse hierarchy reopen together, which is why they share a trigger.
+
+**Blending remains later and is deliberately assigned to no slice.** The external source **fills the chart to a floor of 20** and never truncates internal results to it — the caller's own limit is separate (`product-spec.md` §8.3, **[DECIDED 2026-09-05]**); `BlendedSource` is recorded direction in `architecture.md` §8, not scheduled work. Editorial voice for discovery charts is likewise unresolved and unscheduled.
 
 **Chart definitions are settled** (`product-spec.md` §8.3) — distinct-user counts over a 7-day window, a 5-rating chart-eligibility threshold, and an external fallback below 20 results. Expect to revisit them once there's real activity to look at; they were defined against imagined data.
 
@@ -445,7 +489,9 @@ Sequencing against `product-spec.md` §8.10 faults 1 and 2, and against the enri
 
 **Blocked by open decisions**
 
-- Report reason categories
+- Report reason categories — **the only thing gating this phase**
+
+**The schema groundwork is already laid, which is not what `CLAUDE.md` implies. [RECORDED 2026-09-18]** `profiles.status` exists as a `user_status` enum of `active | suspended | banned`, and `content_status` (`live | removed`) already sits on `reviews` and `lists` — placed there deliberately, per §4 of `product-spec.md`: _"Content and users carry status fields from day one."_ **No code reads any of them**, and reports, blocks, enforcement and admin routes genuinely do not exist. **"The columns exist and nothing enforces them" is a materially different starting point from "nothing exists"**, and whoever takes this phase should begin from the former.
 
 **Architectural decisions settled here**
 
@@ -483,7 +529,9 @@ Sequencing against `product-spec.md` §8.10 faults 1 and 2, and against the enri
 
 **Blocked by open decisions**
 
-- Handle reuse after deletion (`data-model.md` §9.5)
+- ~~Handle reuse after deletion (`data-model.md` §9.5)~~ **RESOLVED 2026-09-18: reserved permanently.** Phase 7's account-deletion item is no longer blocked
+
+**Account deletion is much smaller than this feature list implies, measured 2026-09-18.** The cascade is already declared from `profiles` and from `auth.users`; averages are computed on read, so _"averages recompute with no manual step"_ is **already satisfied structurally**; the single `on delete set null` is deliberate and documented; and **no user-owned storage objects exist**. What is absent is the deletion path itself, a home for it, and the orphan test. **The rest of Phase 7 is untouched by that** — export, error tracking, ingestion health, uptime, rate limits, the security review and the performance pass are all unbuilt and unestimated.
 
 **Tests required**
 

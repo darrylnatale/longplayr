@@ -12,7 +12,1075 @@
 | 4. What gets built and when                  | `docs/development-plan.md`                   |
 | 5. Where we are right now                    | this file                                    |
 
-Verified against the repository and remote at **`ecea6e9`** (`main` and `origin/main` identical, ahead/behind 0/0) and against CI run **33882478196** (#82) on `ecea6e9` — **`completed/success`, attempt 1, both jobs, 350 unit and component, 594 integration, 1 seed, 103 end-to-end**, **zero failures, zero flaky, zero retries** (§47).
+**The verification gate moved, and `CLAUDE.md` now carries it. [APPLIED 2026-09-15]** Work happens on a branch and reaches `main` only through a green CI run; STEP F runs `npm run verify` plus targeted suites; **the migration gate moved from STEP I to STEP J**, so the order is **CI green → migration applied → merge**. The decision is `architecture.md` §12; the process is `CLAUDE.md`. **The two no longer disagree.** (§68, §69)
+
+**Verified 2026-09-18 against the repository, the remote and CI.** `main` is at **`44b03ac`**, the merge of PR #21; `origin/main` identical, and **the working tree carries documentation only**. **Nothing is open and nothing is pending.** **29 migrations, 0 unapplied**, deployed schema current.
+
+**Fifteen cycles merged between 2026-09-15 and 2026-09-17** — PRs #7 to #21, recorded as §72 to §86. **Only §74 carried a migration.** **§79 is the only cycle to have failed CI and been reopened**; it was remediated and merged on a second run. **§80, §83 and §84 were confirmed on production** rather than merely merged.
+
+> **⚠️ The phase plan has been under-weighted, and the maintainer pointed it out on 2026-09-18.** Every cycle from §72 to §86 was selected from `docs/product-feedback.md`. **`CLAUDE.md` STEP A asks for _the current project state **and** any triaged product feedback_**, and the first half has gone effectively unconsulted for three days.
+>
+> **This matters because the two are not equivalent.** Feedback items improve things that exist. **Phase 7 contains obligations** — account deletion as a hard delete with a complete cascade is a `CLAUDE.md` non-negotiable, is unbuilt, and `CLAUDE.md` calls an orphaned row a privacy failure. **Phase 6 — reporting, blocking, suspension, and status enforced across every read path — is entirely unbuilt.** Neither has appeared in a STEP A ranking.
+>
+> **The next STEP A must rank the phase plan alongside the feedback backlog**, not after it.
+
+**Four feedback entries were filed on 2026-09-16 at the maintainer's request** — **F-041** (filtering, sorting and exclusion), **F-042** (filtering a grid by collection state), **F-043** (follow back from notifications) and **F-044** (the test environment fails more often than the code does). **F-041 surfaced that longplayr holds no genre data at all**, deliberately excluded at ingest, so that filter is an ingest, schema and backfill change rather than a UI one.
+
+**A decision session on 2026-09-16 answered eight open product questions** and promoted five entries to decided-and-unbuilt — readable URLs, browse-everything, the cover-art prompt (now built, §78), discography refresh, and Recently added's two rules. **It also opened F-040**, a collision between the new upstream-contribution principle and the read-only-catalogue non-negotiable. The records are in `product-spec.md` §6 and §8.9, `design-reference.md` §11.11, and `architecture.md` §18. Three cycles closed and merged today — PR #7 (`5479041`), PR #8 (`8544330`) and **PR #9 (`4c0a0f7`, CI #112, 132 end-to-end, zero flaky)**. The first two carried no migration; **§74 did**, and STEP J gated for it, applying `20260915160000` to the deployed database between a green CI run and the merge. **Post-merge run #111 on `8544330` came back `completed/success`**, so the tree before this cycle is independently green. **The double-CI cost of the branch model is now observed on five consecutive cycles** and remains recorded rather than decided.
+
+> ## ✅ Four things the deployed data confirmed on 2026-09-15
+>
+> **These are measurements, not projections**, and three of them settle questions this file had been carrying as open.
+>
+> **Radiohead is repaired: 3 albums → 35.** Job `#1630` — queued by `enqueueFailedExpansions`, claimed by a drain — is `succeeded` with **`attempts = 2`**. **The whole chain is observed**: sweep queued it, the 24-hour cooling-off did not suppress it, the twelve-a-day cadence gave it a drain, and **the second attempt is the 90-minute stale reclaim catching a lost one.** F-034 closed.
+>
+> **The artwork backlog turned.** Albums without a cover **289 → 161** in two days; **145 covers fetched**; outstanding artwork jobs 290 → 162; **nothing stuck in `running`.** **Cadence did what per-job cost was being asked to do** — and it only began clearing artwork once metadata work was exhausted, which is why the "three days" figure quoted on the 13th was wrong and is not restated.
+>
+> **A lost attempt was recovered, narrowing F-033 without closing it.** `#1630` sat `running` for 69 minutes and completed at `attempts = 2`. **That is evidence for the `maxDuration` mechanism F-026 raised and could not establish** — and a single instance establishes neither cause.
+>
+> **The queue view made all of the above visible from the product** rather than from ad-hoc queries, which is what it was built for.
+
+> ### ⚠️ Local verification could not run at all, for an environmental reason worth recording
+>
+> **Docker was not running**, so the local Supabase stack was down. The end-to-end suite failed with **`Timed out waiting 120000ms from config.webServer`** — pointing at the Next dev server, **which was healthy in 349ms.** `/` returned **500** on `connect ECONNREFUSED 127.0.0.1:54321`, so Playwright's health check never passed and **the timeout was reported against the wrong thing.** Two wrong remedies were attempted first because the message pointed there. Filed as **F-035**.
+
+> ## ✅ The artist page says so when a discography could not be finished — **[GATE CLEARED: CI #103 `completed/success`, 708 integration, 127 end-to-end, zero flaky]**
+>
+> **`attemptStateFor` collapsed _succeeded_ and _terminally failed_ into one `settled` value**, so an artist whose expansion had permanently failed rendered **no status line at all** — and a discography truncated by a transient upstream error **presented itself as complete.** Radiohead showed three albums and no explanation for **six days**. `product-spec.md` §6 records it as **a lie by omission** rather than a missing feature.
+>
+> **Three renderings, from four states.** Never attempted, backing off, and re-queued by the sweep all say _"Fetching the rest of this discography… Look again in a moment."_ — **the reader's action is identical in all three.** Terminally failed says _"Couldn't finish fetching this discography from MusicBrainz. It will be retried."_ Succeeded says nothing.
+>
+> **The horizon is earned on one line and deliberately absent from the other.** _"Look again in a moment"_ was written when refreshing could not help; **§61 made a later view drain a job**, so it is now true and actionable. **The failure line promises no time**, because the sweep's timing is not promisable and **an unhonourable horizon is the defect being fixed, not one to repeat.** The error text is never shown to a reader — it lives on the queue view (§17a).
+>
+> **The page now speaks about a failed artist and must not act on one.** Enqueueing on failure from a page view would **restart the three-attempt retry policy on every visit** — what `attemptStateFor` has always warned against and what the sweep now owns. **The enqueue condition narrowed while the message condition widened**, which **partially reverses §7's _A later view drains too_** — deliberately, and recorded in three places rather than left for a reader to reconcile. That decision's point was that the two must not _disagree about the same state_; **a state where the page speaks and does nothing is not that.**
+>
+> **One success is enough for `succeeded`**, so an artist repaired by the sweep reads as expanded and stops showing the line.
+
+> ### 🔎 An existing assertion inverted, and a review finding with the same shape as the bug
+>
+> **`a terminally failed attempt still stops a second one` asserted the page rendered _no line_. That assertion was the defect.** It now asserts the honest line appears **and** that no work was queued — **the enqueue rule it originally protected is still protected by the same row count.** Inverted rather than deleted.
+>
+> **STEP G found the message condition written as `!== 'settled'`.** It worked, because the ternary had excluded `failed` — but **a negated condition lets a future state fall silently into the fetching branch and claim work is in progress**, which is _exactly_ the shape of the defect being fixed: a state nobody enumerated, quietly taking another's treatment. **Now enumerated**, matching the enqueue condition's form.
+>
+> **Established by experiment.** Collapsing `failed` back into `settled` fails the end-to-end case at `getByTestId('discography-failed')` and the integration case for the split, and nothing else.
+
+> ### ⚠️ The local `verify:full` is RED, and the host reached its worst measurement yet
+>
+> **Exit 1.** 387 unit, the build, **708 integration** (up from 704) and 1 seed passed. End-to-end returned **121 passed / 6 failed** in 15.8m.
+>
+> **Attribution rests on positive evidence.** **All five `artist-depth` tests passed inside the red run**, including the inverted one — the only end-to-end coverage of the new line. **Neither failing spec renders an artist page**; five of six carry `signIn`/`signUp` frames and seven `destination stream closed early` server errors appear. **Isolated rerun: 13/13 in 1.3 minutes**, against 15.8 for the full run.
+>
+> **Host at load average 12.51 — the highest measured this session**, against 6.15 five cycles earlier. **Failure counts across eight runs: 9, 5, 2, 9, 7, 14, 19, 6**, on eight trees, **every failing set green in isolation, none ever a real defect.**
+
+> ### 📄 Uncommitted at the end of the session of 2026-09-13
+>
+> `dbb7865` is this cycle's commit and `origin/main` matches it. **Nine files remain on disk only, and the commit contains no `.md`** — 148 insertions, 33 deletions across five files.
+>
+> | File                       | Owner                                                                                     |
+> | -------------------------- | ----------------------------------------------------------------------------------------- |
+> | `docs/current-state.md`    | **Twenty cycles' checkpoints**, this one included                                         |
+> | `docs/product-spec.md`     | **This cycle's §6 status-line treatment**, §8.3's prominence decision, earlier slice work |
+> | `docs/architecture.md`     | Seventeen cycles' records, including §17a and §7's status-line decision                   |
+> | `docs/deployment.md`       | The secrets table and the `.env.example` finding                                          |
+> | `docs/design-reference.md` | §11.11 and the §11.6 correction                                                           |
+> | `docs/development-plan.md` | The Phase 5 slice 2 deferral                                                              |
+> | `docs/product-feedback.md` | Maintainer's file; nine entry states set at their instruction                             |
+> | `docs/data-model.md`       | Slice 1's §7 entity                                                                       |
+> | `CLAUDE.md`                | **Maintainer's own process work.** Untouched here                                         |
+>
+> **`.env.example` is modified locally and is not tracked.**
+
+**The previous entry, left as written.** Verified at **`5b0f40e`** against CI run **`34764182898`** (#102) — **`completed/success`**, 704 integration, 127 end-to-end, zero flaky (§66).
+
+> ## ✅ A temporary operator view of the ingestion queue — **[GATE CLEARED: CI #102 `completed/success`, 704 integration, 127 end-to-end, zero flaky]**
+>
+> **Queue state has been observable only by querying the deployed database by hand.** Across several cycles the maintainer had to accept reported numbers — _"7 chart rows against a limit of 24"_, _"226 albums without covers"_, _"Radiohead re-queued as `#1630`"_ — **with no way to see any of them from the product.** §17 names work that stops silently as a failure class this project worries about; this is the instrument for noticing it.
+>
+> **`/debug/queue` answers the three questions that could not be answered before.** What is queued — counts by kind and status. What is next — **the drain's own ordering**, `priority asc, id asc` over rows whose `run_after` has passed, rather than a plausible-looking approximation. And whether something failed or is merely waiting — **the distinction the raw row hides**: a future `run_after` is _backing off_ and shows when it becomes claimable, a past one is _waiting for a drain_, and `failed` is terminal and names what will re-queue it.
+>
+> **It reads and never claims, and that is one line away from being wrong.** `claim_ingestion_jobs` marks rows `running` and increments `attempts` — **routing this page through it would spend a job's retry budget because somebody looked at the page.** The ordering is mirrored as a plain select; the drift that permits is accepted and recorded. **An integration test asserts two consecutive reads change nothing.**
+>
+> **Access is a secret query parameter, not a privileged user.** longplayr has no operator role and `CLAUDE.md` holds there are no private accounts; **a privilege model introduced for a temporary page would outlive it.** The weakness is stated rather than discovered — a secret in a URL reaches history, referrers and proxy logs — and is **accepted only because the page performs no mutation of any kind.** Refusal is `notFound()`, so an unauthorised visitor does not learn the path exists.
+>
+> **It carries its own removal trigger, printed on the page**: when the queue is no longer under active investigation, or at first real users. A "temporary" page without a stated trigger is a permanent one.
+
+> ### 🔎 Three things the cycle found rather than built
+>
+> **The service-role client on a page is forced, not chosen.** `ingestion_jobs` grants **only to `service_role`** with RLS enabled, so **no lesser-privileged client can read the queue at all.** This is the first page in `src/app` to use it, and §17a now records the two properties that make it safe — **authorisation runs before the read, and the module contains no write verb** — because a reader might otherwise copy the pattern onto a page where it is not forced. **Found at STEP G and returned to STEP C as an incomplete record.**
+>
+> **The project's own lint rule caught a real defect.** The artwork counts were a raw `head: true`, which §16.2 forbids **because a bare head count reports zero instead of failing** — on a diagnostic page, the worst available failure mode: a confident zero. Now through `countRows` with a label.
+>
+> **`.env.example` is not in the repository, and never has been.** `.gitignore`'s `.env*` rule catches it. **The first commit attempt failed on exactly this**, which is the only reason it was noticed — the message would otherwise have claimed documentation that does not ship. `QUEUE_VIEW_SECRET` is documented in `docs/deployment.md` instead, which now also records that **a fresh clone has no environment documentation except that file.** Pre-existing, not introduced here.
+
+> ### ⚠️ The local `verify:full` is RED, and the host is now the story
+>
+> **Exit 1.** **387 unit** (up from 380), the build, **704 integration** (up from 695) and 1 seed passed. End-to-end returned **108 passed / 19 failed** in **25.3m — the worst count and the longest run recorded.**
+>
+> **The changed code is unreachable from the suite.** `/debug/queue` is unlinked, and **grep over `tests/e2e/` finds no reference to the route or either new module.**
+>
+> **The signature is setup failure, not scattered flakes.** **All seven `want-to-listen` tests failed with none passing**; `profile-collection` lost six and `collection-sort` four. Whole files losing every case points at `beforeEach` collapsing, and **nine `signIn`/`signUp` frames** plus **eight `destination stream closed early`** server errors say where. **Isolated rerun: 44/44.**
+>
+> **The trend across the session is the finding.** Load average **6.15 → 10.89**. End-to-end runtime **10.5m → 13.5m → 16.3m → 18.9m → 22.7m → 25.3m** on a suite that grew by five tests. Failure counts **9, 5, 2, 9, 7, 14, 19**, seven trees, every failing set green in isolation. **This is F-025's subject getting measurably worse, and it now costs ~25 minutes per cycle to produce a result that has never once identified a real defect.**
+
+> ### 📄 Uncommitted at the end of the session of 2026-09-13
+>
+> `5b0f40e` is this cycle's commit and `origin/main` matches it. **Nine files remain on disk only, and the commit contains no `.md`** — five new files, 618 insertions.
+>
+> | File                       | Owner                                                                                   |
+> | -------------------------- | --------------------------------------------------------------------------------------- |
+> | `docs/current-state.md`    | **Nineteen cycles' checkpoints**, this one included                                     |
+> | `docs/architecture.md`     | Sixteen cycles' records, now §17a and **§7's decided-but-unbuilt status-line decision** |
+> | `docs/deployment.md`       | **This cycle's secrets table and the `.env.example` finding**                           |
+> | `docs/design-reference.md` | §11.11 and the §11.6 correction                                                         |
+> | `docs/product-spec.md`     | §8.3's prominence decision, plus earlier slice work                                     |
+> | `docs/development-plan.md` | The Phase 5 slice 2 deferral                                                            |
+> | `docs/product-feedback.md` | Maintainer's file; nine entry states set at their instruction                           |
+> | `docs/data-model.md`       | Slice 1's §7 entity                                                                     |
+> | `CLAUDE.md`                | **Maintainer's own process work.** Untouched here                                       |
+>
+> **`.env.example` is modified locally and is not tracked**, so its `QUEUE_VIEW_SECRET` entry helps this machine only.
+
+**The previous entry, left as written.** Verified at **`92136e0`** against CI run **`34758103698`** (#101) — **`completed/success`**, 127 end-to-end, zero flaky (§65).
+
+> ## ✅ Browse and Home no longer lead with the mainstream fill — **[GATE CLEARED: CI #101 `completed/success`, 127 end-to-end, zero flaky]**
+>
+> **Measured, not felt.** Browse Popular is an internal chart with an external top-up, and **the internal chart held 7 rows against a caller limit of 24** — so the lead section was roughly **70% ListenBrainz fill ordered by how mainstream a record is**, while the curated tranche, being recent, sat in the quieter strip. **The front page was not accidentally mass-market; it was sorted that way.** Alongside it: 948 albums, **4 profiles, 29 collection entries, 2 ratings**.
+>
+> **Recently added takes the lead — `relaxed`, captioned — and Popular becomes the `standard`, caption-free strip.** `design-reference.md` §11.5 settled _how_ a lead is signalled and never _which section earns it_; Browse's assignment of `relaxed` to Popular had never been examined as a decision. **§11.11 examines it.**
+>
+> **Recency is not a quality signal and the decision says so.** At this catalogue size _recent_ happens to be _curated_. **It reopens when the internal chart reaches §8.3's floor of 20 from real activity**, and Phase 5 slice 2's deferral shares that trigger so both reopen together.
+>
+> **It answers a question `product-spec.md` had never asked.** §8.9 decided membership never depends on popularity and that an absent signal implies nothing about merit; **the converse was unaddressed, and Browse behaved as though a high score justifies prominence.** Answered **narrowly**: external prominence legitimately **completes** a chart and is not a reason to **lead** a surface. **How the two popularity concepts reconcile stays open.**
+>
+> **Composition is deliberately unchanged** — §8.3's fill and its floor are `[DECIDED]`, and capping the fill would render seven cells on a 948-album catalogue. **Nothing is deleted:** F-024b would now destroy user-authored `list_items` as well as collections, and there is no provenance column to identify "the first batch" by anything but misclassifying proxies.
+
+> ### 🔎 Two couplings moved with the density swap, and both were already designed for it
+>
+> **§11.6 ties stored artwork size to density**, so the lead now draws the 500px asset and the secondary strip the 250px one. **Both are still stored**, so nothing can 404 — and recently-added albums are the ones most likely to have no artwork at all, so they render the placeholder and fetch nothing.
+>
+> **§11.10 ties eager image loading to density**, so the two `priority`-marked cells moved to the new lead automatically — where the largest contentful paint now is. **That is §11.10 working as designed rather than needing revision**, and it is the clearest vindication yet of expressing that rule by density instead of by surface.
+
+> ### ⚠️ A stale claim from the previous cycle, found and corrected here
+>
+> **§11.6 stated "the pipeline stores all three — 250, 500 and 1200."** That stopped being true in `f68e050` **the day before**, and the cycle that changed it did not update this section. **Not caused by this cycle — exposed by reading three lines below its own new §11.11.** Corrected in place with a marker. **Leaving a known-false statement because it belonged to another cycle would have been the wrong call.**
+
+> ### ⚠️ Two test-coverage losses, recorded as losses
+>
+> **One case was passing for the wrong reason.** The signed-in-without-a-profile gate asserted the absence of a `Popular this week` heading — **which after this change no condition produces**, so it passed while testing nothing. It now asserts the heading the page renders plus the absence of album links.
+>
+> **The empty-section gate is no longer reachable from this suite.** It worked by clearing the chart; Home no longer reads the chart and the fixture catalogue is never empty. **The gate is still correct in code** — it fires on a catalogue with no albums, a fresh deployment — and emptying one here would strand every later spec at `workers: 1`.
+>
+> **The cross-page case dropped its chart-ranking assertion**, because Home no longer displays the chart. `browse.spec.ts` still covers that ordering on the surface that renders it.
+
+> ### ⚠️ The local `verify:full` is RED, and is not reclassified
+>
+> **Exit 1.** 380 unit, the build, **695 integration** and 1 seed passed. End-to-end returned **113 passed / 14 failed** in **22.7m — the longest run recorded.**
+>
+> **Attribution rests on positive evidence, which previous cycles' did not.** **Every test covering this change passed inside the red run** — `browse.spec.ts` 2/2, `home.spec.ts` 5/5, including both rewritten cases. **None of the fourteen is on a surface this cycle touches.** And **a performance regression is ruled out by direction**: Home previously did a chart read plus a fallback query and now does one ordered select, so it got _cheaper_.
+>
+> **The signature is the established one plus one F-025 specifically names.** Six failures carry `signUp`/`signIn` frames, twelve are bare 30-second timeouts, nine `destination stream closed early` server errors appear, and **two are `net::ERR_ABORTED; maybe frame was detached?` on `page.goto`** — which F-025 records as a signature _"the timeout explanation never covered"_. Host at **load 6.15, ~64MB free**. **Isolated rerun: 37/37.**
+>
+> **Failure sets across six runs: 9, 5, 2, 9, 7, 14, with runtime climbing 10.5m → 22.7m.** Six different trees, so not the identical-tree criterion — **the trend is itself the signal.**
+
+> ### 📄 Uncommitted at the end of the session of 2026-09-13
+>
+> `92136e0` is this cycle's commit and `origin/main` matches it. **Eight files remain on disk only, and the commit contains no `.md`** — 99 insertions, 57 deletions across three files.
+>
+> | File                       | Owner                                                                                           |
+> | -------------------------- | ----------------------------------------------------------------------------------------------- |
+> | `docs/current-state.md`    | **Eighteen cycles' checkpoints**, this one included. Not committed                              |
+> | `docs/design-reference.md` | **This cycle's §11.11 and its §11.6 correction**, plus an earlier cycle's §11.10. Not committed |
+> | `docs/product-spec.md`     | **This cycle's §8.3 prominence decision**, plus earlier slice work. Not committed               |
+> | `docs/development-plan.md` | **This cycle's Phase 5 slice 2 deferral**, plus an earlier note. Not committed                  |
+> | `docs/architecture.md`     | Fifteen cycles' records. Not committed                                                          |
+> | `docs/product-feedback.md` | Maintainer's file; nine entry states set at their instruction on 2026-09-13                     |
+> | `docs/data-model.md`       | Slice 1's §7 entity. Not committed                                                              |
+> | `CLAUDE.md`                | **Maintainer's own process work.** Untouched here                                               |
+
+**The previous entry, left as written.** Verified at **`3647c37`** against CI run **`34753378836`** (#100) — **`completed/success`**, which confirmed no regression elsewhere and **could not verify that cycle's change** (§64).
+
+> ## ✅ The queue drains twelve times a day — **[CI #100 `completed/success` — which confirms no regression elsewhere and CANNOT verify this change]**
+>
+> **The daily cadence was self-imposed, and this repository's own record said so.** `architecture.md` described it three times as capped by the hosting plan. **Verified 2026-09-13 against Vercel's cron usage page (updated 2026-07-15): Hobby allows 100 cron jobs per project**, minimum interval once per day, precision per-hour (±59 min). **What is capped is how often one expression may run. The number of entries never was.** `vercel.json` declared two.
+>
+> **Twelve drain entries at even hours, plus the unchanged chart refresh.** The 45-second budget completes ~6 artwork jobs per invocation, so one entry was ~6 covers a day and twelve is ~72. **Against 211 albums without a cover and a backlog that grew 54 → 174 → 207 in six days, that is ~3 days to clear rather than ~35.** It accelerates the whole queue, not artwork alone.
+>
+> **Two-hour spacing is for the jitter.** At ±59 minutes, hourly entries admit a worst case where one drain is still running as the next fires; concurrent drains each hold their own MusicBrainz limiter and could collectively exceed one request per second. **Two-hour windows cannot overlap, so that exposure stays exactly where it was** — the whole reason this beat draining from page views. **24 entries were declined on that ground, not on effect.**
+>
+> **The previous cycle's cooling-off is load-bearing here by accident.** Every drain runs all three sweeps; twelve would re-queue a failing artist twelve times, except the 24-hour cooling-off from `c5e5c85` already skips a failure four hours old. **A bound chosen for one reason turned out to secure another.**
+
+> ### ⚠️ Nothing in this repository can verify this change, and CI passing is not evidence
+>
+> **`vercel.json` is read by Vercel at deploy time.** The Next build does not parse it, no test imports it, and nothing in the suite references it. **A green CI run confirms only that nothing else broke.**
+>
+> **Verified instead by inspection**, programmatically: all twelve expressions are fixed-minute fixed-hour so none can be rejected at deploy; **minimum gap 2 hours**; 13 entries against a limit of 100; 05:00 collides with no drain hour.
+>
+> **The real verification is post-push and observable only on the deployed site** — the deployment accepting the file, then a drain firing at an hour it previously did not. **Neither has been observed at the time of writing.**
+
+> ### ⚠️ The local `verify:full` is RED, and is not reclassified
+>
+> **Exit 1.** Format, lint, typecheck, **380 unit**, the build, **695 integration** and 1 seed all passed. End-to-end returned **120 passed / 7 failed** in 16.3m.
+>
+> **Attribution here is definitional rather than evidential** — the changed file is unreachable by any test, so no end-to-end outcome can be caused by it whatever the result. **The full suite was run because the documented standard says substantive changes do, and it produced no evidence about this change.** Six of seven failures carry `signUp` frames, the log holds **nine `destination stream closed early`** server errors, and **isolated rerun of all four affected files: 37/37**.
+>
+> **Failure sets across five runs: 9, 5, 2, 9, 7.** `want-to-listen` recurs; `lists` and `notifications` are new.
+
+> ### 📄 Uncommitted at the end of the session of 2026-09-13
+>
+> `3647c37` is this cycle's commit and `origin/main` matches it. **Eight files remain on disk only, and the commit contains no `.md`** — one file, 13 insertions, 8 deletions.
+>
+> | File                       | Owner                                                                                                                         |
+> | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+> | `docs/current-state.md`    | **Seventeen cycles' checkpoints**, this one included. Not committed                                                           |
+> | `docs/architecture.md`     | Fourteen cycles' records, now §7's _Cadence is per cron, not per day_, two corrections in place, and a §18 verification row   |
+> | `docs/product-feedback.md` | Maintainer's file. **Nine entries had states set at the maintainer's instruction on 2026-09-13**, with an outcome index added |
+> | `docs/product-spec.md`     | Earlier slice work. Not committed                                                                                             |
+> | `docs/development-plan.md` | An earlier cycle's note in the third Phase 1 reopening. Not committed                                                         |
+> | `docs/design-reference.md` | An earlier cycle's §11.10. Not committed                                                                                      |
+> | `docs/data-model.md`       | Slice 1's §7 entity. Not committed                                                                                            |
+> | `CLAUDE.md`                | **Maintainer's own process work.** Untouched here                                                                             |
+
+**The previous entry, left as written.** Verified at **`c5e5c85`** against CI run **`34748818301`** (#99) — **`completed/success`**, 380 unit, 695 integration, 1 seed, end-to-end green (§63).
+
+> ## ✅ A failed expansion can recover, and the cron finally runs the sweeps — **[PROVISIONAL: CI #99 PENDING on `c5e5c85`]**
+>
+> **Two defects, one cause: recovery paths existed and nothing invoked them.** A terminally failed `discover_curated_artist` job reads as `settled`, so the artist page shows **no status line** and nothing retries — **Radiohead was permanently capped at three albums** by a transient MusicBrainz 503, presenting a truncated discography as complete. Separately, **five `fetch_artwork` jobs sat `failed` from August**, recoverable the whole time by a command nobody ran.
+>
+> **`enqueueFailedExpansions` is the third sweep, and the cron now calls all three before it drains.** That resolves `current-state.md` §11's open question — _"whether the daily cron should sweep for missing artwork and tracklists itself"_ — with the evidence in hand: **a sweep nobody calls is how a recovery path silently stops being one.**
+>
+> **The bound is a 24-hour cooling-off, and an attempt cap was ruled out rather than unchosen.** **Any hard cap reintroduces permanent exclusion** — a cap of nine postpones it by three cycles — which is the behaviour that was declared a defect. Only a cooling-off never excludes for good. 24 hours matches the cron's cadence, and an unfixable artist costs **three requests a night against a daily budget of 86,400**. **No ceiling on total attempts over time, deliberately.**
+>
+> **`failed` only. `succeeded` is a staleness policy** — F-029, and `product-spec.md` §8.9's _"no staleness rule and no revisit"_ — **and two tests hold that line.**
+>
+> **Expansion state is read from job history because `artists` has no column.** An artist-level column would fix §59's unindexed request-path scan and make the ratified guarantee permanent, **but this defect affects exactly one artist.** The column keeps its recorded triggers.
+
+> ### 🔁 STEP G returned `NOT READY TO COMMIT` on a bug that would have answered an open question by accident
+>
+> **The first candidate query read every row for the kind with `limit(limit * 4)`, unordered.** Two faults: a candidate cap setting retrieval depth through a multiplier — **the exact defect `product-spec.md` §8.10 already names** — and, the dangerous half, **an unordered read that past its page size could return an artist's `failed` row while omitting their `succeeded` row, and re-queue an artist that had in fact been expanded.**
+>
+> **That would have answered the staleness question through paging, past the `where` clause both tests guard.** Latent at ~1,300 job rows; it grows with every album and artist.
+>
+> **Rewritten as two bounded queries** — `failed` rows only, ordered and limited, then one explicit `in(...)` exclusion over exactly those targets. **No test proves the absence of the paging bug**, because no test reaches a page boundary; it is removed structurally instead, and that limitation is stated rather than papered over.
+
+> ### 🔎 A test was wrong before the code was
+>
+> The cooling-off helper backdated `updated_at` in a second statement, and **`ingestion_jobs_set_updated_at` fires `before update`** — so the timestamp was immediately overwritten with `now()` and every cooling-off case looked fresh. **Three tests failed for that reason and not for any fault in the sweep.** Fixed by setting the value at insert, where the trigger has no counterpart, with the reason recorded in the helper.
+>
+> **Both guard rails are verified by removal:** deleting the cooling-off filter fails one test; widening the status exclusion fails the `succeeded` pair.
+
+> ### ⚠️ The local `verify:full` is RED, and is not reclassified
+>
+> **Exit 1.** Format, lint, typecheck, **380 unit**, the build, **695 integration** (up from 688 — the seven added here) and 1 seed all passed. End-to-end returned **118 passed / 9 failed** in 18.9m — the worst since the 40-failure run.
+>
+> **Attribution by measurement, and the server-side signal is new.** **All nine failures coincide with a dev-server `⨯ Error: The destination stream closed early.`** — nine occurrences, one per failed test. Six are `toHaveURL` on auth navigation, four bare 30-second timeouts, five with explicit `signIn`/`signUp` frames. **The host was measured: load average 6.33, ~4,036 free pages (≈63MB) against 82k active, `Virtualization.framework` at 438MB resident.** A starved dev server dropping responses is exactly what that signature is, and exactly F-025's measured cause.
+>
+> **The changed code is unreachable end to end**: the sweeps are called only by the cron route, and **grep over `tests/e2e/` and the fixture seed finds zero references to it.** **Isolated rerun of all five affected files: 35/35.**
+>
+> **Failure sets have now differed across four runs — 9, 5, 2, 9** — on four trees, so not the identical-tree criterion.
+
+> ### 📄 Uncommitted at the end of the session of 2026-09-13
+>
+> `c5e5c85` is this cycle's commit and `origin/main` matches it. **Eight files remain on disk only, and the commit contains no `.md`** — 255 insertions, 3 deletions across three files.
+>
+> | File                       | Owner                                                                                                                                                            |
+> | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+> | `docs/current-state.md`    | **Sixteen cycles' checkpoints**, this one included. Not committed                                                                                                |
+> | `docs/architecture.md`     | Thirteen cycles' records, now §7's _Recovery sweeps_. Not committed                                                                                              |
+> | `docs/product-feedback.md` | Maintainer's file; F-033, F-034 and the F-026 confirmation added at their instruction. **F-034 is now addressed and F-031 partly superseded; neither is marked** |
+> | `docs/product-spec.md`     | Earlier slice work. Not committed                                                                                                                                |
+> | `docs/development-plan.md` | An earlier cycle's note in the third Phase 1 reopening. Not committed                                                                                            |
+> | `docs/design-reference.md` | An earlier cycle's §11.10. Not committed                                                                                                                         |
+> | `docs/data-model.md`       | Slice 1's §7 entity. Not committed                                                                                                                               |
+> | `CLAUDE.md`                | **Maintainer's own process work.** Untouched here                                                                                                                |
+
+**The previous entry, left as written.** Verified at **`f68e050`** against CI run **`34747438948`** (#98) — **`completed/success`**, 380 unit, 688 integration, 1 seed, 127 end-to-end, zero flaky (§62).
+
+> ## ✅ One artwork size dropped — an improvement, not a fix — **[GATE CLEARED: CI #98 `completed/success`, 688 integration, 127 end-to-end, zero flaky]**
+>
+> **Measured at intake, and it is the largest observable gap in the product: 211 of 932 albums — 22.6% of the catalogue — held no cover**, with pending `fetch_artwork` growing **54 → 174 → 207 over six days** against roughly four drained a night.
+>
+> **This is not the priority-contention defect returning.** That fix held: artwork sits at 200, the pending discovery jobs at 100 are ahead of it, and expansions kept succeeding. **This is raw throughput** — the half deliberately deferred at §60's STEP B.
+>
+> **`ARTWORK_SIZES` becomes `[250, 500]`.** Each size costs a CAA fetch (`307` to archive.org, so two round trips) plus a separate upload, looped sequentially — so three sizes was six serial round trips at ~10.6s. **1200 served nothing**, despite a comment claiming it was "for detail"; the album page asks for 500 explicitly. **250 is the dominant size** — grid at `standard`/`dense`, tiles, feed, search, lists — and 500 serves the album page, favourites and `relaxed`.
+>
+> **Dropping a size defers rather than forecloses**, because artwork is re-fetchable from CAA at will and `enqueueMissingArtwork` already sweeps everything. Albums already `found` are skipped by `ARTWORK_RETRYABLE`, so nothing churns.
+>
+> **~7s a job, so ~6 covers a night instead of 4. 207 pending clears in ~35 nights if nothing is added, and expansions add more.** **Cadence — once a day, capped by the hosting plan — is the harder ceiling and stays `[OPEN]`.** F-031's parallel-fetch proposal **stays live rather than superseded**: two sizes still means two independent fetches and two uploads.
+
+> ### 🔁 STEP E returned the boundary to STEP B, and the projected benefit halved before anything shipped
+>
+> **STEP A asserted that "no caller anywhere requested 250 or 1200". That was false**, on a grep whose `-A 4` window missed six `size={250}` call sites. **Narrowing `ArtworkSize` to `500` failed typecheck in four places immediately** — `design/page.tsx` ×3 and `lists/[id]/page.tsx` — which is exactly the protection claimed for deriving the type from the array.
+>
+> **The re-decision: `[250, 500]`, dropping 1200 only.** The projected gain fell from ~12 covers a night to ~6, and **the cron's `DEFAULT_BATCH_SIZE` change was abandoned entirely** — it had been justified on the 3.5s figure, and at 7s ten jobs exceed the 45-second budget, so the count never binds. **The architecture section written at STEP C carried the false claim and was corrected in place**, with both corrections marked rather than tidied away.
+>
+> **Third consecutive cycle to use the return-to-step mechanism, and the first where the returning step was wrong rather than the deciding one.**
+
+> ### ⚠️ The local `verify:full` is RED, and is not reclassified
+>
+> **Exit 1.** Format, lint, typecheck, **380 unit**, the build, **688 integration** and 1 seed all passed. End-to-end returned **125 passed / 2 failed** in 11.8m.
+>
+> **Attribution is the strongest of these three cycles.** `ARTWORK_SIZES` is read in exactly one place — `fetchAndStoreArtwork` — and the only other artwork import in a render path is `storedArtworkUrl` inside `AlbumCover`. **All seven local fixture albums are `artwork_status: 'pending'`, confirmed by query**, so `AlbumCover` takes its placeholder branch and **no `img` element renders on any local page**. The changed constant cannot be reached end to end at all.
+>
+> **Both failures are in `review-likes.spec.ts` and neither is an artwork assertion.** `:189` is the known `signUp` flake (`toHaveURL` `/onboarding` → `/signup`). `:163` is a **server action that never completed** — the like button sat `disabled` with `aria-pressed="true"` for 38 polls over 30 seconds, alongside a dev-server `⨯ Error: The destination stream closed early.` **Isolated rerun: 4/4 in 19.6s.**
+>
+> **Failure sets keep differing across runs — 9, then 5, then 2** — on different trees, so not the identical-tree criterion, but consistent with the host-load cause F-025 measured.
+
+> ### 📦 Orphaned `1200.jpg` files, recorded and not deleted
+>
+> Albums fetched before this keep a `1200.jpg` nothing will ever read — on the order of **100–200MB** across roughly 721 albums with artwork. **Functionally harmless**: `artworkCoverage` counts album rows rather than files, and no code lists bucket contents outside one test. **Deleting them is a storage operation on the deployed bucket, outside this cycle's boundary, and should be a deliberate decision rather than a side effect.**
+
+> ### 📄 Uncommitted at the end of the session of 2026-09-13
+>
+> `f68e050` is this cycle's commit and `origin/main` matches it. **Eight files remain on disk only, and the commit contains no `.md`** — 30 insertions, 4 deletions across two files.
+>
+> | File                       | Owner                                                                                                                                            |
+> | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+> | `docs/current-state.md`    | **Fifteen cycles' checkpoints**, this one included. Not committed                                                                                |
+> | `docs/architecture.md`     | Twelve cycles' records, now §7's _Store only the sizes that are served_ and its two in-place corrections. Not committed                          |
+> | `docs/product-feedback.md` | Maintainer's file; F-033, F-034 and the F-026 confirmation were added at their instruction. **F-031 is now partly superseded and is not marked** |
+> | `docs/product-spec.md`     | Earlier slice work. Not committed                                                                                                                |
+> | `docs/development-plan.md` | An earlier cycle's note in the third Phase 1 reopening. Not committed                                                                            |
+> | `docs/design-reference.md` | An earlier cycle's §11.10. Not committed                                                                                                         |
+> | `docs/data-model.md`       | Slice 1's §7 entity. Not committed                                                                                                               |
+> | `CLAUDE.md`                | **Maintainer's own process work.** Untouched here                                                                                                |
+
+**The previous entry, left as written.** Verified at **`f34c0b4`** against CI run **`34717249620`** (#97) — **`completed/success`**, 380 unit, 688 integration, 1 seed, 127 end-to-end, zero flaky (§61).
+
+> ## ✅ Refreshing an artist page now moves its discography along — **[GATE CLEARED: CI #97 `completed/success`, 688 integration, 127 end-to-end, zero flaky]**
+>
+> **The enqueue-and-drain block was gated on the `start` state, so every later view did nothing at all** and refreshing an artist whose expansion was still outstanding **could not help by construction**. Only a _different_ artist's first view, an album's first view, a self-service add, or the daily cron moved that job. **Observed in use before it was found in code**: an artist page sat on its outstanding line for minutes, and opening further artists visibly hydrated the earlier ones one at a time.
+>
+> **A consistency fix, not a new rule.** The album page gates on `hydration_status === 'pending'`, true on **every** view until hydration succeeds — its own comment reads _"Safe to run on every view of a pending album."_ `architecture.md` §7 called the artist page the same shape "with one deliberate difference" and named priority. **There was a second difference and it was not deliberate.**
+>
+> **It also restores an invariant the code already claimed.** `expansionStateFor`'s docstring says one value drives both the enqueue and the status line _"which is what keeps them from disagreeing"_ — but the status line already rendered on `expansion !== 'settled'` while the work was gated on `start`. **The page was promising activity it had disabled.** Both conditions are now the same. **Found at STEP G, not at STEP B**, and it is a better justification than the one the decision rested on.
+>
+> **Priority is untouched, deliberately.** §7's invariant — background expansion must never delay an interactive operation, because the limiter serialises MusicBrainz globally at one per second — stands. Promoting the viewed artist's job to interactive was **considered and rejected** against it.
+>
+> **No bounded guarantee, and that is a decision.** `claim_ingestion_jobs` has no target filter, so a refresh drains the **oldest** ready job rather than this artist's; a reader behind a backlog refreshes more than once. A target-filtered claim is the **recorded escalation** — it satisfies the invariant too, and costs a migration.
+
+> ### 🔁 STEP F returned the cycle to STEP B, and a recorded approval was withdrawn
+>
+> **Checking the deployed queue mid-cycle found that the case which prompted the work is not the case being fixed.** Radiohead's job `#1350` is **`failed`, `attempts = 3`**, exhausted 2026-09-07 14:07:16 — **all three attempts against MusicBrainz load shedding** (`remaining=13/15`, so nowhere near our own rate). It holds **3 albums** and reads as `settled`, so the page shows **no status line at all** and **this cycle's fix cannot reach it.**
+>
+> **The maintainer ruled that a defect.** §59's _"terminal failure permanently settles an artist, which is approved behaviour"_ is marked **`[APPROVAL WITHDRAWN 2026-09-12]`** in place rather than rewritten. Recorded as `product-feedback.md` **F-034**.
+>
+> **The decision: ship this cycle as built, repair terminal failure by a sweep in its own cycle.** The measured population is **exactly one artist**. The asymmetry that decided the mechanism: `enqueueMissingArtwork`, `enqueueMissingTracklists` and `enqueueMissingPayloads` all exist and re-queue exhausted work — **there is no expansion equivalent**, which is why five artwork jobs failed by transient CAA 5xx are recoverable and Radiohead is not. **A sweep keeps the unauthenticated page-view trigger out of it and leaves the ratified once-per-artist guarantee intact.**
+
+> ### 🔎 A second effect, found after the decision rather than argued for it
+>
+> **`drainJobs` runs `reclaimStaleJobs` before it claims, and that reclaim only fires when a drain starts.** With the page gated on `start`, a job killed mid-run and left `running` waited for another artist's first view or for tomorrow. **Measured 2026-09-12: one `discover_curated_artist` row had been `running`, untouched, for sixteen hours** — the 90-minute threshold long past, with nothing to apply it. **So this change unsticks stranded rows as well as starved ones.**
+
+> ### ⚠️ The local `verify:full` is RED, and is not reclassified
+>
+> **Exit 1.** Format, lint, typecheck, **380 unit**, the build, **688 integration** and 1 seed all passed. End-to-end returned **122 passed / 5 failed** in 14.6m.
+>
+> **Attribution is structural here rather than a reasoning chain.** The five failures are in `profile-favourites` (×2), `review-likes`, `search` and `want-to-listen` — and **grep over those four files finds zero navigations to `/artists/`**, so the changed page never renders in any of them. Three carry explicit `signUp` frames; the other two are bare 30-second timeouts, and `search.spec.ts:182` opens with `await signUp(page)`. **`artist-depth.spec.ts` passed 5/5 inside the same red run**, including the new case. **Isolated rerun of all four files: 23/23, nothing modified.**
+>
+> **The identical-tree criterion is not claimed.** Failure sets differ sharply from the previous run — 9 then, 5 now, overlapping only on `search` and `want-to-listen.spec.ts:104` — but those were different trees, so it is supporting evidence rather than the third criterion met.
+
+> ### ⚠️ Deployed reliability of the mechanism is not established
+>
+> **The fix depends on the `after()` callback**, and `product-feedback.md` **F-033** records one case where that callback ran as far as the enqueue and did not reach the claim. **Corrected the same day**: the job reached `attempts = 3` three minutes after the snapshot, so the drain was **delayed, not absent**, and a lock race under `for update skip locked` fits as well as a failed callback. **No mechanism is established, and the entry no longer implies one.**
+>
+> The new test passes locally because `after()` is reliable against a local server. **It cannot establish deployed reliability**, so the fix improves the odds on a live case rather than guaranteeing them.
+
+> ### 📄 Uncommitted at the end of the session of 2026-09-12
+>
+> `f34c0b4` is this cycle's commit and `origin/main` matches it. **Eight files remain on disk only, and the commit contains no `.md` at all** — 68 insertions, 5 deletions across two files.
+>
+> | File                       | Owner                                                                                                                         |
+> | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+> | `docs/current-state.md`    | **Fourteen cycles' checkpoints**, this one included. Not committed                                                            |
+> | `docs/architecture.md`     | Eleven cycles' records, now §7's _A later view drains too_ and its addendum. Not committed                                    |
+> | `docs/product-feedback.md` | Maintainer's file. **F-033, F-034 and the F-026 confirmation were added here at the maintainer's instruction.** Not committed |
+> | `docs/product-spec.md`     | Earlier slice work plus the previous cycle's §8.9 annotation. Not committed                                                   |
+> | `docs/development-plan.md` | The previous cycle's note in the third Phase 1 reopening. Not committed                                                       |
+> | `docs/design-reference.md` | An earlier cycle's §11.10. Not committed                                                                                      |
+> | `docs/data-model.md`       | Slice 1's §7 entity. Not committed                                                                                            |
+> | `CLAUDE.md`                | **Maintainer's own process work.** Untouched here                                                                             |
+
+**The previous entry, left as written.** Verified at **`2be9b3c`** against CI run **`34125969906`** (#96) — **`completed/success`**, 380 unit, 688 integration, 1 seed, 126 end-to-end, zero flaky (§60).
+
+> ## ✅ Bulk artwork no longer starves the metadata that creates it — **[GATE CLEARED: CI #96 `completed/success`, 688 integration, 126 end-to-end, zero flaky]**
+>
+> **`fetch_artwork` and `discover_curated_artist` shared `DEFAULT_JOB_PRIORITY`**, and the claim orders `priority asc, id asc`. One successful discography expansion creates roughly eight albums and queues a cover for each, every one holding a **lower `id`** than the next artist page's discovery job. A page view drains **one** job. **The queue therefore diverged: success generated the backlog that starved the next success.** Measured on the deployed database after three artist pages were opened — 20 pending, 18 `fetch_artwork`, 2 `discover_curated_artist` never attempted.
+>
+> **This failure was predicted and left open.** `architecture.md` §7 recorded queue fairness as `[OPEN]` on 2026-08-25 — "older artwork jobs precede newly queued curated work" — with four reclaimed discovery rows on staging behind ~288 artwork jobs. **The prediction was right; what changed is that a user-facing surface now depends on the starved kind.** That paragraph is preserved as written and marked resolved rather than rewritten.
+>
+> **The rule is not "artwork is background work".** Artwork created by a job **more urgent than background inherits that urgency**; artwork created by background or bulk work takes `BULK_ARTWORK_PRIORITY = 200`. Four of five enqueue sites move; **self-service is untouched** because it was already interactive under that rule. **The post-ingest site is conditional**, because it serves both a bulk backfill and the album page — so **album-page artwork improves from 100 to 10** rather than regressing, which is a deliberate change, not a side effect.
+>
+> **One data migration**, applied before the push. It moves rows already queued at the old band, because a constant governs only future inserts. **`priority = 100` is part of its predicate rather than an optimisation** — matching on kind alone would demote the interactive case the band protects.
+>
+> **This fixes contention, not throughput.** Roughly four covers still clear per nightly cron run. **Per-kind batch sizing stays deferred** — but its recorded precondition, that the fairness question be answered first, is now discharged, so it is deferred on cost alone.
+
+> ### ✅ Two regression tests established by experiment, and one of them did not exist until review found it
+>
+> **STEP G returned `NOT READY TO COMMIT` on three findings.** The substantive one: **`curated-tranche.ts:294` — the site F-030 actually measured — had no test at all**, so reverting the single line that fixes the reported defect left the whole suite green. Two cases were added to `curated-recovery.test.ts`, which already had the stubbed-browse harness.
+>
+> **Reverting each changed line produces the defect's own signature**, confirmed and then restored: `expected 100 to be 200`, and `expected 'fetch_artwork' to be 'discover_curated_artist'`. The claim-ordering cases deliberately **queue through production paths rather than passing the constant in** — asserting order against an explicitly prioritised row would only have tested the claim function.
+>
+> **The other two findings** were a comment in `jobs.ts` that this change made false in both directions — it claimed follow-ups land behind the backlog — and a badly wrapped doc comment. Both fixed; the false sentence is marked superseded rather than deleted.
+
+> ### ⚠️ The local `verify:full` is RED, and is not reclassified
+>
+> **Exit 1.** Format, lint, typecheck, **380 unit**, the build, **686 integration** and 1 seed all passed. End-to-end returned **117 passed / 9 failed** in 17.0m.
+>
+> **Attribution meets the standard on two of three criteria, by measurement.** **Every one of the nine failed inside a `signIn` or `signUp` helper**, at `toHaveURL` with the browser still on `/login` or `/signup` — taken from the run's own stack frames, two at `profile-collection.spec.ts:465`, three at `search.spec.ts:94/100`, four at `want-to-listen.spec.ts:72/77`. **No failing assertion is about the behaviour under test.** The diff touches four catalogue service files, two tests and one migration — **nothing in `src/services/auth/`, no route, no page** — and an unauthenticated sign-in attempt inserts no job, so the changed code cannot execute there. **All nine passed on an isolated rerun: 25/25, nothing modified.**
+>
+> **The third criterion is not established** — there is only one full end-to-end run on this tree, so no differing failure sets. Recorded as a limitation rather than glossed. This is the class §58 already documented and F-025 measured as host memory pressure.
+>
+> **After the three review fixes**, which changed only comments in `src` and added tests, `npm run verify` was re-run from a clean `.next` (**exit 0**, 380 unit) and the full integration suite re-run (**688 passed**). **End-to-end was not re-run and no claim is made that it was.**
+
+> ### ⚠️ A gap in the standard verification sequence, found and closed
+>
+> **`verify:full` does not reset the database, so the suite that passed ran against a schema without the new migration.** The migration had never been applied anywhere — a syntax error would have reached CI _after_ the push. Closed by running `npm run db:reset` (28 migrations, all clean) and `npm run db:types` (**no diff**, as expected for a data-only migration), then re-running the affected suites.
+>
+> **This is a general hazard, not a one-off**: any cycle carrying a migration can pass `verify:full` without that migration ever being parsed.
+
+> ### 📄 Uncommitted at the end of the session of 2026-09-07
+>
+> `2be9b3c` is this cycle's commit and `origin/main` matches it. **Eight files remain on disk only, and the commit contains no `.md` at all** — 241 insertions, 9 deletions across seven files.
+>
+> | File                       | Owner                                                                                                            |
+> | -------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+> | `docs/current-state.md`    | **Thirteen cycles' checkpoints**, this one included. Not committed                                               |
+> | `docs/architecture.md`     | Ten cycles' decision records, now including §7's _Queue fairness_ resolution and its correction. Not committed   |
+> | `docs/product-spec.md`     | Earlier slice work plus **this cycle's §8.9 falsified-then-restored annotation**. Not committed                  |
+> | `docs/development-plan.md` | **This cycle's note inside the third Phase 1 reopening**. Not committed                                          |
+> | `docs/design-reference.md` | An earlier cycle's §11.10. Not committed                                                                         |
+> | `docs/data-model.md`       | Slice 1's §7 entity. Not committed                                                                               |
+> | `CLAUDE.md`                | **Maintainer's own process work.** Untouched here                                                                |
+> | `docs/product-feedback.md` | **Maintainer's own work**, edited mid-cycle — F-030 gained its cron-batch bullet. Untouched here, and not marked |
+
+**The previous entry, left as written.** Verified at **`aba3a07`** against CI run **`34103201313`** (#95) — **`completed/success`**, 380 unit, 681 integration, 1 seed, 126 end-to-end, zero flaky (§59).
+
+> ## ✅ An artist page fills its own discography — **[GATE CLEARED: CI #95 `completed/success`, 681 integration, 126 end-to-end, zero flaky]**
+>
+> **163 of 261 artists held exactly one album — 62.5%** — against a Phase 1 criterion promising that you can click through to an artist and browse their discography. The cap was never the cause: the seed drew from a global _album_ chart, which admits artists incidentally and cannot produce depth at any cap.
+>
+> **The machinery existed and had no trigger.** `discoverAndIngestArtist` browses an artist's release groups, applies `withinCurrentDepth`, creates what is missing and reconciles credit-less rows; the `discover_curated_artist` job kind and the drain's dispatch to it were built and covered. **Nothing in `src/app` had ever enqueued it**, so it ran only for tranche seeding. An artist page now enqueues one after the response, once per artist.
+>
+> **It is the album page's hydration trigger on a second surface, with one deliberate difference: priority.** A tracklist is wanted on the page being read now; a discography benefits a _later_ view, so this runs **below** interactive work — the claim orders `priority asc`, so it can never be taken ahead of a reader's own search or add. It still drains one job, because the cron is daily on this plan and "a later view" would otherwise mean tomorrow.
+>
+> **Nothing else moved.** `withinCurrentDepth` unchanged, so live albums, compilations, soundtracks and DJ-mixes stay outside the boundary and the 285-album depth question stays deferred. `Various Artists` withheld as a **scope deferral, not a ruling** — one identifier, not a class. Provenance never consulted, so a self-service artist expands on the same terms as a curated one. `DEFAULT_MAX_PER_ARTIST` and the cold-start seeding path untouched. **No migration.**
+>
+> **This does not make the artist catalogue complete.** It fills a discography on demand inside the boundary that already exists.
+
+> ### 🔁 STEP G returned the cycle to STEP B, and the maintainer ratified the narrower guarantee
+>
+> **The finding.** STEP B approved "at most once per artist" inside a no-migration boundary. `artists` carries no depth column, so the implementation reads attempt state from `ingestion_jobs` history — which delivers **"once per artist for as long as that record survives"**, not permanence. STEP D examined this and concluded there was no conflict; **STEP G judged that conclusion under-weighted the gap** and returned it rather than accepting it in a code comment.
+>
+> **What the reopened STEP B established by measurement**, and it corrected STEP G's own evidence: **no production code deletes a job row** — every service-layer access is an insert, select or status update, and neither cron purges. The five test files that empty the table are **fenced to a local database** by a setup guard that refuses to run anywhere else, so they cannot reach staging. No document records an intent to purge, the queue's repair decision returns stranded rows to `pending` rather than deleting them, and growth is ~2–3 rows per album — about two thousand at the present catalogue.
+>
+> **The cost of losing those rows, which is what the narrower wording raises:** one MusicBrainz browse per artist, once, at background priority. **No album duplicated and no data corrupted** — re-expansion is idempotent and tested as such. One effect is a _repair_: an artist whose single attempt terminally failed would get a fresh one.
+>
+> **Decision: ratify the narrower guarantee and record it** (`product-spec.md` §8.9 `[RATIFIED 2026-09-07]`, `architecture.md` §7 `[RESOLVED 2026-09-07]`). The alternative — widening the boundary for an artist-level column — was declined and **remains the answer if a purge is ever contemplated, which is the trigger to revisit this.**
+
+> ### ⚠️ The local `verify:full` is RED, and is not reclassified
+>
+> **Exit 1, twice, on an identical tree.** Prettier, eslint, typecheck, **380 unit**, the build, **681 integration** (up from 667 — the 14 added here) and 1 seed all passed. End-to-end returned **85 passed / 41 failed in 42.1m**, then **86 / 40 in 41.7m** on a machine the maintainer had left alone. **This is ~7× the failure rate this repository has ever recorded**, and the runtime roughly doubled.
+>
+> **Attribution meets the standard `CLAUDE.md` now sets, by measurement rather than assertion.** The changed code **provably could not execute** in the failing tests, shown from the runs' own output: `artist-depth.ts` is imported by exactly one file, all 11 artist tests passed in **both** runs, and the entire 126-test run generated **one** discovery job. The worst-affected specs passed **23/23 on an isolated rerun** with nothing modified. And the failure sets **differ across runs** — 41 and 40 with only **20 overlapping**, `collection-sort` going 7 → 0 and `notifications` 0 → 4.
+>
+> **The machine was measured, not assumed:** load average **24.03** with **zero** test processes running, and `Virtualization.framework` at 66%, `AppStoreDaemon` at 63.9% and `IntelligencePlatformCore` at 44.7% — daemons that run whether or not anyone is at the keyboard, which is why the quiet rerun was no better.
+>
+> **CI corroborates it and does not replace it.** #95 passed **126/126 end-to-end with zero flaky and zero retries** — a clean first-attempt pass, so CI's `retries: 2` absorbed nothing. **The local run is still recorded as red.** The elevated local rate is a **newly exposed environmental problem in its own right**, unattributed to any code.
+
+> ### ⚠️ `npm run verify` currently fails on two maintainer-owned files
+>
+> **`format:check` reports style issues in `CLAUDE.md` and `docs/product-feedback.md`**, both edited during this cycle at 10:41 and 10:47. **Neither was touched by this cycle and neither may be**, so the failure was reported rather than fixed, and the remaining stages were run individually — lint, typecheck, 380 unit and the build all clean, and the seven files this cycle committed are prettier-clean.
+>
+> **CI is unaffected because both files are uncommitted**: the pushed tree carries their last-committed versions, and #95's first job passed. **`npm run verify` will keep failing locally until they are formatted.**
+
+> ### 📄 Uncommitted at the end of the session of 2026-09-07
+>
+> `aba3a07` is this cycle's commit and `origin/main` matches it. **Eight files remain on disk only, and the commit contains no `.md` at all** — 511 insertions across five code paths.
+>
+> | File                       | Owner                                                                                                                                                             |
+> | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+> | `docs/current-state.md`    | **Twelve cycles' checkpoints**, this one included. Not committed                                                                                                  |
+> | `docs/product-spec.md`     | Earlier slice work plus **this cycle's §8.9 depth decision and its ratification**. Not committed                                                                  |
+> | `docs/architecture.md`     | Nine cycles' decision records, now including §7's fourth trigger and its resolution. Not committed                                                                |
+> | `docs/development-plan.md` | **This cycle's addition to the third Phase 1 reopening**, and the corrected browse-capability claim. Not committed                                                |
+> | `docs/design-reference.md` | An earlier cycle's §11.10. Not committed                                                                                                                          |
+> | `docs/data-model.md`       | Slice 1's §7 entity. Not committed                                                                                                                                |
+> | `CLAUDE.md`                | **Maintainer's own process work** — the step-gating rules, the red-STEP-F standard and the return-to-step rules landed mid-cycle and **changed how this one ran** |
+> | `docs/product-feedback.md` | **Maintainer's own work**, edited three times during the cycle. Untouched here                                                                                    |
+
+**The previous entry, left as written.** Verified at **`abb3adc`** against CI run **`34059566618`** (#94) — **`completed/success`, attempt 1, both jobs, 380 unit and component, 667 integration, 1 seed, 122 end-to-end in 13.5m, zero failures, zero flaky, zero retries** (§58).
+
+> ## ✅ The upstream panel fetches deeper than it displays — **[GATE CLEARED: CI #94 `completed/success`, 667 integration, 122 end-to-end, zero flaky]**
+>
+> **`searchUpstream` asked MusicBrainz for `limit * 2` release groups**, so the panel's display limit of five produced an upstream pool of **ten** — and that pool was then filtered twice before anything was shown, through `classify().inScope` and again to remove every MBID the catalogue already holds. **A user seeing four candidates was seeing filtering, not upstream supply**, and `product-spec.md` §8.10 had recorded only the display cap, never the pool behind it.
+>
+> **The multiplier was the defect rather than the number five.** It let a rendering choice set retrieval depth, and it left the pool fixed while the already-held filter removes a growing share of it as the catalogue deepens — so the failure worsens with every curated tranche. **Depth is also free here**: the rate limiter serialises _requests_, not results, so twenty-five rows and ten rows are one request either way.
+>
+> **Fetch depth and display limit are now two constants with two reasons** — `UPSTREAM_FETCH_DEPTH = 25` in the service, `UPSTREAM_RESULTS = 10` in the panel. Twenty-five is MusicBrainz's own default, chosen because it assumes nothing about the API's maximum, which cannot be read from bundled documentation and cannot be verified live under the contact rule; ten was already `searchUpstream`'s signature default, and the panel's five was the undocumented narrowing. **Neither number is empirically optimal and neither is claimed to be.** The decision is `product-spec.md` §8.10 `[DECIDED 2026-09-06]`; it is not restated here.
+>
+> **Nothing else moved.** The query string is unchanged, so **no artist matching and no field-qualified syntax**. Both filters keep their semantics, MusicBrainz's own ordering is preserved, the empty in-scope early return and the empty-list failure path are intact, and the response's `count` and Lucene `score` remain unused. **No show-more, no aliases, no migration, and no markup change** — the list has no height cap and renders ten rows as it rendered five.
+
+> ### ✅ The first coverage `searchUpstream` has ever had, and what makes it a regression test
+>
+> **`tests/integration/upstream-search.test.ts`, 10/10.** MusicBrainz is stubbed at `fetch` — **passing every non-MusicBrainz request through**, which is mandatory rather than tidy because these tests reach Supabase over `fetch` too — and the already-held filter runs against the **real database** rather than a mocked query builder. `MUSICBRAINZ_CONTACT` is captured at module load, set per test and restored, following `musicbrainz.test.ts`; **the rate limiter is deliberately not mocked**, which is what the file's ~18s runtime buys.
+>
+> **The stub honours the requested URL limit**, and that one detail is what separates a regression test from coverage: a fixed array would have let the old implementation pass. The starvation fixture puts **eighteen singles and two held records ahead of five free ones**, so `limit * 2` returns nothing at either display limit the panel has ever used — ten at the old five, twenty at the new ten — and only a fixed depth of twenty-five reaches them.
+>
+> **Established by experiment rather than by assertion.** Temporarily restoring `limit * 2` made three tests fail — `expected [ 20 ] to deeply equal [ 25 ]`, `expected [ 6, 40 ] to deeply equal [ 25, 25 ]` and `expected [] to have a length of 5` — after which the implementation was restored and re-confirmed green. The properties the file establishes are fetch depth, independence from the display limit, both filters, display slicing, the starvation case, the empty in-scope early return, MusicBrainz failure behaviour, and ordering with the Lucene score unused.
+
+> ### ⚠️ F-018 is **not** resolved, and CI does not close it
+>
+> **This repairs one of at least two mechanisms** capable of producing the reported failures. The other is §8.10's **artist-matching** half — the typed string goes to MusicBrainz's release-group index, whose default field is the title — which **remains open and blocked on verifying field-qualified syntax against the live API**. Which mechanism was responsible in any observed search is **unestablished**, and this cycle does not claim otherwise anywhere.
+>
+> **The populated panel cannot render locally or in CI.** Every env file sets `MUSICBRAINZ_CONTACT=https://placeholder.invalid/longplayr`, `PLACEHOLDER_MARKERS` includes `placeholder`, so `assertIdentifiable()` throws and `searchUpstream` returns `[]`. Measured on the CI log rather than assumed: **zero occurrences of the panel's heading and zero `musicbrainz.org` requests**. **CI #94's 122 end-to-end passes therefore confirm no regression on the search page and say nothing about the display limit of ten**, which is established at the service layer and by inspection only.
+>
+> **Closing the attribution needs a real contact configuration and the panel observed against the live API** — a maintainer decision outside this slice, and not worked around here. **`architecture.md` §7a records the established route for that class of verification: staging, where the contact is real.** **Show-more stays deliberately deferred** with a stated reason rather than left merely open, and **F-019's aliases and phonetic matching stay a separate candidate**, deliberately not combined.
+
+> ### ⚠️ The local `verify:full` is RED, and is not reclassified
+>
+> **Exit 1.** Prettier, eslint, typecheck, **380 unit**, the build, **667 integration** and 1 seed all passed; end-to-end returned **116 passed, 6 failed** in 16.2m. **The integration suite grew from 657 to 667** — the ten added here.
+>
+> **None of the six is attributable, established from the run rather than assumed.** Three failed inside a `signUp` helper at `toHaveURL` `/signup` → `/onboarding`; two were `element(s) not found` for an album-page control; one was a list reorder control still present. **All six passed on an isolated rerun**, and **all six `search.spec.ts` tests passed inside that same red run**. Across three full end-to-end runs on this identical tree the failure sets differ — 12, then 1, then 6 — **though not disjointly**: `want-to-listen.spec.ts:156` and `:228` appear in two of them. **No mechanism is established and none is asserted.**
+>
+> **CI passing does not make the local run green.** The same 122 tests passed **122/122** on CI with zero flaky and zero retries, which is direct evidence for the attribution above and stronger than the code-path reasoning it corroborates — **but it is a separate fact about different hardware.** `verify:full` remains RED on this host and is recorded as such.
+
+> ### 📄 Uncommitted at the end of the session of 2026-09-06
+>
+> `abb3adc` is this cycle's commit and `origin/main` matches it. **Eight files remain on disk only, and the commit contains no `.md` at all** — 410 insertions and 2 deletions across three code paths, nothing else.
+>
+> | File                       | Owner                                                                                                                                                                          |
+> | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+> | `docs/current-state.md`    | **Eleven cycles' checkpoints**, this one included. Not committed                                                                                                               |
+> | `docs/architecture.md`     | Eight cycles' decision records, now including §7's fetch/display separation. Not committed                                                                                     |
+> | `docs/product-spec.md`     | Earlier slice work plus **this cycle's §8.10 mechanism record, breadth decision and §8.9 correction**. Not committed                                                           |
+> | `docs/development-plan.md` | Phase 4's narrowing, Phase 5's slicing, and **this cycle's addition to the second Phase 1 reopening**. Not committed                                                           |
+> | `docs/design-reference.md` | The previous cycle's §11.10. Not committed                                                                                                                                     |
+> | `docs/data-model.md`       | Slice 1's §7 entity. Not committed                                                                                                                                             |
+> | `CLAUDE.md`                | **Maintainer's own process work**, and §11 records whether line 5 changes as _their_ open decision                                                                             |
+> | `docs/product-feedback.md` | **Maintainer's own work, and it changed mid-cycle** — 390/4 at the documentation step, 415/4 now, with **F-023** added at 19:49. Untouched by this cycle and not triaged by it |
+
+**The previous entry, left as written.** Verified at **`4dc07b5`** against CI run **`34035787928`** (#93) — **`completed/success`, attempt 1, both jobs, 380 unit and component, 657 integration, 1 seed, 122 end-to-end in 14.2m, zero failures, zero flaky, zero retries** (§57).
+
+> ## ✅ The leading row of every album grid loads eagerly — **[GATE CLEARED: CI #93 `completed/success`, 380 unit, 122 end-to-end, zero flaky]**
+>
+> **`AlbumGrid` passed no `priority` to `next/image`, so every cover on every grid loaded lazily — including the first, which Next itself flags as the largest contentful paint and asks to be eager.** Recorded as `[OPEN]` in §8 and left there deliberately, because choosing how many leading cells get it is its own decision and it touches every grid surface at once. **Slice 3 made it matter more rather than differently**: the front door now renders an image grid, so the most-visited page in the product had an unprioritised LCP.
+>
+> **One row at the narrowest breakpoint, expressed by density rather than by surface — two `relaxed`, three `standard`, four `dense`.** Those are the base column counts of the ramp itself, the unprefixed `grid-cols-N` opening each string, which is the narrowest width by construction because every other entry carries a `min-width` prefix. **Marking a first row at the _widest_ breakpoint would over-mark on a phone**, where only the opening row is visible and the connection is slowest, and a browser deprioritises when everything is high. The decision is `design-reference.md` §11.10; it is not restated here.
+>
+> **Implemented once inside `AlbumGrid`**, so the five instances that go through it — Home, Browse's two sections, the list page and the artist discography — receive it without any call site deciding anything. `AlbumCover` already accepted and forwarded the prop, so **nothing new was abstracted**. The `AlbumGridShell` consumers that build their own cells — `CollectionGrid`, `FavouriteRow`, the design gallery — are **untouched by construction rather than by a guard**.
+>
+> **No length boundary, and that is the other half of the cycle.** §8's height observation deferred it to when the real charts arrive **and** a "show more" boundary has to be decided anyway; the charts arrived and the second half did not. **Counts, composition, ordering, captions, densities, breakpoints, cell sizes and asset sizes are all unchanged.**
+
+> ### ⚠️ The rendered outcome is unverified, and CI passing does not change that
+>
+> **The planned component test was never created.** The `component` Vitest project cannot start: `jsdom@29.1.1` pulls `html-encoding-sniffer@6`, which `require()`s `@exodus/bytes@1.15.1`, and that package is `"type": "module"` — **`ERR_REQUIRE_ESM` on Node v20.17.0**, thrown at worker startup **before any test file is imported**. It is latent rather than new: no `.test.tsx` has ever existed, so jsdom has never been instantiated and `verify` has always passed over an empty project. **Any `.test.tsx` present breaks `npm run verify`**, which is why the diagnostic scaffold was removed rather than left.
+>
+> **So nothing asserts that exactly two, three or four leading images carry the marking, that they are the leading ones, or that the rest do not.** The invariant test proves a relationship between two constants; the typecheck proves a signature; **neither is offered as a substitute**, and **CI #93's green first job does not close it** — it ran the same seven invariant cases, not the missing assertion.
+>
+> **Nothing local could close it either.** Every fixture album is `artwork_status = 'pending'`, so `AlbumCover` takes its placeholder branch and **no `img` element renders on any local page**. The behaviour is unobservable end to end there regardless of the harness.
+>
+> **It is checkable on the deployed site, and that check has not been run.** Before this deploy, `/albums` served 41 real covers, every one `loading="lazy"`. Whether the leading ones are now eager is a `curl` away. **That is a manual post-deploy inspection, not automated verification**, and no claim is made about the Vercel deployment itself, which was not inspected.
+
+> ### 📄 Uncommitted at the end of the session of 2026-09-06
+>
+> `4dc07b5` is this cycle's commit and `origin/main` matches it. **Eight files remain on disk only, and the commit contains no `.md` at all.**
+>
+> | File                       | Owner                                                                                              |
+> | -------------------------- | -------------------------------------------------------------------------------------------------- |
+> | `docs/current-state.md`    | **Ten cycles' checkpoints.** Not committed                                                         |
+> | `docs/architecture.md`     | Seven cycles' decision records, plus corrected markers. Not committed                              |
+> | `docs/design-reference.md` | **This cycle's §11.10 — the authoritative decision.** Not committed                                |
+> | `docs/product-spec.md`     | Slice 3's §6 and §8.3 work and the §8.10 correction. Not committed                                 |
+> | `docs/data-model.md`       | Slice 1's §7 entity. Not committed                                                                 |
+> | `docs/development-plan.md` | Phase 4's narrowing note and Phase 5's slicing. Not committed                                      |
+> | `CLAUDE.md`                | **Maintainer's own process work**, and §11 records whether line 5 changes as _their_ open decision |
+> | `docs/product-feedback.md` | **Maintainer's own work.** Untouched all session                                                   |
+
+**The previous entry, left as written.** Verified at **`8f4aa00`** against CI run **`34022383784`** (#92) — **`completed/success`, attempt 1, both jobs, 373 unit and component, 657 integration, 1 seed, 122 end-to-end in 10.8m, zero failures, zero flaky, zero retries** (§56).
+
+> ## ✅ The front door shows music — Phase 5 slice 3 — **[GATE CLEARED: CI #92 `completed/success`, 122 end-to-end, zero flaky; the pending text below is preserved as written]**
+>
+> **The home page made no catalogue queries at all.** A signed-out visitor saw the pitch, two buttons and no music, which `product-spec.md` §3 names as **the product's most significant cold-start risk** — someone who follows nobody has an empty feed, and popular this week is what is meant to fill that screen. **The page's own comment recorded the gap and left it**: _"fixing that means adding data here, which is a product decision rather than a migration one. Recorded, not taken."_ Taken now.
+>
+> **Home shows one discovery section: twelve albums from the same `getPopularAlbums` result Browse reads**, at a smaller caller limit. **Reading the same result rather than querying the chart is what answers the objection that comment raised** — two grids on two pages cannot drift apart when there is one answer between them. Home stays an orientation surface: no Recently added, no catalogue-size line, no pagination, sorting or filtering, and **Browse is untouched**.
+>
+> **Twelve is a caller limit, not the chart's floor.** §8.3 sets a floor of 20 and slice 1 established that a consumer's limit is independent of it, so this is a use of that separation rather than a new rule. The two callers use **different internal read depths — twenty here, twenty-four on Browse — and still resolve to the same albums in the same order in every case.**
+>
+> **The same content for every viewer who gets any, and the surface does not change shape with the viewer's follow graph.** Nothing reads `follows` or a follow count. That is a decision: the follow graph is the feed's subject, the feed already distinguishes _following nobody_ from _following people who have done nothing_, and a second follow-conditional surface would answer one question in two places. **The signed-in-without-a-profile state is untouched and issues no catalogue query at all.**
+>
+> **An empty result renders no section at all** — no heading, no panel, no placeholder, no zeroed count — which is the rule the profile already applies to absent favourites and Browse already applies to this same signal. **The feed's empty-state copy is deliberately not borrowed.**
+
+> ### 🔎 Two layout consequences of adding data to a page built for none
+>
+> **The section takes the wide container while the pitch keeps the reading measure**, because a grid and a readable text measure cannot share one number — the reason `layout.tsx` stopped imposing a single width. **No new density, breakpoint or layout primitive was introduced.**
+>
+> **The pitch's viewport-centring band is dropped exactly when the section renders.** Holding it would push the albums under the fold, and a cold-start surface whose content starts below the fold has not solved the cold start. **The empty case keeps the band it has always had**, so that presentation is unchanged. Both were flagged as judgements at plan time and both were reviewed as inside the boundary rather than waved through.
+
+> ### ✅ `CI PASSED` — the gate cleared **[2026-09-06 08:55 UTC, during this checkpoint; the pending text below is preserved as written]**
+>
+> **CI run `34022383784` (#92), attempt 1, on exactly `8f4aa00`, was `in_progress` when this was written.** **Exactly one run exists for this SHA**, confirmed on the run object and cross-checked through the commit's check-runs. Job 1 — format, lint, types, unit tests, build — **completed successfully**. In job 2, Supabase start, the environment, **the integration tests**, the browser install and the fixture seed all completed successfully; **the end-to-end step was still running**, and that is where this slice's five new tests live.
+>
+> **This cycle is not fully verified and must not be described as such anywhere.** **A later update is required when #92 reaches a terminal state.** **Vercel's deployment of the push is not CI** and was not consulted as evidence for it.
+
+> ### ⚠️ The local `verify:full` is RED, and is not reclassified
+>
+> **Exit 1.** 373 unit and component, **657 integration**, 1 seed all passed; end-to-end returned **114 passed, 8 failed** in 16.8m, the run taking 20.9m. **The suite grew from 117 to 122** — the five added here.
+>
+> **None of the eight is attributable, and one was tested against this slice's own mechanism rather than dismissed.** The sign-in action redirects to `/`, so the home page now renders — and queries — inside that redirect, and `profile-collection:204` failed there expecting `/` and receiving `/login`. **That spec routes eleven tests through the same helper; one failed, late.** Four other failures are on actions whose destination is **not** the home page — two expecting a handle URL and receiving `/onboarding`, one expecting `/onboarding` and receiving `/signup`. **And this cycle's own spec performs a full form sign-in landing on `/` against a populated chart, and passed** at position 52.
+>
+> **Tests 1–90 all passed; the first failure is #91 of 122.** Mean per-test duration went from **3.8s across the first twenty to 10.3s across the last twenty**. **Zero strict-mode violations, zero permission errors.** All five home tests and both browse tests passed. **The host cause is not proven and remains the `[OPEN]` characterisation §8 and §49 carry.**
+
+> ### 📄 Uncommitted at the end of the session of 2026-09-06
+>
+> `8f4aa00` is this cycle's commit and `origin/main` matches it. **Seven files remain on disk only, and the commit contains no `.md` file at all.**
+>
+> | File                       | Owner                                                                                                                |
+> | -------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+> | `docs/current-state.md`    | **Nine cycles' checkpoints.** Not committed                                                                          |
+> | `docs/architecture.md`     | **Seven cycles' decision records**, plus five corrected markers. Not committed                                       |
+> | `docs/product-spec.md`     | The §6 Home surface definition, §8.3 decisions and the §8.10 correction. Not committed                               |
+> | `docs/data-model.md`       | Slice 1's §7 entity. Not committed                                                                                   |
+> | `docs/development-plan.md` | Phase 4's narrowing note and Phase 5's slicing. Not committed                                                        |
+> | `CLAUDE.md`                | **Maintainer's own process work, edited twice on 2026-09-05 after the previous push.** Not this cycle's to reconcile |
+> | `docs/product-feedback.md` | **Maintainer's own work.** Untouched all session                                                                     |
+
+**The previous entry, left as written.** Verified at **`67949e8`** against CI run **`33988507711`** (#91) on exactly `67949e8` — **`completed/success`, attempt 1, both jobs, 373 unit and component, 657 integration, 1 seed, 117 end-to-end in 13.5m, zero failures, zero flaky, zero retries** (§55). **The gate recorded as `CI PENDING` at that checkpoint cleared at 20:14 UTC**, and **the 29 local `verify:full` failures did not reproduce**: the same 117 tests passed 117/117 on CI.
+
+> ## ✅ Browse's Popular section is longplayr's own — Phase 5 slice 1 — **[GATE CLEARED: CI #91 `completed/success`, 117 end-to-end, zero flaky; text below preserved as written]**
+>
+> **Popular was a placeholder ranked by an external signal, and an album no external source had heard of could not appear on it at all.** Measured 2026-08-23, **all 27 self-service albums carried `popularity_score = null` and all 335 seeded albums carried a score** — an exact correlation. `architecture.md` §8 called that null-as-visibility-gate _"not legitimate"_ and left what Browse Popular should do instead as **a Phase 5 question**. This answers it **for the internal case**.
+>
+> **"Popular this week" is now computed from longplayr's own collection data** — `product-spec.md` §8.3's distinct users who added an album or marked a relisten in the last seven days — materialised into a cached table, recomputed on a daily schedule, and read by Browse with the external signal filling in behind it.
+>
+> **The chart reads collection data and never `activity`, and that is a product rule rather than a convenience.** §8.3 requires backfilled collection data to count — _"interest is still interest"_ — while `activity` exists precisely to **exclude** backfills, which is a `CLAUDE.md` non-negotiable. Reaching for the obvious "activity" table would have passed a casual review and silently contradicted a decided rule. **An integration test asserts the chart is byte-identical with and without the corresponding `activity` rows**, so the mistake cannot be made quietly later.
+>
+> **Distinct users is the entire anti-domination rule and no formula was invented beyond it.** Twenty relistens by one person move the chart by one; a backfill adds at most +1 to each album; a `union` rather than `union all` makes add-and-relisten one user. Ties break on all-time collection count, then `album_id`. **`added_at` decides, never `listened_on`**, and both directions are tested.
+
+> ### 🔎 The 20 is a floor, and the ambiguity went back to STEP B rather than being settled in planning
+>
+> §8.3 says the fallback fills **below 20** while Browse asks for **24**, and the three available readings differ in what a user sees. **STEP D escalated it instead of picking the least-work option.** The record settles it: every authoritative sentence attaches the 20 to **the chart**, and the 24 is a grid default **shared verbatim with _Recently added_** that appears in no product document.
+>
+> So external entries complete the chart to 20 when internal yields fewer, **none are added at 20 or more**, **internal results are never truncated to it**, and a caller's limit caps only what that caller renders. **Browse shows 20 today, 22 when the chart holds 22, and 24 once it holds 24 or more.** `getPopularAlbums(24)` is unchanged at its call site and `albums/page.tsx` is untouched.
+>
+> **Floor and limit are kept apart structurally rather than by convention.** `POPULAR_FLOOR` is a named constant, `externalShortfall` never sees the limit, and the limit appears exactly once — the final slice. Outside comments, **`20` appears once in the code and `24` once**.
+
+> ### 🔎 Two boundaries held deliberately
+>
+> **`albums.popularity_score` is untouched and keeps its four consumers** — Browse's fallback, `search_albums`' tie-break, and three job-priority queries in `jobs.ts`. Repurposing it would have changed search results and ingestion order as a side effect of a discovery change. **A materialised chart is not a popularity signal, so §8.9's "one field or two" question stays open.**
+>
+> **Recomputation is a separate daily cron, not work bolted onto the queue drain.** The drain's budget is rate-limited MusicBrainz work with fifteen seconds of tail headroom, and **the two must not share a failure domain**. Hobby allows 100 cron jobs and caps only frequency — established from the vendor documentation rather than assumed. **The deployed cadence is daily against §8.3's hourly intent**, a platform constraint recorded as a divergence.
+
+> ### ✅ `CI PASSED` — the gate cleared **[2026-09-05 20:14 UTC; the pending text below is preserved as written]**
+>
+> **CI run `33988507711` (#91), attempt 1, on exactly `67949e8`, was `in_progress` when this was written.** **Exactly one run exists for this SHA**; none was substituted. Job 1 — format, lint, types, unit tests, build — **completed successfully**, all nine substantive steps green. **Job 2, integration and end-to-end, is the unresolved gate**: `Start Supabase` succeeded, which means **all 27 migrations applied cleanly to a fresh database off this machine**, but the step carrying this cycle's 31 integration tests and 2 end-to-end tests had not finished.
+>
+> **This cycle is not fully verified and must not be described as such anywhere.** **A later update is required when #91 reaches a terminal state.**
+
+> ### ⚠️ The local `verify:full` is RED, and is not reclassified
+>
+> **Exit 1.** 373 unit and component, **657 integration**, 1 seed all passed; end-to-end returned **88 passed, 29 failed** in 33.2m, the whole run taking **38.4 minutes**. **CI PENDING does not offset this and nothing here is amended by it.**
+>
+> **None of the 29 is attributable, established from the run's own artefacts.** **Tests 1–65 all passed and the first failure is #66**; mean per-test duration went from **5.0s across the first twenty to 24.3s across the last twenty** — the degradation `architecture.md` §12 records. **`browse.spec.ts` passed 2/2 at positions 15 and 16**, in 1.0s and 0.675s. **No failure artefact shows Browse**, none of the six failing specs contains `goto('/albums')`, and none references this cycle's code. **Zero strict-mode violations and zero permission errors.**
+>
+> **The failing set moved rather than merely growing** — `lists`, `notifications`, `review-likes` and `search` failed here and not last run, while `profile-favourites` failed there and not here. A deterministic regression does not move between specs.
+>
+> **The machine was in active use during the run**, free memory measured at 28%. That is recorded as context for the magnitude, **not as a proven root cause** — the host behaviour remains the `[OPEN]` characterisation §8 and §49 already carry.
+
+> ### 📄 Uncommitted at the end of the session of 2026-09-05
+>
+> `67949e8` is this cycle's commit and `origin/main` matches it. **Seven files remain on disk only, and none belongs to this cycle's implementation** — the commit contains no `.md` file at all.
+>
+> | File                       | Owner                                                                                                                                       |
+> | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+> | `docs/current-state.md`    | **Eight cycles' checkpoints.** Not committed                                                                                                |
+> | `docs/architecture.md`     | **Six cycles' decision records.** Not committed                                                                                             |
+> | `docs/product-spec.md`     | This cycle's §8.3 decisions. Not committed                                                                                                  |
+> | `docs/data-model.md`       | This cycle's §7 entity. Not committed                                                                                                       |
+> | `docs/development-plan.md` | The Phase 4 narrowing note and Phase 5 slicing. Not committed                                                                               |
+> | `CLAUDE.md`                | **Separate process-definition work, and the maintainer added to it at 21:56 on 2026-09-05** — after the push. Not this cycle's to reconcile |
+> | `docs/product-feedback.md` | **Maintainer's own work.** Untouched all session                                                                                            |
+
+**The previous entry, left as written.** Verified at **`a7eaa66`** against CI run **`33971432512`** (#90) on exactly `a7eaa66` — **`completed/success`, attempt 1, both jobs, 353 unit and component, 626 integration, 1 seed, 115 end-to-end in 13.6m, zero failures, zero flaky, zero retries** (§54). **The gate recorded as `CI PENDING` at that checkpoint has since cleared**, and the six local failures it recorded **did not reproduce**: the same 115 tests passed 115/115 on CI.
+
+> ## ✅ Signing out is reachable on a phone — **[GATE CLEARED: CI #90 `completed/success`, 115 end-to-end, zero flaky; text below preserved as written]**
+>
+> **`signOut` was imported and used in exactly one place** — `layout.tsx`, inside the header's `hidden … md:flex` container. `MobileTabBar` carries no account controls and the profile had none, so **below 768px a signed-in user had no visible way to sign out at all.**
+>
+> **The container was enumerated rather than sampled.** Browse, Search and Feed are duplicated by the tab bar; the profile and onboarding links by its "You" tab; sign-in and create-account by the signed-out home page body; notifications by the link §53 added. **`Sign out` was the only affordance in either container with no mobile equivalent anywhere.**
+>
+> **An owner-only control now sits in the profile's identity block, directly after the notifications link**, using the existing `signOut` action and gated by the existing `isOwnProfile`. **The gate is a server component, so the element is never sent to a non-owner** rather than hidden from them. **No responsive class, deliberately** — `md:hidden` would reintroduce the breakpoint-conditional visibility both decisions exist to repair, so **desktop carries two sign-out controls and that duplication is accepted.**
+>
+> **This is an _action_, not navigation**, which is why §53's decision did not settle it and this one was taken separately.
+
+> ### 🔎 The review caught the race this repository had just removed
+>
+> **The first implementation clicked Sign out and called `page.goto('/notifications')` immediately** — `signOut()` ends in **`redirect('/')`**, so the two navigations compete. That is the exact mechanism behind CI #86's two flaky tests, fixed in `3d62bfa` one cycle earlier, and **it was the only unwaited sign-out click in the repository.**
+>
+> **One line corrected it**, and the difference from §51's fix is deliberate: that one waited on the header's signed-out state, which **cannot be read at 390×844 because the header is hidden**. The URL can be read at any width, and the cleared session cookie arrives in the response headers before the redirect commits. **All four sign-out click sites now wait.**
+>
+> **The behavioural assertion was not replaced by the wait.** Session death is still proven by the server refusing `/notifications`.
+
+> ### ⚠️ `CI PENDING` — and pending is not passed
+>
+> **CI run `33971432512` (#90), attempt 1, on exactly `a7eaa66`, was `in_progress` when this checkpoint was written.** There is **exactly one run for this SHA**, and no run for another SHA is substituted for it. Job 1 — format, lint, types, unit tests, build — **completed successfully**. Job 2's integration and seed steps also completed successfully, **but the end-to-end step was still running** — and that is the step carrying this cycle's three new tests.
+>
+> **This cycle is not fully verified and must not be described as such anywhere.** **A later update is required when #90 reaches a terminal state.**
+>
+> **§53's gate is a different gate.** F-017 was fully verified by CI #89 on `311bd70`; that says nothing about `a7eaa66`.
+
+> ### ⚠️ The local `verify:full` is RED, and is not reclassified
+>
+> **Exit 1.** 353 unit and component, **626 integration**, 1 seed all passed; end-to-end returned **109 passed, 6 failed** in 15.8m. **The suite grew from 112 tests to 115** — the three added here.
+>
+> **None of the six is attributable, established from the run's own artefacts rather than assumed.** **No failure snapshot shows a profile page**: four die inside their own signup or sign-in helpers, one on an album page with a closed browser session, one on a `goto` that aborts before any page loads. **Zero strict-mode violations**, and the two snapshots mentioning "Sign out" each show **one** banner button on a page that renders no profile.
+>
+> **The failing set moves between runs.** All six of the previous run's `profile-collection` failures passed this run, several of them rendering the modified page, while two different ones failed. **`auth.spec.ts` passed 7/7 inside the run.**
+
+> ### 📄 Uncommitted at the end of the session of 2026-09-05
+>
+> `a7eaa66` is this cycle's commit and `origin/main` matches it. **Five files remain on disk only, and none belongs to this cycle's implementation.**
+>
+> | File                       | Owner                                                                                                              |
+> | -------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+> | `docs/current-state.md`    | **Seven cycles' checkpoints.** Not committed                                                                       |
+> | `docs/architecture.md`     | **Five cycles' decision records.** Not committed                                                                   |
+> | `docs/development-plan.md` | The Phase 4 slice-3 narrowing note. Not committed                                                                  |
+> | `CLAUDE.md`                | **Separate process-definition work.** Unchanged since 16:29 on 2026-09-04                                          |
+> | `docs/product-feedback.md` | **Maintainer's own work**, externally modified 09:32 on 2026-09-05 with F-017 to F-020. **Deliberately untouched** |
+
+**The previous entry, left as written.** Verified at **`311bd70`** against CI run **`33962435001`** (#89) on exactly `311bd70` — **`completed/success`, attempt 1, both jobs, 353 unit and component, 626 integration, 1 seed, 112 end-to-end in 13.2m, zero failures and zero flaky** (§53). **The gate recorded as `CI PENDING` at that checkpoint cleared at 11:25 UTC.** The cycle before it cleared too — CI #88 on `972b709` (§52).
+
+> ## ✅ Notifications can be reached on a phone — **[GATE CLEARED: CI #89 `completed/success`, 112 end-to-end, zero flaky]**
+>
+> **The unread dot on the mobile "You" tab promised a destination with no way in.** The only link to `/notifications` sat in the header's `hidden md:flex` container; the tab bar's four tabs carry none; and the profile it leads to had no link either. **Below 768px the only route was typing the URL**, while the interface actively signalled there was something to read. **Notifications shipped in Phase 3 and gained list likes in Phase 4, so two phases' work were unreadable on a phone.**
+>
+> **An owner-only link now sits in the profile's identity block**, gated by the existing `isOwnProfile`. No new ownership logic, query, prop or state, and no new styling abstraction. **The gate is a server component, so the element is never sent to a non-owner's browser** rather than hidden from them.
+>
+> **`architecture.md` §16.3 is completed, not amended.** It decided four tabs, the indicator on "You", no fifth tab, and notifications reached through the personal surface — but **named the surface and never the location**, and nothing was built there. That sentence described an assumption rather than a route. **`MobileTabBar`'s inline comment asserting mobile reachability becomes true without needing an edit.**
+>
+> **No responsive class, deliberately.** A second affordance hidden behind a breakpoint is the exact defect being repaired.
+
+> ### 🔎 Three rejections and one deferral, kept distinct
+>
+> **Rejected on the merits:** a **fifth tab**, already rejected by §16.3 because it narrows every other tab; **routing "You" to notifications**, which would leave the profile with no mobile entry point at all, trading one unreachable surface for another; **routing "You" conditionally on unread**, which `MobileTabBar`'s own reasoning forbids — _"'You' is a destination, not an authentication state"_ — and which would strand the profile whenever unread is zero; and **un-hiding the header link on mobile**, which relocates the decision instead of implementing it.
+>
+> **Deferred, not rejected:** an **unread count on the new link**. The mobile treatment is the minimal badge, and a second indicator on one journey duplicates state in two places.
+>
+> **The two-tap journey is accepted, not worked around** — "You" → profile → notifications. One-tap access needs a fifth tab or a header affordance, both rejected, and two taps is the cost of the four-tab shape §16.3 already accepted.
+
+> ### ✅ `CI PASSED` — the gate cleared, and it settles the local RED question
+>
+> **CI run #89, attempt 1, on exactly `311bd70`: `completed/success`, both jobs** — **353 unit and component, 626 integration, 1 seed, 112 end-to-end in 13.2m, zero failures, zero flaky, zero retries.** It was `CI PENDING` when this checkpoint was first written and **cleared at 11:25 UTC**; the cycle is closed rather than reopened.
+>
+> **The four local `verify:full` failures did not reproduce.** The same 112 tests that produced four failures on this host passed **112/112** on CI. That is direct evidence for the attribution recorded below — the failures track the machine, not the code — and it is stronger than the code-path reasoning it corroborates.
+>
+> **It does not make the local run green.** `verify:full` remains RED on this host and is recorded as such; CI passing on different hardware is a separate fact.
+
+> ### ⚠️ The local `verify:full` is RED, and is not reclassified
+>
+> **Exit 1.** 353 unit and component, **626 integration**, 1 seed all passed; end-to-end returned **108 passed, 4 failed** in 13.9m. **The suite grew from 108 tests to 112** — the four added here — and the passing count rose from 105 to 108.
+>
+> **None of the four is attributable, established from the run rather than assumed.** They are `review-likes:163`, `search:158` and `want-to-listen:185` and `:205`. **Two failed on trees predating this change**; the failure set differs on every run across four logs; and **none of those specs references this link**. **Two of them fail at the signup step, before the profile renders at all.** Signatures are three 30-second timeouts, one `net::ERR_ABORTED` and two `toHaveURL` waits that expired — **nothing arriving in time**. One is a genuine value mismatch on a like toggle, **pre-existing and on an album page**, and is not diagnosed here.
+>
+> **`notifications.spec.ts` passed 10/10 inside that run.**
+
+> ### 📄 Uncommitted at the end of the session of 2026-09-05
+>
+> `311bd70` is this cycle's commit and `origin/main` matches it. **Five files remain on disk only, and none belongs to this cycle's implementation.**
+>
+> | File                       | Owner                                                                                                              |
+> | -------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+> | `docs/current-state.md`    | **Six cycles' checkpoints.** Not committed                                                                         |
+> | `docs/architecture.md`     | **Four cycles' decision records.** Not committed                                                                   |
+> | `docs/development-plan.md` | The Phase 4 slice-3 narrowing note. Not committed                                                                  |
+> | `CLAUDE.md`                | **Separate process-definition work.** Unchanged since 16:29 on 2026-09-04                                          |
+> | `docs/product-feedback.md` | **Maintainer's own work**, externally modified 09:32 on 2026-09-05 with F-017 to F-020. **Deliberately untouched** |
+
+**The previous entry, left as written.** Verified at **`972b709`** against CI run **33956953561** (#88) — `completed/success`, attempt 1, both jobs, 353 unit and component, 626 integration, 1 seed, 108 end-to-end in 12.4m, zero failures and zero flaky (§52).
+
+> ## ✅ Lists appear in the feed when they are made — Phase 4 slice 3 — **[GATE CLEARED: CI #88 `completed/success`, 108 end-to-end, zero flaky; text below preserved as written]**
+>
+> **Creating a list now writes one `list_created` event and the following feed renders it.** Phase 4's definition of done — _"its creation appears in followers' feeds"_ — is met. **Slice 3 was narrowed at decision time**: `development-plan.md`'s slicing table names `list_created` **and** `list_updated`, and only the first is built. The table is left as written and the narrowing is recorded as a decision (`architecture.md` §16.6).
+>
+> **Creation is the only list mutation that writes activity.** Editing the title, adding an album, removing one and reordering are **silent**. Events read live data, so the feed item already shows the list's current title, albums and order — those mutations improve the existing item rather than needing one of their own. **Three of the four are deferred, not rejected; only reordering is argued against on its merits**, because twenty reorders are one act of curation.
+>
+> **`list_updated` is not built and its enum label is deliberately not added.** `ALTER TYPE … ADD VALUE` cannot be taken back, and what a list update should communicate is unresolved. **With creation-only scope a repeated-edit burst is impossible by construction** — a stronger guarantee than the partial unique index that bounds `rated` events, which remains the precedent if the question is ever answered.
+>
+> **Deleting a list deletes its event.** Every subject column on `activity` cascades, and `data-model.md` §7 forbids the feed from displaying a claim that has stopped being true. **No tombstone model was introduced.**
+
+> ### 🔎 Two hazards that fail quietly, both closed
+>
+> **`activity_subject_matches_type` had no `ELSE`.** A `CASE` that falls through returns NULL, and **a CHECK with a NULL result passes** — so a new enum value would have been **entirely unconstrained**. The constraint was rewritten with `else false` and all four existing branches now assert `list_id is null`, so a `listened` row cannot carry a stray list reference.
+>
+> **`feed_activity`'s two INNER joins would have silently dropped list events.** Every row had to resolve to a collection entry and an album; a list event has neither. They are now LEFT joins with the invariant stated as an **explicit predicate** — and that change is provably equivalent for album events, because `collection_entries.album_id` is `NOT NULL` and `albums_public_read` is `true`, so `al.id is not null` **is** the old join condition.
+>
+> **The function was dropped and recreated — the repository's first — because its return type changed.** A recreated function is a **new object** that inherits Postgres's default `EXECUTE` to `PUBLIC`, so §16.5's revoke does **not** survive on its own. Both the revoke and the grant are re-applied, and this was verified rather than assumed: `has_function_privilege` reports **`anon` false and `authenticated` true**, locally _and_ on staging.
+
+> ### ⚠️ `CI PENDING` — and pending is not passed
+>
+> **CI run #88, attempt 1, on exactly `972b709`, was `in_progress` when this checkpoint was written.** Job 1 — format, lint, types, unit tests, build — **completed successfully**. Job 2, integration and end-to-end, was still running with the end-to-end step not started.
+>
+> **This cycle is not fully verified and must not be described as such anywhere.** **A later update is required when #88 reaches a terminal state.**
+>
+> **Two things job 1 and the early steps establish, neither of which is a pass.** _Start Supabase_ succeeding means **both migrations applied cleanly to a fresh database** — the first external exercise of the enum split and the function recreation. Typecheck passing confirms the discriminated union compiles off this machine. **The outstanding job carries the 626 integration tests and the end-to-end suite, which is where this cycle's changes actually live.**
+
+> ### ⚠️ The local `verify:full` is RED, and is not reclassified
+>
+> **Exit 1.** 353 unit and component, **626 integration**, 1 seed all passed; end-to-end returned **105 passed, 3 failed** in 13.3m.
+>
+> **The three failures are unattributable, established from that run rather than assumed.** They are `profile-collection.spec.ts` ×2 and `review-likes.spec.ts` ×1. **Neither spec contains a single reference to `activity`, `feed`, `lists` or `list_created`**; **neither is touched by this commit** — `git diff --name-only -- tests/e2e/` returns only `feed.spec.ts`; `profile-collection.spec.ts` was last changed by `a9da122`, already CI-verified by #86; and **the failure set differs on every run**. Signatures are two 30-second timeouts and two navigation waits that expired — **nothing arriving in time, never wrong output**, with **zero value mismatches and zero permission errors**.
+>
+> **`feed.spec.ts` passed 3/3 inside that run**, including the definition-of-done test.
+
+> ### 📄 Uncommitted at the end of the session of 2026-09-05
+>
+> `972b709` is this cycle's commit and `origin/main` matches it. **Five files remain on disk only, and none belongs to this cycle's implementation.**
+>
+> | File                       | Owner                                                                                                                                       |
+> | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+> | `docs/current-state.md`    | **Five cycles' checkpoints.** Not committed                                                                                                 |
+> | `docs/architecture.md`     | **Three cycles' decision records.** Not committed                                                                                           |
+> | `docs/development-plan.md` | The slice-3 narrowing note. Not committed                                                                                                   |
+> | `CLAUDE.md`                | **Separate process-definition work.** Unchanged since 16:29 on 2026-09-04                                                                   |
+> | `docs/product-feedback.md` | **Maintainer's own work, modified externally at 09:32 on 2026-09-05** — F-017 to F-020 added mid-implementation. **Deliberately untouched** |
+
+**The previous entry, left as written.** Verified at **`3d62bfa`** against CI run **33949428033** (#87) — `completed/success`, attempt 1, both jobs, 353 unit and component, 615 integration, 1 seed, 108 end-to-end in 11.5m, zero failures, retries or flaky (§51).
+
+> ## ✅ The sign-out race in the list-like notification tests — **[GATE CLEARED: CI #87 `completed/success`, zero flaky; text below preserved as written]**
+>
+> **CI #86 passed but reported two flaky tests, both in `list-likes.spec.ts`, and they were the first flaky results CI had produced.** Both failed at the **same operation** — `locator.fill` waiting for `getByLabel('Email')` on the login form — and **the same failure occurred locally in `verify:full` at the same line**.
+>
+> **Both tests clicked Sign out and then called `page.goto('/login')` immediately.** `signOut()` is a server action ending in **`redirect('/')`**, so the two navigations race; when the redirect lands second the test sits on `/`, where the Email field does not exist, until its 30-second budget runs out. **`auth.spec.ts` performs the same sequence but waits for the signed-out header first, and did not flake.**
+>
+> **Each site now waits for the header's `Sign in` link before navigating.** The locator is **scoped through the banner**, and that is load-bearing rather than stylistic: the signed-out home page renders a **second** `Sign in` link in its body, and an unscoped locator would match both and fail strict mode. **Six green runs prove by execution that the scoped locator resolves to exactly one element.**
+>
+> **Two inserted assertions, zero deletions, one file.** `NAV` is the file's existing constant for waits following a server action — already used six times there, including the sign-in waits two lines below each addition. **No existing timeout, retry or worker count changed**, and `signOut()` is correct and untouched.
+
+> ### ⚠️ The mechanism is **inferred, not reproduced** — and the evidence cannot go further
+>
+> **What supports it:** the named failing locator; `redirect('/')` in the action; **2 of 2 unwaited sites flaked while 1 of 1 waited site did not**; and reproduction in **two independent environments**, CI and local.
+>
+> **What was never done:** an instrumented reproduction. **No statement anywhere may describe this as a definitively reproduced race.**
+>
+> **Six green local runs and the absence of `list-likes` from one full-suite failure set do not prove the fix caused the improvement, and do not prove the absence of flakiness.** These tests were **flaky, not failing** — they passed often enough on CI that repeated local greens cannot discriminate the fix from chance. A second contributing cause in the suite's two most auth-heavy tests is **not excluded**.
+>
+> **A bounded audit found no other occurrence of the pattern, which is not proof that none exists.** It is a line-adjacency scan; races expressed through different syntax, link clicks or greater separation would not have been detected.
+
+> ### ✅ `CI PASSED` — zero flaky, and one run is not proof
+>
+> **CI run #87, attempt 1, on exactly `3d62bfa`: `completed/success`, both jobs** — **353 unit and component, 615 integration, 1 seed, 108 end-to-end in 11.5m, zero failures, zero retries, zero flaky.** `list-likes.spec.ts` appears in no failure or retry context. The gate cleared at 06:36:50 UTC and the cycle is closed rather than reopened.
+>
+> **⚠️ The base rate makes a single clean run weak evidence, and the arithmetic is recorded rather than glossed.** Across the six most recent runs the flaky counts were **#80 = 0, #82 = 0, #84 = 0, #85 = 0, #86 = 2, #87 = 0** — **one flaky run in six.** A clean result was therefore **the most likely outcome even without the fix.**
+>
+> **So #87 is consistent with the fix and does not establish it.** Combined with the mechanism, the waited/unwaited contrast and six green local runs, the evidence points one way; **none of it is proof, and the flake could still recur.** If it does, the mechanism is wrong or incomplete and this is reopened.
+
+> ### ⚠️ The local `verify:full` is still RED, and is still not reclassified
+>
+> **Exit 1.** 353 unit and component, 615 integration, 1 seed all passed; end-to-end returned **105 passed, 3 failed** in 11.4m.
+>
+> **All three failures are in `want-to-listen.spec.ts` (`:123`, `:156`, `:185`) — a spec containing no sign-out click, no banner locator, and no shared code path with this change.** Signatures are **four 30-second timeouts and one locator that never resolved**; there is **no value mismatch and no permission error**. The failure set also moved specs entirely from the previous run's six, which is the recorded environmental variability.
+>
+> **`list-likes.spec.ts` did not fail in that run, where it had failed at the same line before. That is one observation consistent with the fix, not evidence of it.** The RED keeps its established environmental classification and the **`[DEFERRED]`** pre-commit policy question is neither answered nor reopened.
+
+> ### 📄 Uncommitted at the end of the session of 2026-09-05
+>
+> `3d62bfa` is this cycle's commit and `origin/main` matches it. **Four files remain on disk only.**
+>
+> | File                       | Owner                                                                                                        |
+> | -------------------------- | ------------------------------------------------------------------------------------------------------------ |
+> | `docs/current-state.md`    | **Four cycles' checkpoints** — list likes, fresh server, session establishment, and this one. None committed |
+> | `docs/architecture.md`     | **Two cycles' decision records** — session establishment and this cycle's redirect convention. Not committed |
+> | `CLAUDE.md`                | **Separate process-definition work.** Unchanged since 16:29 on 2026-09-04                                    |
+> | `docs/product-feedback.md` | **Maintainer's own work. Do not touch, do not stage.** Unchanged since 12:16 on 2026-09-04                   |
+
+**The previous entry, left as written.** Verified at **`a9da122`** against CI run **33944073233** (#86) — `completed/success`, attempt 1, both jobs, 353 unit and component, 615 integration, 1 seed, 106 end-to-end in 10.7m, **with 2 flaky** (§50).
+
+> ## ✅ End-to-end sessions are built through the API in two specs — **[GATE CLEARED 2026-09-05: CI #86 `completed/success`; text below preserved as written]**
+>
+> **Seventeen call sites that signed a user up through the browser now create the user through the admin API and sign in through the real login form.** The UI helper cost **three navigations and two server actions** per test; the API path costs **one of each**. Every one of these sites discarded the page signup landed on, by navigating away immediately — established by reading all of them, not assumed.
+>
+> **`profile-collection.spec.ts:112` is deliberately excluded**, which is why `signUp` survives there with exactly one caller. It asserts the empty state **on the page signup itself lands on**, and adding a navigation to make it eligible would preserve the assertion text while changing what it establishes. **The approved scope said eighteen sites; the per-site eligibility review found seventeen**, and the slice got smaller rather than the rule getting looser.
+>
+> **`createUserViaApi` gained the postcondition read-back the approved technique requires.** It inserted the profile and threw on error but **never verified the row existed**, so it could not have satisfied the rule it was being used under. The direct insert stays because `createProfile` derives its user from the session and cannot be called for anyone else — unlike `ensure_collection_entry`, which takes `p_user_id`.
+>
+> **Session establishment only.** No `collect` or `rate` call was converted, though `collectViaApi` and `rateViaApi` sit in the same file. Nothing was extracted into a shared module; `signIn` was **copied** into `follows.spec.ts`. The fifteen duplicated `signUp` definitions elsewhere remain untouched.
+
+> ### ⚠️ The performance benefit was **NOT established**, and that is the finding
+>
+> **The measurement ran the approved protocol in full and its own validity rules disqualify the result.** Three independent grounds, any one sufficient:
+>
+> | Ground                               | Evidence                                                                                                                                                |
+> | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+> | **Memory discontinuity**             | macOS resized the swap file **three times mid-session** — 10,240 → 12,288 → 14,336 → 13,312 → 11,264 MB                                                 |
+> | **Arms in different machine states** | BEFORE ran 23:13–23:21 (swap 9.6 GB, healthy) and 00:23–00:49 (recovering); **AFTER ran 23:21–00:23 continuously, across the peak at 12.8 GB used**     |
+> | **Absurd on its face**               | All six AFTER `profile-collection` runs failed, while the same tree passed **12/12 twice in isolation an hour earlier** and 12/12 inside the full suite |
+>
+> **The naive medians would read as a 3.5× regression. That is an artifact of when each arm ran, not a property of the code, and it is recorded here so nobody reading the raw figures later believes it.**
+>
+> **No reading is taken in either direction — not faster, not slower, no magnitude.** Setup-time reduction, total suite duration, failure rate and flake rate are **four separate claims and none is established.** The blocked arm order was the approved design and was executed unchanged; the convex-drift limitation identified before the run stands as a recorded qualification rather than something the reversal solved.
+>
+> **Because no reduction was measured, no expansion beyond this slice is justified.** `lists.spec.ts` and `listened-on.spec.ts` stay deferred, as does helper consolidation. **A null result was an approved stopping outcome, decided in advance rather than after seeing the data.**
+
+> ### ✅ Correctness, by execution
+>
+> | Evidence                | Result                                                                                                                                                             |
+> | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+> | **Negative controls**   | Removing the `profiles` insert fails at the intended postcondition — `createUserViaApi:384` in **1.2s**, `createAccount:95` in **0.7s**. Both restored by checksum |
+> | **Isolation**           | `follows` 7/7 twice; `profile-collection` 12/12 twice                                                                                                              |
+> | **Inside the full run** | **All 19 converted tests passed** — 19 `✓`, 0 `✘`                                                                                                                  |
+> | **`npm run verify`**    | Green from a clean build, **353 tests**, exit 0                                                                                                                    |
+> | **Assertions**          | Comparing sorted assertion sets against the pristine files shows **only helper-internal differences**. Every test-body assertion is byte-for-byte unchanged        |
+>
+> **One difference found and recorded rather than left to be discovered**: the API path bypasses `handleSchema`, including its `RESERVED_HANDLES` set. It cannot affect these tests — the generated handles are never reserved, the `profiles_handle_format` constraint still applies, and reserved-handle rejection is asserted in `auth.spec.ts`.
+
+> ### ✅ `CI PASSED` — the gate cleared, and it surfaced something that was not there before
+>
+> **CI run #86, attempt 1, on exactly `a9da122`: `completed/success`, both jobs** — **353 unit and component, 615 integration, 1 seed, 106 end-to-end passed in 10.7m, with 2 flaky**. It was `CI PENDING` when this checkpoint was first written and **cleared at 04:31:47 UTC**; the cycle is closed rather than reopened.
+>
+> **Neither converted spec appears in any failure or retry.** The 12 timeout signatures in the log are the retried attempts, and there are **zero assertion mismatches**.
+>
+> **⚠️ Two flaky tests, both `list-likes.spec.ts` — `:133` and `:158` — and this is new.** CI runs **#84 and #85 each reported zero flaky**; #86 is the first to report any. **`list-likes.spec.ts:133` was also one of the six failures in the local `verify:full` run for this cycle**, so the same test is now unstable in both environments. **It is not caused by this change** — this cycle touched neither that spec nor anything it exercises — and it is recorded here because a problem surfaced by a cycle that was not looking for it is exactly the kind that gets lost.
+>
+> **The pass does not make the void measurement valid**, and it does not reinterpret the RED local `verify:full`. Both stand exactly as established.
+
+> ### ⚠️ The local `verify:full` is still RED, and is still not reclassified
+>
+> **Exit 1.** Format, lint, typecheck, **353 unit and component**, build, **615 integration**, **1 seed** all passed; the end-to-end suite returned **102 passed, 6 failed** in 13.6m.
+>
+> **No failure is attributable to this change, and the evidence is specific.** All six are in specs this slice never touched — `list-likes`, `profile-favourites`, `review-likes` ×3, `want-to-listen`. Signatures are **9 timeouts and 1 `session closed`**, with **zero `expect(received)` assertion mismatches and zero `permission denied` / `42501`**. All 19 converted tests passed in the same run.
+>
+> **The `[DEFERRED]` pre-commit policy question is neither answered nor reopened.**
+
+> ### 📄 Uncommitted at the end of the session of 2026-09-04
+>
+> `a9da122` is this cycle's commit and `origin/main` matches it. **Four files remain on disk only.**
+>
+> | File                       | Owner                                                                                               |
+> | -------------------------- | --------------------------------------------------------------------------------------------------- |
+> | `docs/current-state.md`    | **Three cycles' checkpoints** — list likes, the fresh-server cycle, and this one. None committed    |
+> | `docs/architecture.md`     | **This cycle's STEP C decision record** plus the supplementary eligibility decision. Not committed  |
+> | `CLAUDE.md`                | **Separate process-definition work** — STEP 00 and the asynchronous-CI rules. Unchanged since 16:29 |
+> | `docs/product-feedback.md` | **Maintainer's own work. Do not touch, do not stage.** Unchanged since 12:16                        |
+
+**The previous entry, left as written.** Verified at **`9f7ea20`** against CI run **33911061116** (#85) — `completed/success`, attempt 1, both jobs, 353 unit and component, 615 integration, 1 seed, 108 end-to-end in 10.2m, zero failures, flaky or retries (§49).
+
+> ## ✅ A local end-to-end run now always gets a fresh server
+>
+> **`reuseExistingServer` was `!process.env.CI`, so a local run attached to whatever was already listening on the port.** An orphaned server left by an interrupted run was adopted **silently** — meaning a run could exercise **stale code and still report success**. That was **observed rather than theorised**: a stale `next dev` process survived an aborted run and had to be killed by hand before the next run would start.
+>
+> **It is now `false`.** Playwright refuses to run when something is already listening, which turns a silent wrong-code risk into a visible error. **This departs from Playwright's documented `!process.env.CI` idiom deliberately**, and the workflow that idiom protects is preserved: setting `PLAYWRIGHT_BASE_URL` skips the `webServer` block entirely and runs against a server you started yourself.
+>
+> **CI is unaffected by construction** — `!process.env.CI` already evaluated to `false` there, and the workflow sets no override.
+>
+> **Nothing was masked.** Retries stay 0 locally and 2 on CI, no timeout moved, and no test was excluded, weakened or skipped. **One line of configuration changed.** The design record is `architecture.md` §12.
+
+> ### 🔬 The behavioural checks, and what each one actually rests on
+>
+> | Check                                | Result                                                                            | Evidence                            |
+> | ------------------------------------ | --------------------------------------------------------------------------------- | ----------------------------------- |
+> | Server already listening on the port | Playwright **refuses to run** — exit 1, _"http://localhost:3000 is already used"_ | **By execution**                    |
+> | `PLAYWRIGHT_BASE_URL` set            | `webServer` block skipped entirely; the run uses the server you started           | **By execution**                    |
+> | CI behaviour                         | Unchanged — reuse was already disabled there                                      | **By configuration, not execution** |
+>
+> **The third is deliberately not claimed as an execution result.** It follows from `!process.env.CI` evaluating to `false` on CI and the workflow setting no override, and CI run #85 had not finished when this was written.
+
+> ### 🔎 The local end-to-end failures are memory exhaustion — **F-015's premise is superseded in its causal claim only**
+>
+> **Free physical memory ≈0.01 GB, with 11.5 of 12.3 GB of swap consumed before any test ran**, on a host with 8 GB installed — against a suite that needs a Docker VM (3.8 GB allocated), a Next server and Chromium simultaneously.
+>
+> **The failure signature follows from that and nothing else.** Every failure is a timeout, `net::ERR_ABORTED` or `session closed` — **never an assertion about wrong output** — and per-test duration degrades monotonically through a run, **7.9s for tests 1–20 against 24.5s for tests 81+**, while the identical commit ran **108/108 in 12.4m on CI**, flat. **File descriptors (12,831 of 30,720) and database connections (17 of 100) were eliminated by measurement**, and test parallelism was never an available remedy — the suite is already `workers: 1`.
+>
+> **The load-average correlation was real; the causal attribution to CPU load was not.** Load average counts processes blocked on I/O, which is what swapping produces. Removing external load left the failure rate essentially unchanged — **28% against 30%** — while load climbed 4.4 → 16.5 with nothing external running. **F-015's hypothesis is retained rather than deleted**; it was a reasonable reading of the six measurements then available.
+>
+> **Classification: environmental limitation, not a repository defect** (§8). **No minimum RAM figure is stated** — the evidence is one host at one configuration.
+
+> ### ⚖️ The dev-versus-production A/B — direction supported, magnitude **not** established
+>
+> **Production was faster in both execution orders**: 51.5s against 26.7s, then **44.4s against 29.8s with the order reversed**. Swap growth per arm was **+587M and +395M for `next dev` against +148M and +210M for `next start`**.
+>
+> **The residual confound is named rather than buried.** Production began from the **lower-swap state in both passes**, because each arm leaves swap higher than it found it. **Reversing the execution order did not isolate order from memory state.** The **direction** is supported — in pass 2 the starting gap was only 291M and production still won by 33%. **The 41% mean is the observed mean of this experiment and must not be quoted as a general magnitude.**
+>
+> **It does not decide the production-build question, and does not reopen the 2026-08-28 rejection.** That rejection measured **compilation latency on an idle machine**; this measures **memory footprint on an exhausted one**. Both can be true. **The correctness half — Vercel serves the production build and the local gate never exercises it — is untouched by timing evidence and stays `[OPEN]`** (§11, `architecture.md` §12).
+
+> ### ✅ `CI PASSED` — the gate cleared, and it proves less than it looks like it proves
+>
+> **CI run #85, attempt 1, on exactly `9f7ea20`: `completed/success`, both jobs** — **353 unit and component, 615 integration, 1 seed, 108 end-to-end in 10.2m**, **zero failures, zero flaky, zero retries**. It was `CI PENDING` when this checkpoint was first written and **cleared at 19:40:49 UTC**; the cycle is closed rather than reopened.
+>
+> **What it establishes is narrow, and the narrowness is the point.** Reuse was **already disabled on CI**, so #85 confirms the change is a **no-op on CI infrastructure** — exactly the intended blast radius. It **cannot verify the local behaviour the change exists to fix**, because that behaviour only exists off CI. That verification is local, by execution, and is recorded above.
+>
+> **The run was 10.2m against #84's 12.4m on the parent. That is not attributed to this change** and must not be read as a speed-up — CI never reused a server, so nothing about its server lifecycle changed. Two samples of ordinary runner variance.
+>
+> **Six `[WebServer] ⨯ Error: The destination stream closed early.` lines appear in the log, and they are pre-existing** — #84 on the parent had seven. Not introduced here, not investigated here, and recorded so it is not mistaken for new.
+
+> ### ⚠️ The local `verify:full` is still RED, and is still not reclassified
+>
+> **No green local `verify:full` is claimed for this change, and it was not re-run to completion.** `npm run verify` passed **from a clean build** — format, lint, typecheck, **353 unit and component tests**, build — **exit 0**.
+>
+> **This cycle explained the failure mode and removed a silent-failure risk. It did not make the local suite faster or greener.** The suite still cannot complete reliably on this host, and **the end-to-end remediation itself is not implemented**.
+
+> ### 📄 Uncommitted at the end of the session of 2026-09-04
+>
+> `9f7ea20` is this cycle's commit and `origin/main` matches it. **Two files remain on disk only, and neither belongs to this cycle.**
+>
+> | File                       | Owner                                                                                                                                    |
+> | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+> | `CLAUDE.md`                | **Separate process-definition work** — STEP 00 added to the authoritative workflow, and the asynchronous-CI rules. Unchanged since 16:29 |
+> | `docs/product-feedback.md` | **Maintainer's own work. Do not touch, do not stage.** Unchanged since 12:16                                                             |
+
+**The previous entry, left as written.** Verified at **`fa90372`** against CI run **33900786404** (#84) — `completed/success`, attempt 1, both jobs, **353 unit and component, 615 integration, 1 seed, 108 end-to-end**, zero failures, zero flaky, zero retries (§48). **That run was `in_progress` when the entry below was written; the gate has since cleared, and the entry is preserved as it stood.**
+
+> ## ⏳ Lists are likeable — Phase 4 slice 2, closed **provisionally pending CI**
+>
+> **`product-spec.md` specified list likes in three separate places and the product had none of them** — the Lists scope in §4, the like count on the list page in §6, and "likes on your lists" in the notifications surface in §8.1. All three now exist.
+>
+> **Any signed-in user may like a list they can read; the owner cannot like their own.** Liking toggles, unliking is a no-op, a moderation-removed list cannot be liked by a stranger, and the owner is told through a notification.
+>
+> **`list_liked` is the third notification type, discharging a Phase 3 deferral.** It was never rejected — `create_notifications.sql` could not add it because no `lists` table existed for `list_like_id` to reference. Slice 1 built that table.
+>
+> **`notifications_subject_matches_type` was rewritten, not extended, and all three branches changed.** Adding a third subject column means the two existing branches must also assert it is null, or a `followed` row could carry a stray `list_like_id` and the `CASE` would still return true. That was **verified against the pre-existing constraint before the rewrite was written**. The `else false` stays.
+>
+> **No `Activity` change of any kind.** A list like is a notification trigger, never a feed event. `list_created` and `list_updated` remain slice 3's.
+
+> ### ⚠️ `CI PENDING` — and pending is not passed **[GATE CLEARED 2026-09-04 — see the header above; text below preserved as written]**
+>
+> **CI run #84, attempt 1, on exactly `fa90372`, was `in_progress` when this checkpoint was written.** Its first job — format, lint, types, unit tests, build — **completed successfully**. Its second job, integration and end-to-end, had not finished.
+>
+> **One job passing is not the run passing**, and the outstanding job is precisely the one carrying the end-to-end suite that is red locally. **This cycle is not fully verified and must not be described as such anywhere.**
+>
+> **If #84 later passes**, the gate clears and the cycle becomes fully verified and closed; nothing needs reopening. **If it fails**, this cycle is reopened for remediation, assessed before any new work that could conflict with or obscure it.
+
+> ### ⚠️ The local `verify:full` is RED, and is not reclassified
+>
+> **Exit 1.** Format, lint, typecheck, **353 unit and component**, build, **615 integration**, **1 seed** all passed. The end-to-end suite returned **78 passed, 30 failed** across nine specs in 31.9 minutes.
+>
+> **No failure is attributable to this change**, and the evidence is specific rather than a shrug. The log contains **zero `permission denied` and zero `42501`** — the exact signature a privilege regression emits. **Both `list-likes` failures are timeouts, not assertion mismatches**: one timed out _waiting for_ an element, and the other timed out on `locator.click` **after the locator had already resolved to the correct "liked your list" text**, which is positive evidence the notification works.
+>
+> **The five end-to-end scenarios pass 5/5 in isolation.** That is relevant evidence and **not proof** — they have never passed inside a full run.
+>
+> **A deliberate idle-versus-loaded comparison partly refuted the standing hypothesis rather than confirming it.** Removing external load dropped the machine from 17.65 to 4.40; the run then climbed **back to 16.52 on its own**, and the failure rate was essentially unchanged — **28% idle against 30% loaded**. Failures were rare early and clustered late as self-generated load rose. So load correlation holds _within_ a run, and **external load is not the driver**: this machine cannot run the full end-to-end suite without the suite degrading itself. F-015's proposed experiment cannot cleanly separate the two, because the idle condition does not survive the suite.
+
+> ### 🔎 Deployed verification reached catalogue level this time
+>
+> **The previous cycle could not measure the deployed database's object-level state and said so.** This one could: `supabase db dump --linked` returned the deployed schema and it was read directly.
+>
+> | Scope                              | How it was established                                                                                                                                                         |
+> | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+> | **Deployed catalogue-level state** | **Directly measured** — enum, table, keys, both cascading foreign keys, index, RLS policies, grants, and the three-branch subject constraint all read from the deployed schema |
+> | **Deployed `Dxtm` revocation**     | **Directly measured** — zero grants of `TRUNCATE`/`TRIGGER`/`REFERENCES`/`MAINTAIN` to `anon` or `authenticated` on `list_likes`                                               |
+> | **Deployed HTTP surface**          | **Behaviourally verified** — `anon` reads `list_likes`, `anon` writes refused, `notifications` still private, and every signed-out route unchanged                             |
+> | **List-like behaviour on staging** | **Not verified, and correctly so** — see below                                                                                                                                 |
+>
+> **The feature's own behaviour could not be exercised on staging at verification time, and that is the rule working rather than a gap.** Migrations deploy before the code that needs them, so staging was necessarily running pre-list-likes code against the new schema. Like, unlike, count, self-like refusal and notification delivery are verified **locally and by CI, not on staging**.
+
+> ### 📄 Uncommitted at the end of the session of 2026-09-04
+>
+> `fa90372` is this cycle's commit and `origin/main` matches it. **Two files remain on disk only, and neither belongs to this cycle or the last.**
+>
+> | File                       | Owner                                                                                                                                    |
+> | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+> | `CLAUDE.md`                | **Separate process-definition work** — STEP 00 added to the authoritative workflow, and the asynchronous-CI rules. Unchanged since 16:29 |
+> | `docs/product-feedback.md` | **Maintainer's own work. Do not touch, do not stage.** Unchanged since 12:16                                                             |
+
+**The previous entry, left as written.** Verified at **`ecea6e9`** against CI run **33882478196** (#82) — `completed/success`, attempt 1, both jobs, 350 unit and component, 594 integration, 1 seed, 103 end-to-end, zero failures, zero flaky, zero retries (§47).
 
 > ## ✅ The privilege boundary the migrations claimed now exists
 >
@@ -222,16 +1290,16 @@ Verified against the repository and remote at **`ecea6e9`** (`main` and `origin/
 
 |                  |                                                       |
 | ---------------- | ----------------------------------------------------- |
-| Unit + component | **287**                                               |
-| Integration      | **528** (need a local database)                       |
+| Unit + component | **373**                                               |
+| Integration      | **657** (need a local database)                       |
 | Seed             | **1**                                                 |
-| End-to-end       | **89** (Playwright)                                   |
+| End-to-end       | **122** (Playwright)                                  |
 | Repository       | <https://github.com/darrylnatale/longplayr> (private) |
 | **Staging app**  | <https://longplayr.vercel.app>                        |
 | **Staging DB**   | `oexuqjpvyeijmlirxtal.supabase.co`                    |
 | Production       | does not exist                                        |
 
-**[CORRECTED 2026-09-01]** Three of those four counts had drifted and are now taken from CI #71's own output rather than carried forward. This table read **266 unit, 495 integration, 75 end-to-end** — but §39, written in the same edit, already recorded **272 / 495 / 82**, and only the integration row had been updated. **A checkpoint that disagrees with itself one section later is worse than one that is merely out of date**, which is why the drift is named here rather than quietly overwritten. The current figures are `287 / 509 / 1 / 85`, each a CI-reported total.
+**[CORRECTED 2026-09-06 — the end-to-end figure is CI #92's on `8f4aa00`, which added five tests; the other three rows are unchanged from the correction below. Earlier notes preserved.] [CORRECTED 2026-09-05 — figures taken from CI #91 on `67949e8`, the first finished run since the previous correction. Earlier note preserved below.] [CORRECTED 2026-09-01]** Three of those four counts had drifted and are now taken from CI #71's own output rather than carried forward. This table read **266 unit, 495 integration, 75 end-to-end** — but §39, written in the same edit, already recorded **272 / 495 / 82**, and only the integration row had been updated. **A checkpoint that disagrees with itself one section later is worse than one that is merely out of date**, which is why the drift is named here rather than quietly overwritten. The current figures are `287 / 509 / 1 / 85`, each a CI-reported total.
 
 ### Staging catalogue
 
@@ -712,8 +1780,8 @@ None of these reopen Phase 1.
 | **No sweep finds orphaned album credits**                        | **[OPEN] — new 2026-08-28 (§33).** `jobs.ts` sweeps for missing artwork, tracklists and payloads; there is **no equivalent for missing credits**. The completeness check repairs an album only when a caller happens to run over it again, so healing is opportunistic. The one orphan that existed was found by a hand-written query, not by the system                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | **`reconcileCredits` `out_of_scope` is untested**                | **[OPEN] — new 2026-08-28 (§33).** Defensive code for a condition that cannot occur under current scope rules — an album already held whose payload fails today's classifier. Callers count it as `unreconciled` either way. Recorded so it is not mistaken for covered                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | **`unreconciled` carries no reason**                             | **[OPEN] — new 2026-08-28 (§33).** Callers collapse `no_payload` and `out_of_scope` into one count, and self-service discards the outcome entirely, so an operator cannot tell a missing payload from a scope change. **Nothing unrepairable is ever counted as repaired** — an observability limitation, not a correctness one                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| **Browse is very tall at phone width**                           | **[OPEN]** — 8,122px at 390px. `relaxed` is 2-up on a phone, so Popular's 24 captioned albums run 12 rows before Recently added begins. Observation, not a defect: consistency with the migrated artist page was the stronger constraint, and the alternatives were changing the query limit or inventing a per-breakpoint density. Revisit when the real charts arrive and a "show more" boundary has to be decided anyway                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| **`AlbumGrid` passes no `priority`**                             | **[OPEN]** — Next flags the first Popular cover as LCP and asks for eager loading. Pre-existing and identical on the artist page. Deliberately not fixed during a presentation-only migration: choosing how many leading cells get `priority` is its own decision and it affects every grid surface at once                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **Browse is very tall at phone width**                           | **[OPEN — re-examined 2026-09-06, no boundary introduced; see `design-reference.md` §11.10.]** The trigger below required the real charts **and** a "show more" boundary having to be decided anyway; the charts arrived and the second half did not, and every available instrument either repeats a declined alternative or answers `product-spec.md` §8.9's deferred F-005 question by implication. **Reversible on a measurement of reader cost, or on F-005 being decided.** The 8,122px figure predates two changes and was not re-measured — Popular now renders 20 rather than 24, and Home adds six rows at 2-up. Original text follows. — 8,122px at 390px. `relaxed` is 2-up on a phone, so Popular's 24 captioned albums run 12 rows before Recently added begins. Observation, not a defect: consistency with the migrated artist page was the stronger constraint, and the alternatives were changing the query limit or inventing a per-breakpoint density. Revisit when the real charts arrive and a "show more" boundary has to be decided anyway                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ~~**`AlbumGrid` passes no `priority`**~~                         | **[FIXED 2026-09-06 in `4dc07b5`, CI #93 — the leading row at each density's narrowest breakpoint: 2 `relaxed`, 3 `standard`, 4 `dense`; decision in `design-reference.md` §11.10. **The rendered outcome is unverified** (§57), and it stops at `AlbumGrid`: the `AlbumGridShell` consumers stay open for want of LCP evidence.]** Original text follows. — Next flags the first Popular cover as LCP and asks for eager loading. Pre-existing and identical on the artist page. Deliberately not fixed during a presentation-only migration: choosing how many leading cells get `priority` is its own decision and it affects every grid surface at once                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | ~~**A `head: true` count reports zero instead of failing**~~     | **FIXED 2026-09-03 in `77fecb2`, CI-verified by run #75 (§43).** All thirteen service-layer count sites now go through `countRows`, which throws when a count comes back null with no error — **on any status**, not only the 204 the client happens to produce today — while a legitimate `count === 0` still returns zero. `COUNT_ONLY` holds the only `head: true` literal in `src/services`, kept there by an ESLint rule. **The sharpest instance was `remainingAllowance`, which failed open**: a swallowed count meant zero additions used, a full 30/hour and 100/day allowance, and a rate limit that silently ceased to exist. It now fails closed. **The original finding follows, left as written.** **[OPEN] — new 2026-09-03 (§42). Confirmed defect, deliberately not fixed, and separately scoped.** `PostgrestBuilder.ts` rewrites a **404 carrying an empty body** into `status = 204` and leaves `error` as `null`. A `head: true` request has an empty body by definition and a missing relation answers 404, so the two combine into a success-shaped response with `count: null` — which `getFollowCounts` turns into **`0`** through `?? 0`. **Observed rather than reasoned about:** with `follows` absent from staging, `/darryl` returned **200 rendering "0 followers"** while `/darryl/followers` returned **500** from the same missing table, the difference being that the latter selects rows and so receives a JSON error body. **This is a property of the counting idiom, not of `follows`** — any `head: true` count that 404s reports a confident zero. **CI structurally cannot expose it**, because the table is always present there. **Deploying `create_follows` removed the 404 and has therefore concealed it** — as of 2026-09-03 the profile page's zero is genuinely table-derived, and the defect is no longer observable anywhere. That is exactly why it was written down before the deployment rather than after. **It remains OPEN and deliberately unfixed**: no fix, no idiom redesign and no test were undertaken in §42's cycle, and it is a separately scoped technical item for later prioritisation. **[STILL OPEN, now an approved implementation cycle — 2026-09-03, see §43.]** STEP A measured the blast radius at **13 service-layer sites**, not one, and STEP B approved a shared counting boundary. **Nothing was implemented at the time that line was written** — it was fixed later the same day in `77fecb2`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 ---
@@ -739,6 +1807,10 @@ None of these reopen Phase 1.
 **`docs/product-feedback.md` is the maintainer's file and was not modified.** This section is the authoritative record of the outcome; marking F-015 in the inbox is the maintainer's to make.
 
 **Classification: environmental limitation, not a repository defect.** No application defect was established, and CI runs the same code successfully. The design record is `architecture.md` §12.
+
+**A remediation slice was approved on 2026-09-04 and is now _implemented_ — see §50.** The database-backed fixture technique from 2026-08-28 was extended to **session establishment** in `profile-collection.spec.ts` and `follows.spec.ts`: **17 eligible sites of the 18 reviewed** (`profile-collection.spec.ts:112` excluded — it asserts on the signup landing page, and adding a navigation would change the coverage), setup only, with `auth.spec.ts` and `collection.spec.ts` excluded as flow owners and helper consolidation deferred. Committed and pushed as `a9da122`. **The conversion is verified correct; the performance benefit is _not established_** — the measurement was run in full and voided by machine-state drift under its own validity rules (§50). **It never claimed it would reduce failures, and it changes nothing about the memory constraint above**, which is unaltered. The approved scope, eligibility rule and measurement boundaries are in `architecture.md` §12.
+
+**A sign-out navigation race was identified and the fix is now _implemented_ — see §51. [2026-09-05]** CI run #86 passed but reported **two flaky tests, both in `list-likes.spec.ts`** — the first flaky results CI has produced. Both fail at the same locator immediately after an **unwaited `page.goto('/login')` following a Sign out click**, and `signOut()` ends in `redirect('/')`. **The same failure occurred locally at the same line.** `auth.spec.ts` performs the same sequence but waits first, and did not flake. **The mechanism is inferred, not reproduced.** Approved scope is **exactly two sites — `list-likes.spec.ts:143` and `:169`** — following the `auth.spec.ts` precedent. **Committed and pushed as `3d62bfa` — two inserted assertions, zero deletions. CI #87 was still running when this was written, so the cycle is provisionally closed and `list-likes`'s flaky count on that run is not yet known.** A bounded audit found no other occurrence, **which is not proof that none exists**. `signOut()` is correct and is not changed. The five other local `verify:full` failures are **unrelated, unexplained and out of scope**. See `architecture.md` §12.
 
 ---
 
@@ -797,26 +1869,30 @@ This one cause explains three separate symptoms: the seed's 21 ingest failures, 
 See `docs/product-spec.md` §8 and `docs/data-model.md` §9 for the authoritative list.
 
 - **Longer, jittered MusicBrainz backoff** (§9)
-- **Whether Browse needs a length boundary at phone width** (§8) — a "show more" or a shorter chart, decided alongside the real charts rather than now
-- **How many leading grid cells should carry `priority`** (§8) — one decision affecting every grid surface
-- **Whether the daily cron should sweep for missing artwork and tracklists itself.** Both sweeps exist but nothing calls them automatically
+- **Whether Browse needs a length boundary at phone width** (§8) — a "show more" or a shorter chart, decided alongside the real charts rather than now. **[STILL OPEN, re-examined 2026-09-06: no boundary introduced — `design-reference.md` §11.10. The charts arrived; the show-more half of the trigger did not.]**
+- ~~**How many leading grid cells should carry `priority`** (§8) — one decision affecting every grid surface~~ **RESOLVED 2026-09-06 in `design-reference.md` §11.10** — the leading row at each density's narrowest breakpoint, expressed by density rather than by surface. **Decided, not implemented**, and the `AlbumGridShell` consumers remain open
+- ~~**Whether the daily cron should sweep for missing artwork and tracklists itself.** Both sweeps exist but nothing calls them automatically~~ **RESOLVED 2026-09-13 in `architecture.md` §7, _Recovery sweeps_** — the cron now calls all three, and the question was three sweeps wide by the end. The evidence that settled it: five `fetch_artwork` jobs sat `failed` from August, recoverable by a command nobody ran
 - **Album page caching strategy** — decision H; the mixed catalogue/personal page needs investigation before Phase 2 builds on it
-- **Whether `CLAUDE.md` line 5 should be updated** to reflect Phase 1 completion
+- ~~**Whether `CLAUDE.md` line 5 should be updated** to reflect Phase 1 completion~~ **RESOLVED 2026-09-15** — updated at the maintainer's instruction. It had gone stale by thirteen commits and named `a7eaa66` (run #90) as the last verified commit when it was `dbb7865` (run #103). **It now also records that Phase 5 slice 2 is deferred by decision rather than outstanding**, which is the claim most likely to be misread by a resuming session
 - **Which phase direct messaging lands in** — the stated intent and `development-plan.md`'s phase numbering disagree (§12)
 - **Every unresolved question in `docs/product-spec.md` §10** — remaining Want to Listen behaviour, taste-overlap algorithm, profile photo and location handling, and the full messaging question set. Recorded as open _by design_; see §12
   - **Two Want to Listen questions are no longer among them.** Profile visibility resolved 2026-08-19 (public, own profile tab), and **whether the interface should offer Want to Listen on an already-collected album resolved 2026-08-20 — yes, it is offered in every collection state** (§20). The remaining two are whether _removing_ generates a feed event and whether Want to Listen feeds discovery or popularity ranking, plus the separate feed-hiding question. All three are Phase 3 or later and none is reachable while Activity does not exist
 - ~~**Everything blocking collection sorting and filtering.**~~ **SORTING RESOLVED 2026-08-21, filtering still open.** The unmarked five-option sentence in `product-spec.md` §6 has been superseded by six `[DECIDED 2026-08-21]` modes, and every sorting question this bullet listed now has an answer there: "date" splits into **Added** and **Listened** rather than choosing; direction is **fixed per mode**; the default **is** a selectable option and is also the bare address; state lives in the **query string**; changing sort **resets to page 1**; a visitor **can** sort someone else's public collection, and so can a signed-out reader; and the 12-album overview **does not** respect sort. **The filtering half is untouched** — how filters combine, whether rated/unrated is one control or two, and whether the overview respects a filter are all still unanswered and still not to be inferred
 - **Whether the decade filter exists.** `design-reference.md` §5.6 says the filter bar becomes "something like rated/unrated, liked, reviewed, **decade**, and sort options"; `product-spec.md` §6 omits decade entirely. The two documents disagree, and §5.6's wording is explicitly tentative
 - **Edition selection needs a migration before it can start.** `data-model.md` §—collection entry specifies `release_id` as "the edition, if the user cared to specify one", and **the column does not exist** on `collection_entries`. Not a contradiction — the data model describes the intended model — but a prerequisite, alongside undecided lazy-fetch and edition-display behaviour
+- **What Browse's Popular and Recently added counts should be as product decisions.** Raised 2026-09-06. `product-spec.md` §8.3 records that Browse's limit "is not a product decision and never was — it is a grid default shared verbatim with Recently added". Choosing a different number without evidence that any particular number reads better would be invention, so the numbers stand and the question stands with them
+- **Whether `FavouriteRow` and `CollectionGrid` should carry the `priority` rule.** Raised 2026-09-06. They build their own cells through `AlbumGridShell`, and no LCP evidence exists for the profile or collection surfaces
+- **Whether `design-reference.md` should carry a full Home surface entry.** Raised 2026-09-06. `product-spec.md` §6 defines what Home is; its visual treatment belongs in the design reference and is absent. A design pass, not a documentation correction
 - **Favourites reordering needs an interaction model.** The schema is ready — `favourite_albums_position_unique` is already `deferrable` so a reorder can move several rows in one transaction — but no service function exists and the interaction was deferred rather than designed
 - ~~**Catalogue composition — curated seed versus external popularity.**~~ **RESOLVED IN PRINCIPLE 2026-08-23** in `product-spec.md` §8.9, which was retitled **Catalogue breadth, depth and popularity** because the original question was the wrong one. **Breadth** is initially curated and eventually open-ended; **depth** is completion-oriented for included artists; **popularity** is a separate signal that never determines membership. See §28. **What remains open is listed there**, and the curated starting set is the blocking one
-- **Upstream search: breadth and artist matching** (`product-spec.md` §8.10, raised 2026-08-21). ~~**The unreachability half**~~ **RESOLVED AND BUILT** — decided and shipped 2026-08-22 in `f2e0aab` (§25): the MusicBrainz fallback is available for every signed-in query regardless of local result count, and local results no longer wait for it. What remains open is unchanged: "show more", the trigram threshold, the `simple` text configuration, and artist matching **Reassessed 2026-08-28; the first decision was refuted before implementation, and the replacement is now shipped.** The four sub-questions: **fuzzy-credit article inflation — IMPLEMENTED** in `52de586`, CI #62 green (leading-article normalisation inside the similarity operands, threshold unchanged at `> 0.3`; `architecture.md` §10 and §35 below); **article-leading FTS / stopword fault — measured and not reproducible at 707 albums, no fix shipped or planned**; **upstream artist matching — still `[OPEN]`**; **"show more" — still `[OPEN]`**. An earlier proposal of `display_credit > 0.5` plus tsquery article-stripping was **refuted by an 883-query corpus sweep** and is preserved as superseded rather than deleted.
+- **Upstream search: breadth and artist matching** (`product-spec.md` §8.10, raised 2026-08-21). ~~**The unreachability half**~~ **RESOLVED AND BUILT** — decided and shipped 2026-08-22 in `f2e0aab` (§25): the MusicBrainz fallback is available for every signed-in query regardless of local result count, and local results no longer wait for it. What remains open is unchanged: "show more", the trigram threshold, the `simple` text configuration, and artist matching **Reassessed 2026-08-28; the first decision was refuted before implementation, and the replacement is now shipped.** The four sub-questions: **fuzzy-credit article inflation — IMPLEMENTED** in `52de586`, CI #62 green (leading-article normalisation inside the similarity operands, threshold unchanged at `> 0.3`; `architecture.md` §10 and §35 below); **article-leading FTS / stopword fault — measured and not reproducible at 707 albums, no fix shipped or planned**; **upstream artist matching — still `[OPEN]`**; **"show more" — still `[OPEN]`**. An earlier proposal of `display_credit > 0.5` plus tsquery article-stripping was **refuted by an 883-query corpus sweep** and is preserved as superseded rather than deleted. **Breadth decided 2026-09-06, not yet implemented.** The panel is decided as a **retrieval tool** for a specific missing record; **fetch depth and display limit become independent — MusicBrainz is asked for 25, the panel shows up to 10** — and **"show more" is deferred with a stated reason rather than resolved**. The approved boundary changes two numbers and nothing else: both filters, the relevance ordering, the query string and the unused `count` and `score` are untouched, and there is no migration. The defect corrected is structural and was established by reading the code — the pool behind the five-result cap was **ten**, and the already-held filter shrinks it further as the catalogue grows. **Artist matching stays `[OPEN]`** on its unchanged live-API precondition. **The reported failure stays open too**: attribution of the observed failures to this mechanism is **unestablished**, and establishing it needs the populated panel observed against the live API, which local cannot do by design. **Alias and phonetic work stays a separate candidate and is deliberately not combined.** See `product-spec.md` §8.10 and `architecture.md` §7.
 - **Whether depth applies to pseudo-artists — `Various Artists` above all. [OPEN — raised 2026-08-23, and it must not be answered implicitly]** `Various Artists` sits in the catalogue under the canonical MusicBrainz MBID `89ad4ac3-39f7-470e-963a-56509c546377`, disambiguated upstream as _"add compilations to this artist"_. It is MusicBrainz's catch-all for every compilation in the database, not an artist. **Under a completion-oriented depth rule, treating it as an ordinary artist causes uncontrolled expansion.** Related and equally unresolved: whether `[unknown]` and `[no artist]` are the same class, and whether the rule is "pseudo-artists are excluded from depth" or something narrower. **This is not yet recorded in `product-spec.md` §8.9** — it was found after that section was written, and by decision it lands in the next cycle's STEP C rather than being back-filled now.
   - **One pre-existing statement makes this sharper.** `data-model.md` §2 says _"'Various Artists' is a real MusicBrainz artist and **arrives as an ordinary row**. **[INFERRED]** It gets an artist page like any other."_ That was harmless under a bounded seed and is now the exact assumption that would produce the runaway. **It is deliberately untouched**, and by the repo's own convention `[INFERRED]` means "flagged for correction"
 - **Whether the curated starting set is a list of _artists_ or a list of _albums_. [OPEN — raised 2026-08-23]** Not cosmetic. The ListenBrainz seed is an **album** list and it produced 163 one-album artists, because artists entered incidentally. **A curated album list would reproduce that sparsity by the same mechanism**; a curated artist list composes naturally with depth. Cheap to decide deliberately, expensive to discover later. **Must not be inferred from the existing chart seed**
 - **Whether `refine_search_precision` actually improves search over the real corpus. [OPEN — raised 2026-09-03 (§42)]** §35 already recorded the boundary and it is unchanged: CI verified the implementation against a **clean fixture database** and **never established the 707-album corpus result**, because the migration had not reached staging. **§42 deployed it on 2026-09-03, and `search_albums` and `search_artists` were confirmed executable against the real 707-album corpus** — returning 3 and 1 rows for a probe query run solely to prove execution. That establishes **nothing whatever about result quality** — search evaluation was explicitly excluded from that cycle's acceptance criteria so that deployment could not be mistaken for a subjective quality review. Answering it needs representative queries run against the real corpus and human judgement of the output. **It is the one question CI structurally cannot answer**, and it was the strongest single candidate for the cycle that followed §42. It was deferred twice before being taken up. **[CLOSED 2026-09-03 — see §45.]** The evaluation ran against the deployed function on the real corpus and the maintainer ruled: **36 change-caused misses, 53 pre-existing, 0 gains** on a reconstructed 943-query set, every change-caused miss confined to a **short partial prefix of an article-leading artist name**, and the broader 211-query curated set producing **no plausible false negatives**. The misses were judged **non-material**, the trade stands, and **no search implementation change was made**. The bounded limitation is recorded in §45 and durably in `architecture.md` §10. **The ruling is scoped to the current 707-album / 317-artist corpus and to submit-driven search; as-you-type search or a substantially larger catalogue would require revisiting it**
 - **Whether a locally RED `verify:full` may satisfy the pre-commit requirement when CI passes the same SHA. [DEFERRED 2026-09-04 — deliberately not resolved]** Raised by the end-to-end investigation and **explicitly not decided**, for three reasons. It would amend a `CLAUDE.md` rule written after a specific incident, where `verify` was wrongly named as the compensating control and left `main` red for three commits. **Deciding it before the remediation is measured would be deciding blind** — a materially faster, less memory-hungry local suite may make the question moot. And it is a process decision that changes no code. **Revisit once the end-to-end remediation has been implemented and a full run measured.** `CLAUDE.md` is unchanged.
-- **Whether the end-to-end gate should run the production build rather than `npm run dev`. [OPEN 2026-09-04 — the 2026-08-28 rejection stands]** `architecture.md` §12 rejected this after measuring compilation latency; a later 41% dev-versus-production result **is confounded**, because the dev server was killed first and the comparison ran with ~2.4 GB more memory available. The **correctness** argument — Vercel serves the production build and the local gate never exercises it — is untouched by that confound and is separately unresolved. See `architecture.md` §12.
+- **Whether the end-to-end gate should run the production build rather than `npm run dev`. [OPEN 2026-09-04 — the 2026-08-28 rejection stands]** `architecture.md` §12 rejected this after measuring compilation latency; a later 41% dev-versus-production result **is confounded**, because the dev server was killed first and the comparison ran with ~2.4 GB more memory available. The **correctness** argument — Vercel serves the production build and the local gate never exercises it — is untouched by that confound and is separately unresolved. See `architecture.md` §12. **A controlled A/B has since been run (§49, `architecture.md` §12): production was faster in both execution orders, but it began from the lower-swap state in both, so the direction is supported and the magnitude is not established. The question is unchanged and remains `[OPEN]`.**
+- **What `list_updated` should mean, which list mutations should ever produce activity, and how often update activity may speak. [OPEN 2026-09-05]** Phase 4 slice 3 was approved as **`list_created` only**, and `list_updated`'s enum value is deliberately **not added** — `ALTER TYPE … ADD VALUE` is one-way, and a bounding mechanism such as the `rated` partial unique index does not answer what an update should communicate. **Deferred, not rejected.** `addAlbumToList`, `updateList` and `removeAlbumFromList` may yet produce activity; only `reorderListItem` is argued against on its merits. See `architecture.md` §16.6
 - Report reason categories (Phase 6)
 - MBID merge handling, handle reuse after deletion
 - Genre and tag data
@@ -3199,6 +4275,1755 @@ That sentence is why this was corrected at all. The service originally said reor
 ### What this does not change
 
 No activity or notification enum value, no change to either table's check constraint, no feed code. **Both documented ELSE-gap seams are untouched**: `activity_subject_matches_type` still has no `ELSE`, and `notifications_subject_matches_type` still ends `else false`. `ListLike` remains `[INFERRED]` and unbuilt.
+
+---
+
+## 48. List likes — Phase 4 slice 2: implemented, reviewed, committed, pushed, deployed — **`CI PENDING`**
+
+> **[GATE CLEARED 2026-09-04]** CI run `33900786404` (#84) on exactly `fa90372` has since reached **`completed/success`**, attempt 1, both jobs — **353 unit and component, 615 integration, 1 seed, 108 end-to-end**, zero failures, zero flaky, zero retries. **The `CI PENDING` gate this section records is resolved and `fa90372` is CI-verified.** The section below is preserved exactly as it was written at the time, including its heading; only this note is added.
+
+**Commit `fa90372`. CI run `33900786404` (#84) on that exact SHA was `in_progress` when this was written** — job 1 (format, lint, types, unit, build) `completed/success`, job 2 (integration and end-to-end) unfinished. **The gate is `CI PENDING`. It is not a pass, and this section must not be read as one.**
+
+**The design record is `data-model.md` §5, `product-spec.md` §6 and `architecture.md` §16.3. This section records where things stand.**
+
+### What shipped
+
+Two migrations, and the split is required rather than tidy. **`20260904170000` adds the `list_liked` enum label alone**, because Postgres refuses to _use_ a new enum value in the transaction that added it — verified by execution, `unsafe use of new value`. **`20260904170100`** creates `list_likes` and extends `notifications`.
+
+|                   |                                                                                                                                                           |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`list_likes`**  | Surrogate `id`, `user_id` → `profiles`, `list_id` → `lists`, both cascading, `unique (user_id, list_id)`, `list_likes_list_idx` for the cascade direction |
+| **Access**        | `anon` select; `authenticated` select/insert/delete; `service_role` all. **No update grant** — altering either column would forge someone else's like     |
+| **RLS**           | Public read; write-own deferring to `lists_public_read`, so a stranger cannot like a moderation-removed list while its owner can still read it            |
+| **Notifications** | `list_like_id` column, `notifications_one_per_list_like`, and the three-branch constraint rewrite                                                         |
+| **Surface**       | Like count on the list page for everyone; the control only for signed-in non-owners                                                                       |
+
+### `list_likes` is the first table created under the amended privilege convention
+
+**It inherits `Dxtm` from the schema's default ACL exactly as every table before it did**, and revokes it. §47 established the convention as **process rather than mechanism** — `pg_default_acl` is deliberately unchanged, so the guard is a rule a migration must remember, not something the database enforces. **This was its first real test and it held**, confirmed on the deployed database rather than only locally.
+
+### The self-like rule, and the one way it differs from `ReviewLike`
+
+**Enforced in the service and nowhere else.** A list's owner is `lists.user_id`, a column on a **different table** from the like, so no `CHECK` can express it and no trigger is added — the identical reasoning `review_likes` records.
+
+> **The consequence is not identical, and describing it as identical would be wrong.** Because the rule is not a database boundary, a direct write can still create a self-like. On a review that inflates nothing a reader sees. **`product-spec.md` §6 requires a like count on the list page**, so on a list it inflates a number the product displays. It stays a vanity annoyance rather than an integrity or privacy failure — but the same gap carries more weight here.
+
+### Verification, stated as it happened
+
+**Locally:** 353 unit and component, **615 integration** (594 baseline + 21 new), 1 seed, build, lint, format and typecheck all passed. The subject constraint was proved by an **eleven-case truth table returning exactly three accepts and eight rejects**, not by reading it.
+
+**On the deployed database, at catalogue level** — see the banner above. The enum, table, keys, cascades, index, RLS, grants, the `Dxtm` revocation and the three-branch constraint were all **measured**, not inferred. This is the evidence §47 could not obtain.
+
+> **⚠️ The local `verify:full` was RED and is not rewritten.** Exit 1, 78 passed and 30 failed end-to-end. Zero `permission denied` and zero `42501` in the whole log; both `list-likes` failures are timeouts, one of them **after the locator resolved to the correct text**. The five scenarios pass 5/5 in isolation — evidence, not proof, since they have never passed inside a full run.
+
+### One declared deviation, reviewed and accepted
+
+**`tests/integration/notifications.test.ts` was changed, and it is outside the file boundary the plan approved.** It asserted that `list_liked` was **not** a member of the enum — a schema-absence proxy whose own comment said that adding the member **speculatively** should break a test.
+
+**This addition is not speculative**: it arrives with the table its foreign key needs, and three sections of `product-spec.md` require it. The proxy therefore did its job, and it was **converted rather than deleted or weakened**, following §39's identical conversion when Activity landed. `expect(error).not.toBeNull()` is unchanged; only the message moved from enum-absence to constraint violation. **Review accepted it and returned READY TO COMMIT.**
+
+**It duplicates one case in the new `list-likes.test.ts`.** Recorded rather than claimed as unique value; judged immaterial, since its sibling covers a different cell and removing it would leave the `schema` block with a hole.
+
+### Findings recorded, none of them fixed here
+
+Three review observations, **all inherited from the `ReviewLike` precedent this slice was asked to mirror**, and all deliberately left rather than expanded into scope:
+
+- **`toggleListLikeAction` discards its `Result`**, so a like that loses a race fails silently. Consistent with the other actions in its own file, **inconsistent with `toggleReviewLikeAction`**, which surfaces `result.message`.
+- **`getCurrentProfile` is looked up twice per render** — once by the page, once inside `getMyListLikes`. The pattern §46 recorded on the album page. The owner additionally pays for a `list_likes` query whose result cannot affect their render.
+- **The service-layer self-like rule has no direct test at any level.** No test calls `likeList` — **and none calls `likeReview` either**, verified precisely. What is proven today is that the database _admits_ a self-like and that the control is hidden from the owner. Nothing would fail if the check were deleted from the service.
+
+### Migration A is one-way
+
+**Postgres cannot remove an enum label**, so `list_liked` now exists on staging permanently. Dropping `list_likes` would still be clean; the label would persist, unused and harmless. **The last reversible moment was before deployment**, and it has passed.
+
+### What this does not change
+
+No `Activity` enum value, subject column, write or feed code. **`activity_subject_matches_type` still has no `ELSE`** and is untouched — the seam remains slice 3's. No `pg_default_acl` change. The two sequences §47 recorded as still carrying `UPDATE` for `anon` and `authenticated` are unchanged, and §16.5's exclusions still do not name sequences. Phase 4 slice 3 is not started.
+
+---
+
+## 86. Refreshing a stale discography — implemented, reviewed, committed, pushed, CI-verified and merged
+
+**[GATE CLEARED 2026-09-17: CI #136 `completed/success` on `db6e22a`, `run_attempt: 1`.]** **510 unit, 719 integration, 1 seed, 134 end-to-end — zero flaky, no retries.** **Merged as `44b03ac`.** Branch **`discography-refresh`**, **PR #21**. **No migration.** The decision is `product-spec.md` §8.9.
+
+### What it closes
+
+**Expansion was once per artist, for as long as its job record survived.** A release issued after an artist's first expansion would **never** appear — not late, never. Opening an artist page now re-queues expansion when the last **successful** one is more than thirty days old.
+
+**Thirty days matches the artwork re-check rather than inventing a second figure**, so the product carries one staleness idea. Seven would roughly quadruple browse requests against a limit where exceeding one per second returns `503` for **every** request from this address; ninety would leave a September record invisible until December.
+
+### Only a success goes stale, and that single word is the whole answer to the hazard
+
+**This cycle was deferred three times for carrying a hazard, and the hazard was real.** The once-per-artist rule exists to stop a page view restarting the three-attempt retry policy — what `attemptStateFor` warns against and the recovery sweep owns.
+
+**A staleness rule reading the newest _finished_ job would make a terminally failed artist look stale.** The page enqueues on stale, so **failures would be re-queued on every visit: the same loop under a different name.** `lastSucceededAt` reads succeeded rows alone, and an integration test pins an ancient failure to `failed` so it cannot drift.
+
+**A missing timestamp counts as fresh, not stale** — the cautious direction, since the opposite would refresh on every view.
+
+### A fix from two weeks earlier paid off visibly
+
+**Adding a fifth state to the artist page was safe only because that status line enumerates positively** — `failed`, then `start || outstanding`, else nothing — rather than negating `settled`. **The negated version it replaced would have let `stale` fall into the fetching branch and claim work was in progress**, which is the exact defect §77 records correcting. **This is the first time that correction has demonstrably prevented a second occurrence.**
+
+### Stated rather than discovered later
+
+**If a refresh itself fails, the artist keeps its old successful timestamp and becomes eligible again after the next window.** That is one re-queue per thirty days rather than per view — **slow by design rather than by accident**, and recorded so nobody later reads it as a defect.
+
+---
+
+## 85. Whether a missing release year was ever ours to lose — implemented, reviewed, committed, pushed, CI-verified and merged
+
+**[GATE CLEARED 2026-09-17: CI #133 `completed/success`.]** **502 unit, 713 integration, 134 end-to-end.** **Merged as `dbbd887`.** Branch **`date-capture-check`**, **PR #20**. **No migration.** The decision is `architecture.md` §17c.
+
+**`parsePartialDate` returns null on two paths and only one is honest** — the upstream value absent, or present and failing the `YYYY(-MM)?(-DD)?` pattern, which is silent loss. **Nothing recorded which had happened.**
+
+**A third case the entry did not name would have been hidden by a narrower check**: a payload holding a perfectly good date while the column is null. **Testing only whether a value parses would report that as upstream silence**, concealing a loss that happened after parsing rather than during it. The classifier compares **presence**, not parseability.
+
+**Answerable cheaply only because of §7a**, which keeps every response verbatim — so this compares payload against column with **no MusicBrainz round trip and no rate-limit exposure.**
+
+**It went on the operator page rather than into a script**, because a one-off answer is true on the day it is run and unconsultable afterwards while the catalogue keeps growing. **Payloads are fetched in one batch**, not one per album.
+
+**It reports and never corrects.** A backfill is a separate decision — **a fault found mid-investigation must not silently become a migration.**
+
+**The fault path is proven rather than assumed**: with two dates nulled by hand the page reported _"Checked 2, 2 lost"_ and named both albums with the values their payloads held. **So a production answer of "no faults" is a real finding rather than a check that never fires.**
+
+---
+
+## 84. Reading deep enough for an artist-batched catalogue — implemented, reviewed, committed, pushed, CI-verified, merged and confirmed on production
+
+**[GATE CLEARED 2026-09-17: CI #132 `completed/success`.]** **494 unit, 713 integration, 134 end-to-end.** **Merged as `426596c`.** Branch **`recent-read-depth`**, **PR #19**. **No migration.**
+
+**Reported from use**: Recently added rendered **11 cells of 24 on Browse and 8 of 12 on Home**.
+
+**The read depth was the wrong _shape_, not the wrong number.** It was `limit * 8`, which assumes depth scales with how many cells a section draws. **It scales with how clustered the catalogue is** — and both surfaces read past the same clusters whether they draw 12 cells or 24.
+
+**Ingestion is artist-batched**, so a recency window is really a window over a handful of artists. Measured on the deployed catalogue: **the 192 most recently added albums held 21 distinct artists** — Dalida 37, Radiohead 31, Belle and Sebastian 24.
+
+**The cover filter was measured and cleared as a cause**: only 22 of the 240 most recent albums lacked one.
+
+**Depth is now a fixed 750, measured rather than felt** — 192 yielded 11, 300 yielded 15, 400 yielded 23, 500 yielded 29, 700 yielded 47. **Chosen for headroom rather than sufficiency**, since the failure is a silently short grid.
+
+**Confirmed on production after deploy: 24 of 24 on Browse, 12 of 12 on Home.**
+
+> **⚠️ This is a scan, accepted knowingly.** No index on `created_at`, so it sorts most of the table on the two busiest pages. **Free at a thousand albums; it does not survive growth.** The replacement is **F-050** — ask the database for one album per artist, bounded by artist count — and it needs a migration deliberately not taken here.
+
+---
+
+## 83. Every catalogue sort runs both ways — implemented, reviewed, committed, pushed, CI-verified, merged and confirmed on production
+
+**[GATE CLEARED 2026-09-17: CI `35149329753` (#129) `completed/success` on `5497d6a`.]** **490 unit, 713 integration, 1 seed, 134 end-to-end — zero flaky, no retries.** **Merged as `2a19751`.** Branch **`reversible-sorts`**, commit **`5497d6a`**, **PR #18**. **No migration.** The decision is `product-spec.md` §6.
+
+**Confirmed on production against real data.** Newest-first gives _Popstar_ by Tinashe and _Day and Night_ by Carly Rae Jepsen; reversed gives _1 – Madona_ and _3 – Bambino_ by Dalida — genuinely the oldest records held. **Arrows render the right way in each direction.**
+
+### What it closes
+
+**The page shipped with four sorts of one fixed direction each**, so the catalogue could be read newest-first but never oldest-first — **while §6 had already decided for the artist page, on 2026-08-20, that release date is wanted both ways.** The catalogue page simply did not inherit it.
+
+**All four rather than release date alone.** Reversing only the axis that was asked about would leave three behaving differently for no reason a reader could infer. **The cost is eight addressable states instead of four**, one of which — oldest added first — is probably the least useful ordering the catalogue has.
+
+### The control stayed one row, and the parameter carries intent
+
+**Direction is a second press on the active sort**, with an arrow showing which way it runs. **An inactive sort never carries the current direction across** — direction is a property of an ordering rather than of the reader, and landing on _title, reversed_ because the previous sort happened to be reversed is a state nobody asked for.
+
+**`?dir=` carries intent, not direction**, because the natural direction differs by axis: dates default newest first, alphabetical defaults A–Z. **`?dir=asc` would mean _the default_ on one sort and _reversed_ on another.** The address omits it when natural, so each ordering keeps exactly one URL.
+
+### Only the leading clause flips, and the two that do not are the point
+
+**`nullsFirst` does not flip.** With `nullsFirst: false` an undated release sorts last under **both** directions, which is exactly how §6's _"undated releases stay last in both directions"_ is satisfied. **Flipping it would put undated albums at the top of an oldest-first run**, where they read as the earliest records held — the specific failure that rule was written to name.
+
+**Tiebreakers do not flip.** They make the ordering total, and `range()` pagination depends on totality — two rows comparing equal can swap between requests, and an album then appears twice or not at all across a page boundary. **So reversing _artist_ gives artists Z–A while each artist's own albums still read A–Z**, which is also what a reader reversing that axis is asking for.
+
+### The suite caught an over-specified assertion of mine
+
+_"Still ends every reversed mode at created_at"_ asserted the final clause stayed **descending** — **false for the `added` sort**, where `created_at` is the sort rather than the tiebreaker. **The invariant is the column, not its direction**, and a second test now covers the distinction.
+
+### Verified by render probe rather than a browser suite
+
+`verify` **exit 0**, **490 unit across 39 files**, up from 476. **All six direction states returned 200, the arrows rendered correctly, and the orderings were verifiably reversed** — title Z–A the exact reverse of A–Z, and the year sort flipping to the oldest fixture records.
+
+**Two probes of mine were broken before they were right**, and neither was reported as a finding: one compared the md5 of an empty string, another matched markup instead of titles. **A probe that cries wolf is worth catching before it is quoted**, and the amended gate makes probes the primary local evidence — so their failure modes matter more than they used to.
+
+### The branch trap fired for the fifth time
+
+**Cut from `f5339a6`, the previous cycle's tip, rather than from `main`** — caught before any code. **Three times it has bitten and needed a cherry-pick; twice it has been caught.** The cause is unchanged: `CLAUDE.md` states _"branch from current `main` at the start of the cycle"_ inside **STEP H's** description, which runs after the code is written. **Moving that line into STEP 00 or A would remove it entirely.**
+
+---
+
+## 82. The collaboration rule, reversed on evidence — implemented, reviewed, committed, pushed, CI-verified and merged
+
+**[GATE CLEARED 2026-09-17: CI `35147904262` (#127) `completed/success` on `f5339a6`.]** **476 unit, 713 integration, 1 seed, 132 end-to-end — zero flaky, no retries.** **Merged as `460069a`.** Branch **`collaboration-variety`**, commit **`f5339a6`**, **PR #17**. **No migration.** The decision is `product-spec.md` §6.
+
+**Two cycles are open in parallel** — §81 on CI #126 and this on #127. **They touch disjoint files**, and `CLAUDE.md` permits a new cycle to begin while the previous one's CI is pending.
+
+### A rule shipped in the morning was found not to do its job by the afternoon
+
+**Recently added carried four albums and one artist.** _A Transparent Night_ by Tame Impala, then three collaborations — with Justice, The Flaming Lips and ZHU — **on each of which Tame Impala is credited second.** The rule counted the first credit only, so all four survived.
+
+**One artist occupying four slots is the exact failure the rule exists to prevent**, and §79's decision was taken without that case in front of it. **The maintainer filed it as F-049, a reversal request against a dated decision**, which is the first time that has happened.
+
+**An album is now excluded when any of its credited artists has already appeared, and appearing claims all of them.**
+
+### The cost is accepted rather than answered, and the record says so
+
+**A collaboration blocks its guests**: if _Watch the Throne_ appears, Kanye West cannot also appear with a solo record. **§79's decision named exactly that cost and chose the other way.**
+
+**The evidence that reversed it shows the cost of the old rule and says nothing about the cost of the new one.** That remains a judgement rather than a measurement, and it was made knowingly. **The superseded paragraph is struck rather than deleted**, because the reasoning it gives is still the price of what replaced it.
+
+### A third reading was constructed during STEP B, and is now guarded by a test
+
+**Blocking on any credit while claiming only the first credit's slot** fixes the Tame Impala case **and** leaves a guest free to appear later with their own record — **strictly better on both known cases.** It was rejected because it still permits a guest to appear **twice** before being claimed, a weaker guarantee than the section's purpose wants.
+
+**It is recorded and asserted against rather than merely mentioned**, so it is not rediscovered in six months as an obvious improvement that nobody tried.
+
+### One assertion inverted, not deleted
+
+_"Spends only the first credit of a collaboration"_ asserted the behaviour being reversed. **It now asserts the opposite and says so in the test**, so a reader sees that the rule changed rather than assuming the test was always thus. The reversal case is asserted directly, using the four albums that prompted it.
+
+**Two invariants are untouched**: an album crediting nobody is still never deduplicated away, and the function still never sorts.
+
+### The first cycle run entirely under the amended gate
+
+`verify` **exit 0** from a clean build, **476 unit across 39 files**, up from 474. **No database, no browser, no dev server** — about a minute of the maintainer's machine rather than ten.
+
+**The change is a pure function with no query, no markup and no page in it**, so there was nothing the heavy suites could establish that CI will not. `CLAUDE.md` STEP F, `architecture.md` §12.1.
+
+### What this cycle demonstrates about the feedback loop
+
+**The correction was cheap only because it was caught immediately** — four lines in a pure function with tests already around it. **The same correction in a month would have meant reconstructing why the rule was written that way.**
+
+**And it is the only change in this session prompted by looking at the product rather than reasoning about it.** F-046, F-047 and F-048 arrived the same way, from a page that had shipped hours earlier.
+
+---
+
+## 81. Follow back from the notification — implemented, reviewed, committed, pushed, CI-verified and merged
+
+**[GATE CLEARED 2026-09-17: CI `35146584706` (#126) `completed/success` on `ac62d26`.]** **474 unit, 713 integration, 1 seed, 134 end-to-end — zero flaky, no retries.** **Merged as `af8a8b5`.** Branch **`notification-follow-back`**, commit **`ac62d26`**, **PR #16**. **No migration.**
+
+**The green run settled the attribution this cycle deliberately left partial.** Three end-to-end tests failed in a combined local run and passed in isolation; **all three passed clean on CI**, including the review-like navigation case that would have shown the row restructuring breaking a non-follow row. **That is the amended gate working as intended** — the evidence arrived without costing the maintainer's machine.
+
+### What it changes
+
+**Somebody follows you, the notification says so, and returning it meant opening their profile.** The button now sits on the row.
+
+**It shows live state rather than the state when the notification arrived.** From somebody already followed it reads _Following_ and unfollows if pressed — the same component and semantics as the profile. **A notification is a record of a past event and a control is a control of the present**, and the rejected alternatives each conflated them: hiding the button once satisfied makes an old row **silently change what it shows** and leaves _already followed_ indistinguishable from _this row has no button_; a disabled marker is a control that cannot be used.
+
+**Only the follow notification carries an action, deliberately.** A liked review and a liked list have no obvious counterpart, so defining one now would design for a need nobody has expressed — and §10.6's warning about how many controls a row can carry applies to a list row as much as to a tile.
+
+### The cost was a query shape, and the trap is one this codebase has recorded twice
+
+`getMyFollow` is single-subject, and calling it per notification is **the N+1 the feed query and the counting contract both warn against**. `followingAmong` answers for a whole page in one query, returns an empty set for a viewer with no profile, and **never sends an empty `in.()` to PostgREST**, which rejects it — the guard the discovery service already carries for the same reason.
+
+### The fourth instance of one structural problem
+
+**The whole row was an anchor to the notification, and a `<button>` inside an `<a>` is interactive content nested in interactive content** — invalid, and silently reparented by browsers. The anchor now stops before the control and the control sits beside it.
+
+**That is the same restructuring `AlbumGrid` (§73), the search result row (§74) and the list row all needed.** Four surfaces in this product wrapped an entire row or tile in one link and then wanted something else inside it. **Worth noticing as a pattern rather than fixing a fourth time as a surprise.**
+
+### Verification, and the first cycle under the new gate
+
+`verify` **exit 0** from a clean build, **474 unit across 39 files**. `follows` and `notifications` integration **42/42**.
+
+**Targeted end-to-end ran 16 passed and 3 failed, with all three passing in isolation** — including _a review-like notification opens the album it was written about_, **the one that would have shown this restructuring breaking a non-follow row.**
+
+**Attribution is deliberately partial and recorded as such.** Establishing differing failure sets would have cost another full local run; **the maintainer interrupted to say the machine was unusable**, and the evidence was left to CI instead. `architecture.md` §12.1.
+
+### A test named for what it proves rather than what would be better to prove
+
+_"A notification that is not a follow carries no follow control"_ set up a **follow** notification, so it could only ever show that row carries one control — not that a review-like row carries none. **Renamed to match its assertion**, with the coverage gap recorded in the test rather than hidden behind a better-sounding name. Asserting the absence needs a liked review, a heavier fixture than this cycle built.
+
+### The gate moved again mid-cycle, at the maintainer's instruction
+
+**STEP F now runs `npm run verify` and nothing that needs a database or a browser.** Integration and end-to-end belong to CI.
+
+**This is the same move made on 2026-09-15, one step further**, and on the same measurement: eight cycles in which local end-to-end failures **never once identified a real defect**. A targeted run is the same browser, dev server and database on the same host — narrowing the selection does not change what is being measured. **The further argument is that the host is the maintainer's working computer**, and Playwright makes it unusable.
+
+**What it gives up is recorded rather than glossed**: a broken query or page is now found by CI in roughly fifteen minutes rather than locally in two, and finding it there **reopens the cycle**. **A render probe is the replacement and is not nothing** — §80's two defects were both found that way, and neither would have been caught by any assertion that existed.
+
+`CLAUDE.md` STEP F, `architecture.md` §12.1, and **F-045**, filed **after** the change so the exposure stays visible. **The thing to watch is a pull request going red twice.**
+
+---
+
+## 80. A page that shows the whole catalogue — implemented, reviewed, committed, pushed, CI-verified, merged and confirmed on production
+
+**[GATE CLEARED 2026-09-16: CI `35106689413` (#124) `completed/success` on `7c88d9a`, `run_attempt: 1`.]** **474 unit, 713 integration, 1 seed, 132 end-to-end — zero flaky, no retries of any kind.** **Merged as `e37be55`.** Branch **`browse-everything`**, commit **`7c88d9a`**, **PR #15**. **No migration.** The decision is `product-spec.md` §6.
+
+**Confirmed on production after deploy**: `/albums/all` renders **page 1 of 18 at 60 per page**, all four sorts return `200`, `?page=999` returns `404`, and every sort label renders. **The first time this surface met real data rather than seven fixtures.**
+
+### The gap it closes had stopped being passive
+
+**Browse leads with Recently added, which §79 made selective** — one album per artist, covered only — **and its Popular section excludes every album with a null `popularity_score`**, which is every self-service addition. **So an album could be held by the catalogue and reachable from no browsing surface at all**, findable only by somebody who already knew to search for it. **The product had stopped merely having that gap and started creating it.**
+
+**The new surface filters nothing, and that is the point rather than an omission.** §8.9 holds that absence of an external signal must never gate discovery; **this is where that stops being a principle and becomes a `where` clause deliberately not written.** No popularity sort either — §8.3 decided an external score completes a chart and never orders a surface.
+
+### Four sorts, and its own vocabulary
+
+**The collection's six modes do not transfer.** `rating` and `listened` have no catalogue equivalent, and its `added` means _when you added it_ where this one means _when the catalogue got it_ — **the same word for two different facts.** Sharing the type would let this surface express states it must then reject.
+
+**Artist reuses the rule decided on 2026-08-21 rather than re-arguing it**: ordered by the album's own `display_credit`, so _The Clash_ files under T, because an artist's `sort_name` needs two joins — unreachable in one PostgREST query — and is undefined for a joint credit. **Every mode ends at `created_at` so the ordering is total**, which is what `range()` pagination depends on.
+
+### Three defects, none of which code review would have found
+
+**An offset past the end returned 500, not 404.** PostgREST answers that with `PGRST103` rather than an empty window. **The social service already knew** — `listRelationship` carries a named constant and a documented second round trip, because the count does not come back on that response. **Followed rather than reinvented**, with the constant restated locally since a catalogue read has no business importing from the social service.
+
+**The sort control ordered the grid by data the reader could not see.** Built first on the caption-free density, so artist, title and year reordered a wall of covers **for unstated reasons**. §11.5 ties captions to `relaxed` and forbids them on `standard`, where a cell tops out near 105px and a credit is unreadable — **so there is no middle option.** Returned to STEP B, where legibility won over density on the one surface whose purpose is finding a specific record. **This was a decision taken by default rather than asked, and the return is recorded as such.**
+
+**A defect in already-merged code, introduced by §79.** The fixture seed gained fourteen storage uploads and eight status updates while staying on vitest's 5s default, written when it only ingested. **It passed all day sitting just under the ceiling, then began timing out under load.** Fixed with a per-test budget following `backfill-artwork.test.ts`'s precedent.
+
+> **⚠️ That is the third instance in one day of work outgrowing a timeout written for a smaller job** — `curated-recovery` in §79, the fixture seed here. **F-044 was filed hours earlier describing exactly this class**, and it is looking less speculative than when it was written.
+
+### `Pagination` extracted, `pageFrom` deliberately not
+
+**`Pagination` was private to `RelationshipPage` and already generic** — an `href` callback and a label — so extraction changed nothing about it. **Unlike `pageFrom`**, which `[handle]/pagination.ts` records as _deliberately_ duplicated, **there is no recorded decision to duplicate the component**, and forty lines of markup is a worse copy than four lines of parsing.
+
+**`pageFrom` is now duplicated a fourth time, and the gap in that reasoning is recorded without being acted on.** The recorded justification is that _"the only such place today is the service layer"_ — but `src/app/search/` already holds non-route modules, so **an app-layer home does exist.** Overturning a recorded decision for a four-line function while building something else is the wrong trade; **the note is left where the next person will find it.**
+
+### What this unblocks
+
+**F-041 and F-042 now have a surface to land on.** Both propose filtering, and they were ranked below this cycle precisely because **filtering a page that did not exist was the wrong order.** That is no longer true.
+
+---
+
+## 79. Recently added, filtered and deduplicated — reopened on a CI failure, remediated, CI-verified and merged
+
+**[GATE FAILED, THEN CLEARED.]** CI **`35075756313` (#121)** returned **`failure`** on `5ae5270`, which reopened this cycle under the normal workflow. After remediation, CI **`35077675507` (#122)** returned **`completed/success`** on **`ad2e89a`** — **455 unit, 713 integration, 1 seed, 132 end-to-end.** **Merged as `8080c5e`.** Branch **`recent-selection`**, commits **`5ae5270`** and **`ad2e89a`**, **PR #14**. **No migration.** The decision is `product-spec.md` §6.
+
+**The green run carried one flaky test and that is recorded rather than rounded off.** `follows.spec.ts:187`, _the relationship lists hold each side of the follow_, failed its first attempt and passed on retry. It touches nothing this cycle changed. **`CLAUDE.md` holds that zero flaky on a first attempt is what makes a green CI run corroboration rather than an outvote** — so this run is weaker evidence than #119's or #122's predecessors, and **CI's `retries: 2` absorbing a flake is exactly the blind spot that rule names.**
+
+### What it changes
+
+**Browse and Home both lead with Recently added, and it applied no rules at all** — a plain `order by created_at desc limit 24`. A tranche ingesting eight albums by one artist filled a third of the section with that artist, and albums with no cover rendered a placeholder in the product's most prominent grid.
+
+**A collaboration counts against its first credited artist only.** _Watch the Throne_ spends JAY-Z's slot and leaves Kanye West free to appear with a solo record. **Counting against every credit was rejected**: one collaboration would block two artists from the entire section, which is a large effect for a rule about visual variety.
+
+**The two rules are independently reversible**, because **they move in opposite directions over time** — the cover rule does less as artwork coverage improves and more as catalogue depth grows. Both call sites pass them explicitly, so reversing either is a change where the section is read rather than surgery on the query.
+
+**It reads eight times what it renders**, since both rules remove rows _after_ the read. **Scales with the section rather than the catalogue**, which a flat constant would not. When a tranche by one artist defeats any depth, the section **under-fills honestly** rather than scanning further — an unbounded scan on the two busiest reads in the product would be the worse failure.
+
+### The red run was the most useful thing in the cycle
+
+**Eight end-to-end tests failed, and the attribution was immediate and certain: this change caused it.** Confirmed by rendering Browse and finding the heading above _"Nothing here yet"_.
+
+**The cause was not the code.** Artwork arrives through a queue, so a newly ingested album is `pending` — and a catalogue where nothing has been fetched has nothing to show. **A section about recency was excluding the most recent albums.**
+
+**F-037 raised exactly this question when it was filed, and STEP B failed to ask it.** The entry's own words: _"a newly added album is `pending` at first. A section about recency would then not show the most recent thing until its artwork job drains. Whether that is acceptable … is a real decision and not a detail."_ Four questions were put at STEP B and **this was not one of them.**
+
+**Returned to STEP B under the conflict rule, where the strict reading was ratified with the lag consequence in view.** That is a legitimate outcome — the boundary was tested and held — and it is recorded as chosen rather than defaulted into.
+
+> **⚠️ The lag is a production consequence, not a test artefact.** Most albums currently have covers, so the section looks correct today. **The next large ingest tranche will have its new arrivals hidden until the artwork queue reaches them**, and that queue drains roughly six jobs per invocation. The section will be honest and stale at the same time.
+
+### The CI failure, and why it was not this cycle's defect
+
+**CI #121 failed one integration case** — `curated-recovery.test.ts`, _ingests the successful artists and leaves the failed one unresolved_ — on a **5020ms timeout**, not an assertion.
+
+**Attribution was established by measurement, not by assertion.**
+
+- **The changed code provably cannot execute there.** Zero references to `getRecentAlbums`, `selectRecent` or `recentReadDepth` in the failing test or in `curated-tranche.ts`.
+- **A different test failed locally.** An isolated local run of the same file failed _re-enqueues a terminally failed artist_ with the identical 5020ms signature — **different case, same file**, which is the signature of non-determinism rather than of a defect.
+- **Six samples across two trees, and they inverted the suspicion.** `main`: 8.4s, 11.5s, 11.8s, all passing. The branch: 15.7s with one failure, then **6.2s, 5.9s, 5.7s** passing. **The branch was faster in three consecutive runs than `main` was in any of its three**, so the slowdown was host load rather than this change.
+
+**The real defect was pre-existing and this cycle only surfaced it.** Every case in that file enqueues a tranche and drains it to a terminal state — many round trips plus the backoff the retry policy is under test for. **Mocking the browse removes the network, not the pacing.** So the slowest cases sat against vitest's default 5s per-test ceiling and crossed it under load.
+
+**Fixed by raising that file's budget to 15s, following the precedent `upstream-search.test.ts` already set** — including its note that the raise belongs on the file so every other integration file keeps the tight default. **No assertion was weakened, nothing was skipped, and the run was not retried to obtain a pass.** Committed separately as `ad2e89a` so the feature and the test-infrastructure fix stay reviewable apart.
+
+**The alternative was available and was deliberately not taken.** Re-running CI on the same commit would very likely have gone green, given the evidence above. **That would have left the landmine in place** and would have been indistinguishable from retrying until green.
+
+### The fixture catalogue now models artwork state, and that was forced rather than chosen
+
+**Six albums are marked `found` with a real one-pixel JPEG behind them.** `AlbumCover` renders an `<Image>` from storage for that status, so **marking it without uploading anything would leave every cover broken** — in a seed whose stated purpose is letting pages be inspected without network access. **`found` must not be a lie.**
+
+**One album is left `absent`**, which has a useful side effect beyond this cycle: **the cover-art prompt (§78) and the operator worklist (§76) are now observable in a freshly seeded database**, where §78 had to hand-edit rows before every check.
+
+**Which album is `absent` is not arbitrary, and the first choice was wrong.** Marking the _Various Artists_ compilation broke the artist-links assertion that expects its credit in Recently added — because `absent` now removes it from that section. The album must be one **no assertion expects there**, and it must carry a **representative release** for the prompt to have somewhere to point.
+
+### Verification
+
+`verify` **exit 0** from a clean build, **455 unit across 37 files**, up from 443 across 36. **Integration 713/713.** End-to-end **18/18** across browse, home and search.
+
+**The red run is recorded as red and was not reclassified.** It was attributed to this cycle's change positively, by rendering the page rather than by reasoning, and resolved by returning to STEP B.
+
+### Branch discipline, and the trap caught in the act
+
+**The branch was first cut from the previous cycle's unmerged tip rather than from `main` — caught immediately, before any code.** PR #13 was then merged and the branch recut from `44c966e`, which also removed a `queries.ts` overlap between the two cycles.
+
+**That is three cycles running in which this has gone wrong**, twice needing a cherry-pick to correct. **The structural cause is unchanged**: `CLAUDE.md` states the rule inside **STEP H's** description, a step that runs after the code is written, so the instruction is read long after the moment it governs.
+
+---
+
+## 78. Ask for a cover, and look again when one arrives — implemented, reviewed, committed, pushed, CI-verified and merged
+
+**[GATE CLEARED 2026-09-16: CI `35072087175` (#119) `completed/success` on `5e41623`, `run_attempt: 1`.]** **443 unit, 713 integration, 1 seed, 132 end-to-end — zero flaky, no retries of any kind.** **Merged as `44c966e`.** Branch **`artwork-recheck-prompt`**, commit **`5e41623`**, **PR #13**. **No migration.** The decisions are `product-spec.md` §8.9 and `architecture.md` §7.
+
+### The cycle's value was the defect it found before building, not the feature
+
+**`ARTWORK_RETRYABLE` was `['pending', 'failed']`, with `found` and `absent` described as settled.** That was correct while nothing outside the system could change the answer. **It stopped being correct the moment the product invites someone to change it** — a cover uploaded after being prompted would have been **invisible to longplayr forever**, leaving the contributor to return and find the same blank square.
+
+**Found at STEP B, before any code existed.** The decision changed rather than the feature shipping as a dead end. **A prompt without a re-check is worse than no prompt**, because it spends somebody's goodwill on work the product cannot observe.
+
+### One verified fact decided the fix, and it inverts the usual constraint
+
+**Cover Art Archive has no rate limit** (`architecture.md` §18, confirmed). **Nearly every mechanism in this codebase exists to manage MusicBrainz's one request per second** — the job queue, the drain cadence, batch sizing, the 503 retry policy, the whole F-026–F-030 cluster. **None of it applies to artwork.**
+
+**So the cost is drain slots rather than API quota**, and the window is sized against that: roughly six artwork jobs per invocation across twelve invocations. **Thirty days spends about 2% of that budget on the currently-absent set; seven days would spend about 9%**, starving first-time fetches in exactly the way the bulk priority band exists to prevent.
+
+**The cost of the long window is recorded rather than hidden: a contributor may wait up to a month to see their cover.** A view-triggered re-check would have been near-immediate and was considered; the sweep was chosen because it works **whether or not they ever return to the page**. **This is the one number in the cycle worth measuring rather than reasoning about, once real contributions exist.**
+
+### The prompt's rules
+
+**Only `absent`** — not `pending`, where the fetch has not run and art may well be waiting, and not `failed`, which is our own error already being retried. **Every prompt shown is therefore a real task.** **Signed out as well as signed in**, because the work needs a MusicBrainz account rather than a longplayr one. **Nothing shown when there is no representative release**, since there is nowhere to send anyone — the operator worklist lists those rows with a reason because a count disagreeing with its list is an operator's problem, and a reader has no such need.
+
+**A side effect worth naming: it partly answers F-038.** A placeholder with a prompt and one without now mean different things, which is the `pending`/`absent` distinction that entry asks for. **It does not close it** — two of four states, nothing about `failed`, and a consequence rather than a designed signal.
+
+### An existing assertion amended rather than deleted
+
+**`leaves settled albums alone` asserted that `absent` was settled forever.** It now asserts that a **recent** answer is not re-asked — the property it was actually protecting. Its helper now stamps `artwork_updated_at` alongside the status, **because production always does**: an `absent` row with no timestamp is a state the product never produces, and the test was manufacturing one. **That was the cause of the failure, not the rule being wrong.**
+
+**`TRACKLIST_RETRYABLE` still says `found` and `absent` are settled, and still should**: nothing invites anyone to add a tracklist. The asymmetry has a reason and was left alone deliberately.
+
+### Verification
+
+`verify` **exit 0** from a clean build, **443 unit across 36 files**, up from 432 across 35. `jobs` integration **68/68**.
+
+**The page was rendered directly in all four states rather than asserted about**: `absent` prompts with a working add-cover-art link; `pending` and `failed` do not; `absent` with **no representative release** shows nothing while the page still renders. **Every probe was signed out**, which is the audience decision under test. That is stronger evidence than anything available otherwise — the album page has no end-to-end coverage for this.
+
+**One limitation stated plainly: nothing verifies end to end that an upload is actually picked up.** That needs a live Cover Art Archive round trip, which local cannot do. **The sweep's selection is tested; the pickup is not.**
+
+### Branch discipline, after two failures
+
+**The branch was cut from `main` before implementation this time**, rather than after. The two previous cycles began on the preceding cycle's branch and had to be corrected by cherry-pick. **The structural cause stands unaddressed**: `CLAUDE.md` states the rule inside **STEP H's** description, a step that runs after the code is written.
+
+### Scope held deliberately
+
+**F-037's hide rule was decided in this cycle's STEP B and is not implemented here.** Bundling it would have widened the boundary past what was approved. It is recorded as decided and unbuilt, with its two open sub-questions — which artist a collaboration dedupes on, and that deduplicating after a limit under-fills the section — waiting for its own cycle.
+
+---
+
+## 77. Show more upstream candidates — implemented, reviewed, committed, pushed, CI-verified and merged
+
+**[GATE CLEARED 2026-09-16: CI `35066125149` (#117) `completed/success` on `3346dda`, `run_attempt: 1`.]** **432 unit, 711 integration, 1 seed, 132 end-to-end — zero flaky, and no retry of any kind in the run**, not even the ECR image pulls that appeared in #110 and #112. **Merged as `a3ff39a`.** Branch **`show-more-upstream`**, commit **`3346dda`**, **PR #12**. **No migration.** The decision is `product-spec.md` §8.10.
+
+**The run took 19m19s against a ~13-minute norm** (06:57:28Z → 07:16:47Z) with no retries to explain it — the second slow run this week, after #108's 21 minutes. **Recorded as an observation, not a finding**; both were green.
+
+**The maintainer looked for the feature before it was deployed, and that was a reporting failure rather than a defect.** The checkpoint recorded the branch as unmerged with nothing deployed, but **the plain-language summary told them to go and look**, which is the half written to be acted on. **A cycle closed provisionally must not describe its work as checkable until it has merged** — the honest instruction is what to look at _once it deploys_.
+
+### What it closes
+
+**The upstream panel was discarding candidates it had already fetched.** It retrieves 25 release groups in one request, filtering leaves roughly fifteen, and **ten were rendered** — the rest thrown away with no way to ask for them. This was the first item under §8.10's _"still unresolved"_, open since **2026-08-21**.
+
+### The reveal costs nothing, and that is the whole design
+
+**No additional MusicBrainz request and no client JavaScript.** Every revealed candidate was already fetched. Against a limit where exceeding one request per second returns **`503` for every request from the address, not merely the excess**, spending a request per expansion would have been the wrong trade for a control someone might click idly.
+
+**Fetch depth is untouched at 25.** Deepening it is free in request count — one call with a larger `limit` — but the breadth decision of 2026-09-06 settled that number deliberately, and reopening it is wider than this slice.
+
+**Ten remains what the panel shows first**, because it is deliberately subordinate to the catalogue results above it, which return up to twenty. **Showing every survivor unconditionally was rejected on that ground rather than overlooked.**
+
+**When everything already fits, the panel says so** instead of rendering a control that does nothing — a different condition from finding nothing at all, which keeps its own _"try a different spelling"_ advice.
+
+### Two structural choices
+
+**`<details>` sits beside the first list, not inside it.** It may not be a child of `<ul>` — only `<li>` may. **Splitting one list into two is a small semantic cost, taken knowingly over markup browsers silently reparent.** The row markup is extracted so the two lists cannot drift. **This is the third element-nesting hazard in three cycles**, and the only one caught while planning rather than at review.
+
+**The display rule lives in `src/app/search/`, not `src/services/`** — a deliberate application of `CLAUDE.md`'s domain-logic test. Which candidates survive filtering is a service concern already living there; **how many a page shows first shapes only what the web renders.**
+
+**`UPSTREAM_FETCH_DEPTH` is now exported** so the panel can ask for every survivor without restating `25`. Two copies drifting apart would **silently re-truncate the list** — the defect this depth was raised to fix.
+
+### The evidence limitation, stated before the work and again after
+
+**§8.10 records that which mechanism caused the failures observed in use is unestablished, and it stays that way.** The panel **cannot populate against real data locally or in CI** while `MUSICBRAINZ_CONTACT` is a placeholder. **This fixes a documented limitation without evidence that it was the one encountered**, and the rendered expander is **not verified in a browser**. Both were stated at STEP A, before the decision to build it.
+
+### Verification
+
+`verify` **exit 0** from a clean build, **432 unit across 35 files**, up from 425 across 34. `upstream-search` integration **10/10**. `search.spec.ts` **8/8**.
+
+**One red run, self-inflicted and reported because it happened.** The first `search.spec.ts` run returned **4 passed / 4 failed** because the integration suite had truncated the catalogue and Playwright was run without re-seeding. **A sequencing error, not a defect** — and the same hazard recorded two cycles earlier in this file.
+
+### A process error repeated, and its likely cause
+
+**The implementation again began on the previous cycle's branch** rather than one cut from `main` — `artwork-worklist` this time, `honest-push-warning` last time. **Caught before pushing on both occasions**, so no pull request was affected; the commit was moved by cherry-pick onto a branch from the updated `main` and the stray branch reset.
+
+**The cause looks structural rather than careless.** `CLAUDE.md` states the rule inside **STEP H's** description — _"branch from current `main` at the start of the cycle"_ — so the instruction is read at a step that runs **after** implementation, while the action it requires belongs at the start. **Moving the branch cut into STEP 00 or STEP A would remove the trap**, and that is a `CLAUDE.md` change for the maintainer rather than one taken here.
+
+---
+
+## 76. A worklist for albums with no cover — implemented, reviewed, committed, pushed, CI-verified and merged
+
+**[GATE CLEARED 2026-09-16: CI `35030262875` (#116) `completed/success` on `fe71def`, `run_attempt: 1`.]** **Merged as `8fe67dd`**, so this cycle is **fully verified and closed** rather than the provisional state it was first written in. Branch **`artwork-worklist`**, commit **`fe71def`**, **PR #11**. **No migration.** The decision is `architecture.md` §17b.
+
+### Chosen from a deliberate triage pass rather than from the top of the file
+
+**The maintainer asked for a full triage of `docs/product-feedback.md` on 2026-09-16**, covering every open entry rather than the recent ones. Its recorded finding matters more than this cycle does: **only three items were READY with no decision needed**, against **fifteen NEEDS A DECISION, four of them explicitly ask-don't-infer.** The backlog is gated by unanswered product questions far more than by engineering effort. This slice is one of the three.
+
+### What it closes
+
+**The queue view has shown `artwork_status` totals since §17a**, so the maintainer could see covers were missing and **not which albums**. The manual path was _notice a placeholder, find the album on MusicBrainz, find the right release, upload_ — a search every time, for **the one gap drain cadence cannot close**, since the tail is precisely the albums Cover Art Archive has no art for.
+
+### Two groups, because they ask different things
+
+**`absent`** — Cover Art Archive genuinely holds no image, so a person must upload one. Each row deep-links to the add-cover-art page. **`failed`** — **our** fetch broke and the artwork sweep re-queues it on any drain, so it is shown and **deliberately not presented as a task**. **Collapsing them would ask the maintainer to do work the system had not finished retrying**, which is the worst thing a worklist can do. **`pending` is in neither**: not attempted yet is neither actionable nor a failure.
+
+### Three details that shaped it
+
+**The link points at a release, not a release-group.** Cover art is uploaded against a release, while `artwork.ts` deals only in release-group MBIDs against Cover Art Archive — a different identifier from anything the artwork path already builds.
+
+**`representative_release_id` is nullable, and those rows are shown with the reason rather than hidden.** Hiding them would leave a list that **silently disagrees with the count printed beside it** — §17's failure class reproduced by the instrument meant to detect it. **This is not hypothetical: `Acid Rap` has no representative release in the fixture catalogue**, so the case rendered on the first data it ever saw.
+
+**The list is capped and the true total is always printed**, taken from the same `countRows` totals the page already renders so the two cannot disagree. A capped list reporting its own length would be a **confidently wrong number on a diagnostic** — §16.2's counting contract.
+
+### Verified by rendering the page, not by asserting about it
+
+`verify` **exit 0** from a clean build, **425 unit across 34 files**, up from 419 across 33. `queue-view` integration **9/9**.
+
+**The page was then rendered directly against seeded data**: unauthorised **404**, authorised showing both groups, **two working add-cover-art links and two "no release to link to" rows — matching the underlying rows exactly.** That is stronger evidence than any assertion available here, since the page has no end-to-end coverage and is unlinked by design.
+
+**One self-inflicted detour worth recording**: the first probe used `?secret=` where the route reads `?key=`, and returned a correct `404`. **The page was right and the probe was wrong**, established by reading `queue-view-auth.ts` rather than by changing anything.
+
+### A process error, caught and corrected
+
+**This cycle's implementation began on the previous cycle's branch** — `honest-push-warning` — rather than on one cut from `main`, which STEP H requires. **Caught before any commit**, so nothing was lost and PR #10 was unaffected; the work was stashed, `main` pulled after PR #10 merged, and a fresh branch cut. **Recorded because the process caught it late rather than early**, and a reader should not have to infer that from the branch names.
+
+---
+
+## 75. An honest pre-push migration warning — implemented, reviewed, committed, pushed, CI-verified and merged
+
+**[GATE CLEARED 2026-09-16: CI `35028104385` (#114) `completed/success` on `e48402f`, `run_attempt: 1`.]** **Merged as `a4110d6`**, so this cycle is **fully verified and closed** rather than the provisional state it was first written in. Branch **`honest-push-warning`**, commit **`e48402f`**, **PR #10**. **No migration**, so STEP J did not gate. The decision is `architecture.md` §11.1.
+
+**The gate cleared mid-way through the next cycle's implementation**, which is exactly the continuity the asynchronous-gate rule exists to allow — nothing was waiting on it and nothing needed reopening.
+
+### It came out of a real failure, not a backlog
+
+**The pre-push check told this session to deploy schema ahead of CI during §74**, and the push had to be overridden. The check asserts _"Vercel deploys on push, so pushing is deploying"_ — true for `main`, **false for a branch**, which is where all work has happened since the gate moved. So it instructed `npx supabase db push --linked` **before** pushing, which would apply a migration to the deployed database **before CI had ever parsed it** — the exact ordering the 2026-09-15 amendment reversed.
+
+**The defect is the training effect, not the sentence.** The check fires on **every** branch push carrying a migration, `CLAUDE.md` sanctions `--no-verify` there, so overriding it is always correct — and **a guard that must be routinely overridden is one people stop reading.**
+
+### What shipped
+
+**Git hands a `pre-push` hook its target refs on stdin and the script never read them**, so it could not tell a branch from `main`. It now does. The branch path **never prints the deploy command at all**, asserted directly rather than assumed.
+
+**Behaviour is deliberately unchanged** — the same four `exit 0` paths and the same `exit 1`, verified by counting them. That keeps `CLAUDE.md`'s statement that a branch push _"will report a pending migration, and that is expected"_ **exactly true**. Making the check stop blocking on a branch would be better engineering **and would make that sentence stale**, so it is left as the maintainer's own decision rather than taken here.
+
+### The guard that mattered most was against a worse bug
+
+**`npm run db:pending` runs the same check by hand, where stdin is a terminal nobody will ever close.** Reading to EOF there would **hang a diagnostic command forever** — worse than the stale message being fixed. A TTY is treated as no input and anything else is raced against a short timeout, degrading to a message that does not claim to know which case it is.
+
+### `scripts/` had no tests at all, and now has eleven
+
+The unit project matched only `src/**/*.test.ts`. It now also matches `scripts/**/*.test.mts`; `tsconfig.json` already included that extension, so typecheck covers it for free. **Covered:** the regression that a branch push is never told to run the deploy command, branch deletions, several refs in one push, malformed lines, and empty stdin.
+
+### The limitation this does **not** fix, recorded rather than papered over
+
+**Under the branch model the deploy happens at merge time on GitHub, which no local hook observes.** This check can therefore no longer prevent the outage it was built for. **It is a reminder; the gate is STEP J's ordering.** A fix implying otherwise would be worse than the stale message it replaces.
+
+### Verification
+
+`verify` **exit 0** from a clean build, **419 unit across 33 files**, up from 408 across 32. `npm run db:pending` completes in **6s** with no hang; the script exits 0 in 5–8s under a piped `main` ref, a piped branch ref and an empty closed pipe. **The real hook path ran clean on the actual push**, which needed no override because no migration was pending.
+
+**Evidence limitation, stated rather than omitted:** the **blocked** path could not be exercised end-to-end, because the deployed database is up to date and the script exits before reaching the message. **The message is covered by unit tests, not by a live run.** No end-to-end suite was run and none is claimed — this cycle touches no application code.
+
+---
+
+## 74. The credit on a search result — implemented, reviewed, committed, pushed, CI-verified, migrated and merged
+
+**[GATE CLEARED 2026-09-15: CI `34989291393` (#112) `completed/success` on `c8ef7fd`.]** **408 unit, 711 integration, 1 seed, 132 end-to-end — zero flaky, `run_attempt: 1`.** Integration rose 708 → 711 and end-to-end 130 → 132. **The twelve `Retrying` lines are ECR image pulls in _Start Supabase_, checked rather than assumed**, so this is corroboration and not an outvote.
+
+**Merged as `4c0a0f7`**; `main` moved `8544330` → `4c0a0f7`. Branch `search-artist-links`, commit `c8ef7fd`, PR #9. **This cycle carried a migration**, so STEP J gated and waited for the maintainer, and the order ran **CI green → migration applied → merge**. Decisions: `product-spec.md` §6, `design-reference.md` §11.12, `architecture.md` §16.8.
+
+### What it closes
+
+**Search was the last catalogue surface printing a plain-text credit**, deferred by §73 for its own row layout. **The deferral lasted one cycle and is discharged**, so §6's rule now binds every surface that prints a credit.
+
+### Why a migration, when §73 needed none
+
+**Search reads the `search_albums` RPC**, whose columns are fixed by a SQL signature — there is no PostgREST embed to widen, and `AlbumHit` is its own type carrying `tier` and `popularity_score`. **The alternative was a second service-layer query** over the returned album ids, stitched in TypeScript: no migration, but **an extra serial round trip** on a surface §8 already records as slow. **The round trip was traded for the migration deliberately, knowing it re-gates STEP J.**
+
+**The aggregate returns the embed's own shape** — `{ position, artists }` — so **`toCreditedArtists` serves both paths unchanged.** Two producers of one value would drift, and the drift would be invisible because each surface looks correct alone.
+
+### The migration's real risk was privileges, not the aggregate
+
+**Postgres refuses to change a function's return type, so this drops and recreates** — and **a drop takes the function's privileges with it.** Measured on the live database _before_ writing anything: `anon`, `authenticated`, `service_role`, with `PUBLIC` revoked. The migration revokes from `PUBLIC` and names all three explicitly, reproducing that state rather than trusting a recreate to inherit it.
+
+**Neither failure mode is a compile error.** Losing `anon` breaks signed-out search; losing `authenticated` breaks the common case. **Verified before writing:** nothing in `pg_depend` rewrites over the function, so no view is carried away.
+
+**Verified after applying, against production rather than by inference.** The recreated function is **backward-compatible with the then-deployed code**, which ignores the new column — so signed-out search on the live site was probed _before_ the merge and returned **HTTP 200 with results**. That exercises `anon` execute on the new function directly. **After the merge, production renders 21 artist links on one query.** An initial "error markers" hit was chased down and proved to be `fontWeight: 500` and a chunk id, **not an error** — recorded because a crude check that cries wolf is worth knowing about.
+
+**Search behaviour itself is untouched** — tiers, ordering, every predicate, the article normalisation and the limit clamp are copied verbatim, confirmed by diffing the function bodies. The only addition is the final column.
+
+### The row, and what it costs
+
+**It was one anchor wrapping cover, title and credit**, so a credit link would have been an `<a>` inside an `<a>`. Cover and title are now **separate links** with the metadata line beside them. **The row loses clickable-anywhere, and that costs more here than in a grid** because results are scanned and clicked more freely — accepted so one album does not behave differently depending on which surface found it. **The two anchors carry distinct accessible names**, the cover's from its alt text, so they read as two labelled links rather than a duplicate.
+
+### The upstream panel is excluded by structure, which is stronger than a deferral
+
+`UpstreamCandidate` carries a flat `credit` string for albums **the catalogue does not hold** — no `album_artists` rows, frequently no artist page. **It cannot link a credit even in principle**, and this is not revisited when search's local results change.
+
+### The `pre-push` hook's message is now wrong under the branch model **[OPEN]**
+
+**The hook blocked the push, which `CLAUDE.md` anticipates and sanctions `--no-verify` for.** What it says while blocking is stale: _"Vercel deploys on push"_, and it instructs applying migrations **before** pushing. **On a branch that is false**, and following it would apply schema before CI had ever seen the migration — **exactly the ordering the 2026-09-15 amendment reversed.** The rule is right; only the hook's copy is stale. **Not fixed here — outside this cycle's boundary.**
+
+### Verification, as it happened
+
+`verify` **exit 0** from a clean build, **408 unit**. `tests/integration/search.test.ts` **30/30**, up from 27 — the aggregate's empty case, its credit ordering **against deliberately reversed insertion**, and its shape. `tests/e2e/search.spec.ts` **8/8** including two new assertions; `browse.spec.ts` **5/5**, shared component unregressed. **Grants re-checked after `db:reset` against the pre-change measurement.** **No red run this cycle and nothing to attribute** — the local end-to-end set was kept to the changed surface plus the shared component, at the maintainer's prompting.
+
+---
+
+## 73. Artist links from a grid — implemented, reviewed, committed, pushed, CI-verified and merged
+
+**[GATE CLEARED 2026-09-15: CI `34984680288` (#110) `completed/success` on `541054f`.]** **408 unit, 708 integration, 1 seed, 130 end-to-end in 13.0m — zero flaky, `run_attempt: 1`.** End-to-end rose 127 → 130, the three new credit assertions. **The only `retry` strings in the run are ECR image pulls in _Start Supabase_, not test retries** — checked rather than assumed, because a green run with retries is corroboration of a weaker kind.
+
+**Merged as `8544330`** (PR #8); `main` moved `5479041` → `8544330`. Branch `grid-artist-links`, commit `541054f`. **No migration** — `git diff --name-only` over `supabase/migrations` returned zero and `db:pending` was clean before and after, so STEP J's migration half was a verified no-op. Decisions: `product-spec.md` §6 _Reaching an artist from a credit_, `design-reference.md` §11.12, `architecture.md` §16.7.
+
+### The defect
+
+**An artist credit was plain text everywhere except the album page.** From a grid the credit under a cover was dead text, so reaching an artist meant opening one of their albums first and clicking through. `design-reference.md` §5.4 makes the artist page primary for this product, and it had **one route in**.
+
+**`AlbumSummary` is why.** It carried `display_credit` — a denormalised string — and **no artist relation at all**, while only the album page read `album_artists → artists`.
+
+### The decision was returned to STEP B mid-cycle and re-ratified
+
+**STEP B first chose joined canonical names on partial evidence**, presented as a separator-and-casing change (`Jay-Z & Kanye West` → `JAY-Z, Kanye West`, measured on fixtures). **STEP D found that understated it.** `display_credit` is the credit _as released_ and `artists.name` is the _current canonical_ name, so a **rename** makes them different names for the same person — and `AlbumGrid` already argued in writing that the as-released name is the correct thing to show.
+
+**Worse on the artist page**: the caption resolves to the page's own subject and is therefore **suppressed entirely**, taking the as-released name with it. The conflict was returned to STEP B under `CLAUDE.md`'s rule rather than resolved in place or shipped with a note.
+
+**The maintainer re-ratified the original decision having seen the full cost**, with the alternative laid out surface by surface. Linking the whole string to the primary artist would have preserved the text exactly, and was rejected because on an artist page a collaboration credit would then **link back to the page being viewed** rather than to the collaborator. **All three outcomes of a return are valid and this was one of them** — the boundary was tested and held.
+
+**A second, smaller return: STEP C had recorded the artist page as unaffected, and that was wrong.** It suppresses only a credit _equal_ to its subject, so collaborations and renames always rendered there. The wrong sentence is corrected in place rather than erased, because it was the premise of a scope answer.
+
+### What shipped
+
+**Ten files, 534 insertions.** `services/catalogue/credit.ts` holds the rule — order by `position` (a PostgREST embed makes no ordering promise), drop null rows, flag linkability, and compare suppression **by identity rather than by name**. `ArtistCredit` is shared by the grid caption and the ranked list row. `isPseudoArtist` is extracted over the identifier `isExcludedFromExpansion` already owned, because expansion and rendering are two questions sharing one constant.
+
+**The obstacle was structural.** `AlbumGrid` wrapped cover _and_ caption in one album anchor, and an `<a>` inside an `<a>` is invalid HTML — so the caption had to leave the anchor. **A captioned cell is no longer clickable throughout**, a deliberate partial retreat from "the whole tile is a link".
+
+**`showCaptions` accepts only the artist-bearing type.** If §11.11's trigger fires and Popular becomes the captioned lead again, that surface **fails to compile** rather than silently rendering dead text — the `artist-depth.ts` failure shape, closed by construction.
+
+**It cost less than expected.** Only four renderings print a credit: Browse's _Popular_ passes no captions and an unranked list renders a caption-free grid, so **`getPopularAlbums` is untouched**.
+
+### STEP G caught a real defect, of the same class as the one being fixed
+
+**`ArtistCredit` rendered a `<p>`, which landed inside the list row's `<span className="min-w-0 flex-1">`.** Flow content inside phrasing content — invalid, silently reparented by browsers, and a hydration-mismatch risk. **The element type had been changed without the surrounding markup being checked**, which is precisely the nested-anchor mistake in a second costume. Fixed to a `<span>`, callers supplying `block`.
+
+### A direct probe outperformed the browser suite, and that is the methodological finding
+
+**Four Playwright runs produced four different failure sets and never once touched a credit assertion.** A deterministic HTTP probe — create a ranked list, fetch the page, parse the HTML — confirmed in seconds what the suite could not: **seven rows, both collaborators linked separately, `Various Artists` present as text and not linked, and no `<p>` inside any row wrapper.**
+
+### Local verification, recorded as it happened
+
+`verify` **exit 0** from a clean build, **408 unit** (up from 398). `tests/integration/lists.test.ts` **23/23**. `browse.spec.ts` **5/5**, including all three new assertions; `artist-sort` and `artist-depth` zero failures.
+
+**`lists` and `home` were red on every run, and the attribution is positive.** Failure sets differed across four runs on an identical tree — 111/164/189/255 + home 225, then 130/147/164, then 1-of-3 on a repeat, then 232. **Every failing frame was signup, sign-in, or the album page's Add button — never a credit assertion.** `LIST_ITEM_SELECT` and `toItem` are referenced only inside `getList`, which only the list detail page calls; the album page uses `listUserLists`, which was untouched. **CI then ran the same specs clean, 130/130.**
+
+### Two environment findings, one of them corrected
+
+**Docker was down mid-run because the maintainer closed it**, not because it failed. The first 22-failure run was entirely that. **F-036 did not spontaneously recur** — what the run demonstrated is only its _symptom_: any unreachable Supabase surfaces as `Timed out waiting 120000ms from config.webServer` while the dev server is healthy. **Recorded this way deliberately**, because an unexplained daemon death on the record would have been a false finding.
+
+**`npx playwright test` bypasses `scripts/with-websocket.mjs`** and every spec constructing an admin client dies in its hook under Node 20. `npm run test:e2e` is the supported path. Operator error, and **a second way this suite reports an environment problem as a test failure.**
+
+**Failed end-to-end runs leave orphaned users and lists behind** — four remained locally afterwards. `current-state.md` §8 records residue from an aborted run once causing a deterministic failure that read as a flake. **Not filed in `docs/product-feedback.md`, which is the maintainer's file.**
+
+### What this does not do
+
+**Search is deferred and still renders a plain-text credit** — a known inconsistency, named in `product-spec.md` §6 rather than left implicit. No migration, no auth surface, no change to `getPopularAlbums`, and **the stale module comment in `src/app/albums/page.tsx` was left alone** as outside this cycle's boundary.
+
+---
+
+## 72. Resend verification — implemented, reviewed, committed, pushed, CI-verified and merged
+
+**[GATE CLEARED 2026-09-15: CI `34972198823` (#108) `completed/success` on `94bdf9f`.]** **398 unit, 708 integration, 1 seed, 127 end-to-end in 13.7m — zero flaky, `run_attempt: 1`, no retries anywhere in the run logs.** That is the figure that makes a green CI run corroboration rather than an outvote, and it is recorded because `CLAUDE.md` asks for it specifically.
+
+**Merged as `5479041`** (PR #7), so `main` moved `80e5c44` → `5479041` and **this is the point at which the cycle deployed.** No migration, so STEP J's migration half was a verified no-op — `npm run db:pending` reported the deployed database up to date both before and after. The cycle below was closed _provisionally pending CI_ and is now **fully verified and closed**; nothing in it needed reopening.
+
+**One measurement worth carrying: the run took 21 minutes wall-clock** (12:59:45Z → 13:20:43Z) against a ~13-minute norm, with the end-to-end job itself at 13.7m. **No retry or flake explains the difference**, so it is runner scheduling rather than the suite. Recorded as an observation, not a finding.
+
+Branch **`resend-verification`**, commit **`94bdf9f`**. The decisions are `architecture.md` §6, _Resend, and the limit that actually matters_, and a §18 verified row.
+
+### The hole
+
+**No resend meant a user whose email never arrived was permanently stuck** — cannot sign in (unconfirmed), cannot sign up again (_"that email is already registered"_). **Unreachable today only because confirmation is off, and reachable the moment that flag flips.**
+
+### Half of the reasoning that deferred it was wrong, and the record says so
+
+§6 had warned that a resend _"needs rate-limiting or it becomes a mail-bombing vector pointed at arbitrary third parties"_, and that warning — **written an hour earlier, by this agent** — was used to justify deferring the work into its own cycle.
+
+**Checking the vendor documentation rather than assuming showed `/auth/v1/resend` already carries a 60-second window per user**, whatever the provider. **The unbounded vector described does not exist.** The paragraph is struck with the correction rather than quietly replaced, and `architecture.md` §18 now carries the limits with their date, because they are defaults that can change.
+
+**The process caught it one cycle late.** §18 exists for precisely this class of claim, and five minutes with the documentation before writing the warning would have prevented it becoming one.
+
+### The design, and what it costs
+
+**The response is identical whether or not the address has an account** — _"no account with that address"_ is the more useful sentence and **tells an attacker which addresses are registered.** longplayr is all-public, **but a handle is public and an email address is not.**
+
+**A rate-limit rejection is swallowed for the same reason.** Someone clicking twice gets the same confirmation both times — **mildly unhelpful, and the alternative leaks the same fact by another route.**
+
+**`resendConfirmation` returns `void` by construction.** `src/services/result.ts` exists so expected failures become renderable outcomes; **here the UI must render the same thing regardless, so the function is shaped to make branching impossible rather than merely discouraged.**
+
+### The finding that outgrew the cycle **[OPEN]**
+
+**The built-in email provider caps the whole project at two emails per hour — not per user.** With confirmation enabled, **the third person to sign up in any hour receives nothing, and no resend can help because the bucket is empty for everyone.**
+
+**So custom SMTP is a prerequisite for enabling confirmation at all**, not an improvement to it. No provider is chosen. **This is a larger constraint than the resend question that surfaced it.**
+
+### Verification
+
+`verify` exit 0 from a clean build; **398 unit** (up from 394). Targeted end-to-end: `auth` **7/7**, `collection` + `search` **13/13** — **twenty cases that all sign up**, and **the first local end-to-end run this session with no failures at all.**
+
+**Established by experiment:** surfacing the provider's error fails two of four cases and nothing else — **the guard exists because that change is one a future reader would make in good faith.**
+
+### Known limitations
+
+**Nothing here is reachable in use while `enable_confirmations` is `false`.** The tests assert the response rule; **nothing asserts an email is sent.**
+
+**Two CI runs per cycle again** — #107 (`push` on `80e5c44`) and #108 (`pull_request` on `94bdf9f`). **The double-CI cost of the branch model is now observed on three consecutive cycles.**
+
+---
+
+## 71. Verification email — implemented, reviewed, committed, pushed, CI-verified and merged
+
+**The first cycle to close with an unmerged branch**, which the provision added to `CLAUDE.md` on 2026-09-15 exists for — **and it then merged cleanly**, so the provision was exercised without ever being relied on to cover a problem. Branch **`verification-email-path`**, commit **`8e5b707`**, **PR #6**, **CI `34950243881` (#106) `completed/success`** — 127 end-to-end, zero flaky. **Merged as `80e5c44`.** No migration, so STEP J's migration half does not apply. The decision is `architecture.md` §6, _Email confirmation: the path exists, the switch stays off_.
+
+### The defect, which is live today and independent of SMTP
+
+**`signUpWithPassword` already computed `needsEmailConfirmation` and the action discarded it**, redirecting to `/onboarding` regardless. With confirmation enabled there is no session, and `/onboarding` bounces a sessionless visitor to a sign-in form. **Somebody who has just registered would be asked to sign in, with no mention of an email and no explanation of why their password appears not to work.** The information needed to do better was being produced and thrown away.
+
+**That is a trap rather than a missing feature, and it was one config flag from being live.**
+
+### What shipped
+
+**Four files, 178 insertions.** `src/services/auth/signup-destination.ts` holds the rule; `(auth)/actions.ts` calls it; `/check-your-email` is a new route stating **which address, and that the account is unusable until the link is clicked and that it is not the password**. Four unit tests.
+
+**`supabase/config.toml` is untouched** — `git diff --stat supabase/` empty — so `enable_confirmations` stays `false` and **no environment's behaviour changes today.**
+
+### A test was rewritten mid-step for the right reason
+
+**The first version mirrored the rule inside the test file**, which would have passed while the code was wrong — the failure this project has already corrected once. `signUp` ends in `redirect()`, which throws by design, **so the rule had to move to the service layer rather than be duplicated.** It also meets `CLAUDE.md`'s test for where domain logic belongs.
+
+### Verification
+
+`verify` exit 0 from a clean build; **394 unit** (up from 390). Targeted end-to-end: `auth` **7/7**, `collection` + `lists` **15/15** — **22 cases that all sign up**, confirming the default path is untouched. The page probed directly: a `+`-addressed email round-trips, the no-address fallback renders, **an XSS probe returns zero**. Collapsing the branch fails **3 of 4** cases.
+
+### Known limitations, and the second is a warning
+
+**The confirmed path has no end-to-end coverage and none is claimed.** Only flipping `enable_confirmations` exercises the journey.
+
+**There is no resend-verification path. [OPEN]** A user whose email never arrives is **permanently stuck** — they cannot sign in, and signing up again returns _"that email is already registered."_ A resend needs rate limiting or it becomes a mail-bombing vector pointed at arbitrary third parties. **Turning confirmation on in production before that exists would be a mistake**, and `architecture.md` §6 is where that warning lives.
+
+**No SMTP provider is chosen.** That is a service decision with cost and deliverability tradeoffs, and it is the maintainer's.
+
+---
+
+## 70. The signup flow — implemented, reviewed, committed and pushed **on a branch**; CI pending
+
+**The first cycle run under the branch model.** Branch `signup-password-policy`, commit **`31d8a42`**, **PR #5**. **`main` is untouched at `dbb7865` and nothing has deployed.** The decision is `architecture.md` §6, _Password policy: length, and deliberately nothing else_.
+
+### What changed
+
+**22 files, 212 insertions, 48 deletions.** `src/services/auth/password-policy.ts` is new and holds `MIN_PASSWORD_LENGTH = 12` and the derived hint. `(auth)/actions.ts` splits one schema into `signInSchema` and `signUpSchema`. `AuthForm.tsx` renders a confirm field on signup only. **Sixteen end-to-end spec files** and three unit tests.
+
+### The schema split was a prerequisite, not a refinement
+
+**Sign-in and signup shared `credentialsSchema` with its 8-character rule**, so raising the minimum would have **locked out every existing account with a shorter password** — including three staging accounts — with a validation error before the credentials were ever checked. **Sign-in now checks only that a password was supplied**: a policy is a rule for choosing a password, not for presenting one you already have.
+
+### Length only, and the absence is the decision
+
+**No composition rules**, deliberately: requiring a digit or a symbol pushes people to `Password1!` while adding little entropy. **The unit test asserting an absence is the one that matters** — a 28-character all-lowercase passphrase must be accepted, so a later composition rule breaks it. **Twelve is considered, not measured.** A breach-list check is `[OPEN]` and deliberately out of scope.
+
+**The policy lives in `src/services/auth/` because a native client would need it** — `CLAUDE.md`'s own test — and a `'use server'` file may export only async functions, so the constraint and the rule agreed.
+
+### What the targeted local run bought
+
+**The first pass added the confirm fill only inside `signUp` helper bodies**, and `auth.spec.ts` and `collection.spec.ts` sign up **inline**. Thirteen tests broke. **A two-minute targeted run caught it before the push** — the case for keeping targeted local tests even though the full gate has moved.
+
+**Verified:** `verify` exit 0 from a clean build, **390 unit** (up from 387); `auth` + `collection` **14/14**; `lists` + `favourites` + `feed` **17/17**. **Ten spec files changed and not executed locally** — a uniform one-line edit, audited at 27 signups against 27 confirm fills. **CI covers them, and that is the model.**
+
+### Known limitations
+
+**CI #104 passed and the branch was merged: `main` is now `2600afe`.** 127 end-to-end in 12.3m, zero flaky, zero retries — **and it verified the ten spec files changed but not executed locally**, which is the first direct demonstration that the model covers what the local run no longer does.
+
+**One cost the first run exposed: every cycle now triggers two CI runs, not one.** `ci.yml` fires on `pull_request` **and** on `push` to `main`, so the merge starts a second run. **`git diff 31d8a42 2600afe` is empty** — the merged tree is identical to the branch head, so the post-merge run re-tests exactly what the gate already proved. **That roughly doubles CI minutes per cycle**, and whether the `push` trigger should narrow is a question this cycle raises and does not answer.
+
+**The new STEP J gate's most consequential half goes untested on its first run**: this cycle carries **no migration**, so the CI-green-then-apply-then-merge ordering is exercised only in part.
+
+**Three of F-016's five items remain open** and all are gated on maintainer accounts: Google sign-in, verification email, other providers.
+
+---
+
+## 69. The branch model applied to `CLAUDE.md` — documentation only
+
+**No commit.** On 2026-09-15 the maintainer instructed that §68's proposal be applied, and it was. **`CLAUDE.md` now carries the branch model**; `architecture.md` §12's note that the document would not be edited is **struck and marked superseded**, preserved because its reasoning held until the maintainer overrode it.
+
+**Seven amendments, each dated and quoting the wording it replaces:** _Where the full gate runs_ replaces the branch-protection paragraph; STEP F's rule becomes `verify` plus targeted suites; **"Pushing is deploying" becomes "Merging is deploying"**; the **migration gate moves from STEP I to STEP J**; rows H, I and J rewritten; the red-STEP-F standard narrowed but retained, with its claim that _"CI runs after the push"_ corrected; and a note that **a cycle may close with an unmerged branch** provided it is recorded.
+
+**One consequence recorded rather than discovered:** `npm run db:pending` now reports a pending migration on a branch push, **and that is expected rather than a failure to fix** — the migration is applied at STEP J.
+
+---
+
+## 68. The verification gate — decided and documented; a proposal, not a commit
+
+**No commit and no push.** This cycle changed no code. `HEAD` and `origin/main` remain `dbb7865`. The decision is `architecture.md` §12, _The full gate moves to CI on a branch_, which **resolves that section's `[DEFERRED]` `verify:full` policy question**.
+
+### What was decided
+
+**The full suite runs on CI against a branch before anything reaches `main`.** Locally, STEP F runs `npm run verify` plus the targeted suites for the area changed. **`verify:full` stops being a precondition for pushing** and remains available.
+
+### The evidence, which is what resolved a question deferred twice
+
+**Eight cycles on 2026-09-13**: end-to-end failures of **9, 5, 2, 9, 7, 14, 19, 6** on eight different trees, **every failing set green on isolated rerun, none ever a real defect, and CI green on all eight.** Host load **6.15 → 12.51**. Local runtime **10.5m → 25.3m**. **The same tree: 25.3m locally, 11.2m on CI, with CI absorbing nothing** — zero retries, every test first attempt. A ninth datapoint arrived during this cycle: **#103, 9.9m on CI against 15.8m locally.**
+
+**The deferral feared licensing the habit of ignoring red runs.** That fear is answered rather than waved away: **red still blocks — it blocks a merge, somewhere red means something.**
+
+### One rule inverts
+
+**"Pushing is deploying" does not hold for a branch.** So **migration-before-push becomes migration-before-merge**, with the order **CI green → migration applied → merge.** That is safer than today's order, which applies a migration before anything has been verified. **The warning that CI applies migrations to a fresh database and proves nothing about the deployed schema survives verbatim** — it is the part CI cannot help with.
+
+### What this cycle deliberately did not do
+
+**It did not edit `CLAUDE.md`.** STEP H, I and J live there and that document is the maintainer's. **A process document rewritten by the agent the process governs is the wrong artefact.** The cycle produced proposed wording, delivered in the session for the maintainer to apply.
+
+**Until they apply it, the process is unchanged** — the decision is recorded in `architecture.md`, and `CLAUDE.md` still says `verify:full` before push. **Those two documents currently disagree, and `CLAUDE.md` wins**, per its own authority order.
+
+### Known limitations
+
+**The proposal names four costs** and they are real: nothing enforces the branch, feedback starts after a push rather than before, merge conflicts become possible, and **the local gate does still catch things** — `npm run verify` caught the `head: true` count two cycles ago. **The argument is not that the gate is worthless but that this host can no longer run it usefully.**
+
+**The first cycle run under a new model is the one most likely to expose a flaw in it**, and the agent proposing the model would be the one operating it.
+
+---
+
+## 67. The artist page status line — implemented, reviewed, committed, pushed and CI-verified
+
+**Pushed as `dbb7865`**, parent `5b0f40e`. `origin/main` resolves to exactly that SHA, ahead/behind 0/0. The decisions are `product-spec.md` §6 and `architecture.md` §7. **No migration, so STEP I did not gate.**
+
+### What changed
+
+**Five files, 148 insertions, 33 deletions.** `jobs.ts` splits `AttemptState` into `none | outstanding | succeeded | failed`. `artist-depth.ts` splits `ExpansionState` and carries a table showing where _enqueue_ and _say something_ diverge. The artist page narrows its enqueue and splits its line three ways. Four integration cases added, one end-to-end assertion inverted.
+
+**Blast radius of one.** `expansionStateFor` has exactly one consumer in `src/`, and `attemptStateFor` exactly one.
+
+### Where it came from, and why it took this long
+
+**F-027**, filed 2026-09-07 alongside F-026. **Its own entry said the decision depended on F-026** — _"if a failed attempt retried within minutes, the current copy would be roughly accurate"_ — so it waited. F-026 shipped in §61, and the recovery sweep in §63 then **added a state the entry never anticipated**: an artist re-queued by a sweep. Four states, not three.
+
+**It was decided at STEP B during the queue-view cycle and deliberately left unbuilt**, recorded in `architecture.md` §7 in the state `product-spec.md` §10 exists to hold, so the queue view could ship first as the instrument for watching this land.
+
+### Verification
+
+**Local `verify:full` RED** — 121/6 — attributed on **positive evidence**: all five `artist-depth` tests green inside the red run, neither failing spec renders an artist page, isolated rerun 13/13.
+
+**CI run `34772035304` (#103), attempt 1, on exactly `dbb7865`: `completed/success`.** Both jobs green — 387 unit, 708 integration, 1 seed, **127 end-to-end in 9.9m, zero flaky, zero retries**. **Real evidence here**, since `artist-depth.spec.ts` covers the new line. **9.9m on CI against 15.8m locally on the same tree** — the ninth consecutive datapoint behind the gate decision in `architecture.md` §12.
+
+### Known limitations and residual items
+
+**The new line has been seen by no human on a deployed page.** Its only evidence is an end-to-end assertion against a seeded `failed` row. **Radiohead is the one real instance**, and its job was re-queued by the sweep on 2026-09-13 — so if that succeeds, **the deployed site may never show this line**, which is the correct outcome and also means the fix is unobservable on real data.
+
+**The three outstanding states remain indistinguishable to a reader**, deliberately: never attempted, backing off and sweep-re-queued all say the same thing because the reader's action is the same. **The queue view (§17a) is where that distinction now lives.**
+
+**`attemptStateFor`'s unindexed request-path scan is untouched**, and the artist-level column that would fix it remains declined with its triggers recorded.
+
+---
+
+## 66. Operator queue view — implemented, reviewed, returned once by STEP G, committed, pushed and CI-verified
+
+**Pushed as `5b0f40e`**, parent `92136e0`. `origin/main` resolves to exactly that SHA, ahead/behind 0/0. The decision is `architecture.md` §17a. **No migration, so STEP I did not gate.**
+
+### What changed
+
+**Five new files, 618 insertions.** `queue-view.ts` (the claim-mirroring read and `stateFor`), `queue-view-auth.ts` (the rule, extracted so it is testable), `src/app/debug/queue/page.tsx`, plus 7 unit and 9 integration tests. `docs/deployment.md` gains a secrets table.
+
+**Nothing existing changed.** No service the product uses, no schema, no route the product links to.
+
+### Where it came from
+
+**A direct request from the maintainer**, mid-cycle, while F-027 was at STEP B: _"add a visual … where I can see the status of the queued items, which is next, how I can tell if it's failed or waiting until cron."_
+
+**STEP B declined to fold it into F-027** and made it its own cycle, **ahead** of F-027 — because it carries an access-control decision that should not sit inside a review about copy, and because **it is the instrument for watching F-027 land.** F-027 is fully decided and recorded in `architecture.md` §7 as **deliberately unbuilt**.
+
+### The access decision, which is the substance
+
+**A secret query parameter, not a privileged user.** The reasoning is in §17a and the short form is: **a privilege model introduced for a temporary page would outlive the page.** The weakness — secrets in URLs — is accepted **only** because the page performs no mutation, and §17a states that the access model must change before anything on the page does.
+
+### Verification
+
+**Local `verify:full` RED** — 108/19 in 25.3m, the worst recorded. **The changed code is unreachable from the suite**; the signature is whole-file setup collapse; isolated rerun 44/44.
+
+**CI run `34764182898` (#102), attempt 1, on exactly `5b0f40e`: `completed/success`.** Both jobs green — 387 unit and component, 704 integration, 1 seed, **127 end-to-end in 11.2m, zero flaky, zero retries**.
+
+**11.2m against the local run's 25.3m on the same tree.** CI is not faster because it is lenient — it absorbed nothing, every test passing first attempt — but because it runs two parallel jobs on clean runners. **That contrast is now the sharpest single measurement of the local gate's problem.**
+
+### Known limitations and residual items
+
+**No end-to-end coverage of the page itself.** It is unlinked and secret-gated, and adding a spec would mean wiring a secret into the suite. **The auth rule is unit-tested and the read is integration-tested; the rendering is not.** The screenshot in the session is the only evidence the page renders, and it was taken locally.
+
+**The mirrored ordering can drift from the claim's.** Accepted deliberately — the alternative is a diagnostic with side effects.
+
+**The removal trigger is `[OPEN]` until acted on**, and lives both in §17a and on the page.
+
+**The host's degradation is now the dominant cost of every cycle** — see the header block. It has never identified a real defect and consumes ~25 minutes per run.
+
+---
+
+## 65. Browse and Home composition — implemented, reviewed, committed, pushed and CI-verified
+
+**Pushed as `92136e0`**, parent `3647c37`. `origin/main` resolves to exactly that SHA, ahead/behind 0/0. The decisions are `design-reference.md` §11.11, `product-spec.md` §8.3, and the Phase 5 slice 2 deferral in `development-plan.md`. **No migration, so STEP I did not gate.**
+
+### What changed
+
+**Three files, 99 insertions, 57 deletions.** `src/app/albums/page.tsx` swaps section order, density and captions. `src/app/page.tsx` reads `getRecentAlbums` and renames `HOME_POPULAR_LIMIT` to `HOME_SECTION_LIMIT`. `tests/e2e/home.spec.ts` updates locators and two cases.
+
+**No service layer, no schema, no data.** `getPopularAlbums`, §8.3's external fill and its floor of 20, `popularity_score`, membership and every catalogue row are untouched.
+
+### Where it came from
+
+**F-024a**, filed 2026-09-07 with the maintainer's stated identity — _"Pitchfork, not Rolling Stone"_. STEP A ranked it first once the deployed measurement showed the lead section was ~70% external fill, and once **Phase 5 slice 2 was found to be unbuildable**: two ratings product-wide against a five-per-album threshold means an empty chart filled externally, **adding a second mainstream section to the surface being de-emphasised.**
+
+### Verification
+
+**Local `verify:full` RED** — 113/14 in 22.7m, the longest run recorded. **Attribution rests on positive evidence for the first time this session**: every test covering the change passed inside the red run. Isolated rerun 37/37.
+
+**CI run `34758103698` (#101), attempt 1, on exactly `92136e0`: `completed/success`.** Both jobs green — **127 end-to-end in 13.7m, zero flaky, zero retries**. **Unlike §64 this is real evidence**, because `browse.spec.ts` and `home.spec.ts` render exactly what changed — and the seven cases that cover it passed on CI as they had locally inside a red run.
+
+### Known limitations and residual items
+
+**Two test-coverage losses**, both recorded in the tests themselves: the empty-section gate is unreachable from the fixture suite, and the cross-page chart-ranking assertion was dropped.
+
+**The hierarchy is a cold-start treatment, not a ranking principle.** Recency is not quality; it works because _recent_ is currently _curated_. **Trigger to reopen: the internal chart reaching 20 entries from real activity** — shared with slice 2's deferral.
+
+**Phase 5 stays incomplete and that is now a recorded decision** rather than outstanding work waiting to be picked up.
+
+**The broader popularity question is untouched.** Whether longplayr's engagement popularity and external prominence become one field or two remains open in §8.9.
+
+**F-024b remains a hazard, not a candidate.** Nothing was deleted, and the cascade has grown to include `list_items` and `discovery_chart_entries`.
+
+---
+
+## 64. Drain cadence — implemented, reviewed, committed, pushed and CI-green; CI cannot verify the change itself
+
+**Pushed as `3647c37`**, parent `c5e5c85`. `origin/main` resolves to exactly that SHA, ahead/behind 0/0. The decision is `architecture.md` §7, _Cadence is per cron, not per day_, with a §18 verification row. **No migration, so STEP I did not gate.**
+
+### What changed
+
+**One file.** `vercel.json` declares **twelve** `/api/cron/drain-jobs` entries at even hours instead of one, plus the unchanged `/api/cron/refresh-charts` at 05:00. **No code, no tests, no schema.**
+
+### The finding, which is a correction rather than a discovery
+
+**This document asserted a platform ceiling that does not exist**, three times: cadence "capped at once a day by the hosting plan". **Hobby allows 100 cron jobs per project; the cap is per expression.** The note that recorded this correctly had been in §— since early September and I read past it in three consecutive cycles. **Both wrong assertions are corrected in place and marked, not silently updated.**
+
+### Verification, and its honest limit
+
+**`npm run verify` exit 0** from a clean build, 380 unit tests. **`verify:full` RED** — 120 end-to-end passed, 7 failed, 37/37 on isolated rerun, six failures carrying `signUp` frames and nine dropped server streams in the log.
+
+**No suite can reach `vercel.json`.** Attribution is definitional rather than evidential. **CI #100 came back `completed/success` on exactly `3647c37`, and that confirms only that nothing else broke** — it is not evidence for this change and is not recorded as such. Verified instead by inspection: twelve fixed-minute fixed-hour expressions, minimum gap two hours, 13 entries against a limit of 100, 05:00 clear of every drain hour.
+
+**Neither half of the real verification has happened:** the deployment accepting the file, and a drain firing at an hour it previously did not.
+
+### Known limitations and residual items
+
+**The effect is a projection, not a measurement.** ~72 jobs a day is arithmetic from a 45-second budget and a ~7-second job. **Whether the backlog actually falls is checkable on the deployed database and had not fallen at the time of writing.**
+
+**Baseline recorded on the deployed database at 2026-09-13 11:20 UTC, so the effect is measurable rather than argued:**
+
+|                               |                                                                                                 |
+| ----------------------------- | ----------------------------------------------------------------------------------------------- |
+| Albums total                  | **948**                                                                                         |
+| `artwork_status: pending`     | **226** — 23.8% of the catalogue, up from 22.6% on 09-13 morning                                |
+| `found` / `absent` / `failed` | 676 / 45 / 1                                                                                    |
+| Outstanding jobs              | 223 `fetch_artwork`, 4 `discover_curated_artist`, 3 `ingest_release_group`, 1 `fetch_tracklist` |
+| Most recent job activity      | 07:59 UTC — **the 04:00 cron, before any of this cycle's or §63's code was deployed**           |
+| Radiohead `#1350`             | still `failed`, `attempts = 3`, untouched since 2026-09-07                                      |
+
+**Two things this baseline settles.** The backlog was still **growing** at the moment of the change — 207 pending jobs on the morning measurement, 223 now. And **neither §63's sweeps nor this cycle's schedule has yet run**: the last drain was 07:59, before either deployed. **So §63's repair of Radiohead and §64's cadence are both entirely unobserved**, and the next drain window is the first evidence either will produce.
+
+**F-028 is untouched and that was the constraint on the design.** Two-hour spacing was chosen so concurrent drains cannot arise; **24 entries were declined for that reason rather than on effect**, and remain available if the limiter is ever made cross-invocation.
+
+**The chart cadence divergence in §8 is now closeable by the same mechanism and deliberately is not.** A seven-day window does not need two-hourly recomputation.
+
+**Twelve invocations a day count against Hobby function usage** — a meter, not a cap.
+
+---
+
+## 63. Recovery sweeps — implemented, reviewed, returned once by STEP G, committed, pushed and CI-verified
+
+**Pushed as `c5e5c85`**, parent `f68e050`. `origin/main` resolves to exactly that SHA, ahead/behind 0/0. The decision is `architecture.md` §7, _Recovery sweeps, and the cron finally calls them_. **No migration, so STEP I did not gate.**
+
+### What changed
+
+**Three files, 255 insertions, 3 deletions.** `jobs.ts` gains `EXPANSION_RETRY_AFTER_MS` and `enqueueFailedExpansions`. `src/app/api/cron/drain-jobs/route.ts` calls all three sweeps before its drain and reports their counts as `swept`, without altering any existing response field. `tests/integration/jobs.test.ts` gains seven cases.
+
+**Nothing else moved.** `expansionStateFor`, `attemptStateFor`, `claim_ingestion_jobs`, the drain loop, every priority band, `DRAIN_BUDGET_MS`, `maxDuration`, the cron schedule and the artist page are untouched.
+
+### Where it came from, and why it took three cycles
+
+**F-034**, raised when a mid-cycle check of the deployed queue during §61 found Radiohead terminally failed. **§61's STEP B decided the mechanism — a sweep — and deferred it one cycle; §62's STEP A deferred it again** on the argument that a sweep adds work to an over-full queue. **That argument was quantitatively wrong and §63's STEP A said so: the deployed database held exactly one terminally failed expansion.** The sweep queues one job.
+
+### Two findings the cycle produced rather than consumed
+
+**A paging bug that would have answered an open product question by accident** — see the header block. Caught at STEP G, not by a test.
+
+**A trigger that made three tests lie.** `ingestion_jobs_set_updated_at` fires `before update`, so a backdated timestamp written in a second statement is overwritten. **Generalisable: any test that needs an aged `ingestion_jobs` row must set the timestamp at insert.**
+
+### Verification
+
+**Local `verify:full` is RED and is not reclassified** — 118 end-to-end passed, 9 failed, all nine coinciding with a dev-server dropped stream on a host measured at load 6.33 with ~63MB free. The changed code is unreachable from the suite. Isolated rerun 35/35.
+
+**CI run `34748818301` (#99), attempt 1, on exactly `c5e5c85`: `completed/success`.** Both jobs green — 380 unit and component, 695 integration, 1 seed, end-to-end clean on first attempt. Slow rather than troubled, like #98. **The local run stays recorded as RED.**
+
+### Known limitations and residual items
+
+**The sweep's effect is verifiable on exactly one artist**, and only after a deployed cron run. **The first run performs all three sweeps** — about ten jobs on current data.
+
+**An unfixable artist is now retried three times a night indefinitely.** Accepted deliberately: the alternative reintroduces permanent exclusion.
+
+**`attemptStateFor`'s unindexed request-path scan is untouched**, and the artist-level column that would fix it remains declined with its triggers recorded.
+
+**Artwork throughput and cadence remain `[OPEN]`.** This cycle adds recovery, not capacity.
+
+**F-031 is partly superseded and F-034 is now addressed; neither entry is marked, because the file is the maintainer's.**
+
+---
+
+## 62. Artwork sizing — implemented, reviewed, returned once by STEP E, committed, pushed and CI-verified
+
+**Pushed as `f68e050`**, parent `f34c0b4`. `origin/main` resolves to exactly that SHA, ahead/behind 0/0. The decision is `architecture.md` §7, _Store only the sizes that are served_. **No migration, so STEP I did not gate.**
+
+### What changed
+
+**Two files, 30 insertions, 4 deletions.** `ARTWORK_SIZES` becomes `[250, 500]` with a comment recording which surfaces serve which size and why deferring 1200 is safe. `tests/integration/artwork.test.ts` updates two assertions in one test.
+
+**Nothing else moved.** `fetchAndStoreArtwork`'s loop structure, `DEFAULT_BATCH_SIZE`, `DRAIN_BUDGET_MS`, `maxDuration`, the cron schedule, every priority band, the claim function and the drain loop are untouched.
+
+### Why it was ranked first, against a prior decision
+
+§61's STEP B had settled F-034's sweep as "next cycle". **The intake measurement arrived after that** — 22.6% of the catalogue without covers, and a backlog growing weekly — and STEP A argued two things: magnitude, and that **a sweep adds work to a queue already tens of nights behind**, so throughput plausibly comes first. The maintainer accepted the reordering. **F-034 remains next.**
+
+### The regression test, and why it is the bucket rather than the constant
+
+It enumerates the storage bucket's contents, so a change that kept the returned `sizes` truthful while still uploading three files fails it. Restoring 1200 produced `expected { status: 'found', …(1) } to deeply equal …`; restored and re-confirmed at 11/11. **Both assertions live in the same test**, which is why the revert failed one test rather than two.
+
+### Verification
+
+**Local `verify:full` is RED and is not reclassified** — 125 end-to-end passed, 2 failed, both in `review-likes.spec.ts`, both green on an isolated rerun. Attribution rests on a structural fact: **no `img` element renders on any local page**, because all seven fixture albums are `artwork_status: 'pending'`.
+
+**CI run `34747438948` (#98), attempt 1, on exactly `f68e050`: `completed/success`.** Exactly one run for the SHA. Both jobs green — 380 unit and component, 688 integration, 1 seed, **127 end-to-end in 14.2m, zero failures, zero flaky, zero retries**.
+
+**The run was unusually slow rather than troubled** — 14.2m against #97's 10.3m for the same 127 tests — and finished clean on first attempt, so `retries: 2` absorbed nothing. **The local run stays recorded as RED.**
+
+### Known limitations and residual items
+
+**An improvement, not a fix, and the record says so in three places.** ~6 covers a night against 207 pending and growing; **cadence is the harder ceiling and is `[OPEN]`.**
+
+**F-031 is partly superseded and partly still live.** Its diagnosis — that the serialism was unforced — was right; its premise about which sizes mattered was not checked by it or by me. **With two sizes its parallel-fetch mechanism remains available** and is the next per-job lever. **The entry is not marked, because the file is the maintainer's.**
+
+**Orphaned `1200.jpg` files**, ~100–200MB across ~721 albums, recorded and deliberately not deleted.
+
+**A grep-based investigation was wrong and a type caught it.** Recorded because the lesson generalises: `ArtworkSize` deriving from `ARTWORK_SIZES` turned a would-be production 404 into four compile errors.
+
+---
+
+## 61. Later views drain — implemented, reviewed, returned once by STEP F, committed, pushed and CI-verified
+
+**Pushed as `f34c0b4`**, parent `2be9b3c`. `origin/main` resolves to exactly that SHA, ahead/behind 0/0. The decision is `architecture.md` §7, _A later view drains too_. **No migration, so STEP I did not gate.**
+
+### What changed
+
+**Two files, 68 insertions, 5 deletions.** `src/app/artists/[mbid]/page.tsx` changes one condition — `expansion === 'start'` becomes `expansion !== 'settled'` — and records why in comments. `tests/e2e/artist-depth.spec.ts` gains a `makeClaimable` helper, two columns on its job select, and one test.
+
+**Nothing in the service layer moved.** `expansionStateFor`, `attemptStateFor`, `drainJobs`, `claim_ingestion_jobs`, every priority band, `enqueueJob` and the once-per-artist guarantee are untouched.
+
+### Where it came from
+
+**F-026, confirmed in live use on the deployed site** after the previous cycle shipped, then traced to the `start` gate. STEP A ranked it first on that evidence; STEP B chose the condition change over three alternatives.
+
+### The test asserts the drain, not the enqueue
+
+The enqueue already worked; the drain never ran. So the case spends one attempt on a first view, steps over the 30-second backoff, reloads, and requires `attempts` to reach **2** while exactly **one** row remains. **Reverting the condition fails it with `expected 2, received 1` and fails nothing else** — confirmed, then restored.
+
+### Verification
+
+**Local `verify:full` is RED and is not reclassified** — 122 end-to-end passed, 5 failed. Attribution is structural: **none of the four failing spec files navigates to `/artists/` at all**, `artist-depth.spec.ts` passed 5/5 inside the same run, and an isolated rerun of the four returned 23/23.
+
+**CI run `34717249620` (#97), attempt 1, on exactly `f34c0b4`: `completed/success`.** Exactly one run for the SHA. Both jobs green — 380 unit and component, 688 integration, 1 seed, **127 end-to-end in 10.6m, zero failures, zero flaky, zero retries**.
+
+**127 is the evidence the new case ran**, one more than #96's 126. **And zero flaky is what makes CI corroborate the local attribution rather than outvote it**: `retries: 2` on CI absorbed nothing, because every test passed first attempt. **The local run stays recorded as RED** — different hardware, and it ran before the push.
+
+### Known limitations and residual items
+
+**No bounded guarantee.** A refresh drains the oldest ready job, not this artist's. A target-filtered claim is the recorded escalation and costs a migration.
+
+**Deployed reliability of `after()` is not established** — see F-033, corrected the same day from "absent" to "delayed".
+
+**Terminal failure is untouched and is now a defect, not approved behaviour.** F-034. Population measured at exactly one artist. Assigned to the next cycle as a **sweep**.
+
+**Five artwork jobs have been `failed` since August** and are recoverable only by running `enqueueMissingArtwork` by hand — which nobody has. `current-state.md` §11's question of whether the cron should run the sweeps itself is now **three sweeps wide**, and this is the evidence that a sweep nobody calls is how the defect recurs.
+
+---
+
+## 60. Queue fairness — implemented, reviewed, returned once by STEP G, committed, pushed, deployed and CI-verified
+
+**Pushed as `2be9b3c`**, parent `aba3a07`. `origin/main` resolves to exactly that SHA, ahead/behind 0/0. The decision is `architecture.md` §7 _Queue fairness_; the product consequence is the `product-spec.md` §8.9 annotation; the phase record sits inside the **third** Phase 1 reopening in `development-plan.md`.
+
+### What changed
+
+**Seven files, 241 insertions, 9 deletions, no `.md` among them.** `queue.ts` gains `BULK_ARTWORK_PRIORITY = 200`. `curated-tranche.ts` and `seed.ts` enqueue artwork into it. `jobs.ts` makes the post-ingest enqueue conditional on the parent job's priority and defaults `enqueueMissingArtwork` to the bulk band. One data-only migration reprioritises rows already queued. Two integration test files gain four cases.
+
+### Where it came from
+
+**F-030**, filed the same day after manual testing of the previous cycle's deploy. STEP 00 triaged it alongside F-024 to F-029; **STEP A also triaged F-000 to F-023, which had never been triaged at all** — that pass found F-007, F-017 and F-018 describing work already shipped and never reconciled.
+
+### STEP D returned the boundary to STEP B, and the return was correct
+
+**STEP B approved three uniformly bulk call sites. STEP D found that one of them serves interactive traffic**: `jobs.ts`'s post-ingest enqueue sits inside the `ingest_release_group` case, and the album page enqueues that kind at `INTERACTIVE_JOB_PRIORITY`. Applying the boundary literally would have made a just-opened album's cover arrive **later** than before — a regression, not merely an under-delivery. It also found `enqueueMissingArtwork` defaulting to the old band, so the repository's own recovery tool would have recreated the starvation.
+
+**The reopened STEP B adopted the conditional and included the sweep.** The album-page path therefore improves rather than regressing, which was accepted deliberately. **This is the second consecutive cycle to use the return-to-step mechanism**, and the first to use it from STEP D.
+
+### STEP G returned `NOT READY TO COMMIT`
+
+Three findings, all fixed and re-reviewed: a comment in `jobs.ts` this change made false in both directions; **no test on the call site the defect was actually measured at**; and a badly wrapped doc comment. See the header blocks above.
+
+### Verification
+
+**Local `verify:full` is RED and is not reclassified** — 117 end-to-end passed, 9 failed, all nine inside auth helpers, all nine green on an isolated rerun. Attribution meets two of the three criteria; the third is not established and is recorded as such.
+
+**CI run `34125969906` (#96), attempt 1, on exactly `2be9b3c`: `completed/success`.** Exactly one run exists for the SHA. Both jobs green — 380 unit and component, 688 integration, 1 seed, **126 end-to-end in 10.3m, zero failures, zero flaky, zero retries**.
+
+**The zero-flaky figure is what makes CI corroborate the local attribution rather than merely outvote it.** `playwright.config.ts` sets `retries: 2` on CI against `0` locally, so a green CI run could in principle be absorbing the same failures. It absorbed nothing here: every one of the 126 passed on its first attempt. **The local run stays recorded as RED** — different hardware, and it ran before the push.
+
+**The migration applied to the deployed database before the push**, dry-run first (one migration, nothing else), then `npm run db:pending` clean, then the push — which the pre-push hook re-checked.
+
+### Known limitations and residual items
+
+**The migration's effect on real rows is unverifiable by any suite.** A fresh database has no legacy rows, so it matches nothing in CI or locally. Only that it parses and applies is established.
+
+**Contention is fixed; throughput is not.** Roughly four covers clear per nightly cron run against the 45-second budget, so a large artwork backlog still takes days. Deferred deliberately.
+
+**Starvation in the opposite direction is now possible and was accepted.** Artwork drains only once pending metadata is exhausted. Bounded rather than open-ended, because a discovery job is enqueued once per artist ever.
+
+**A general hazard was exposed and is not fixed:** `verify:full` never resets the database, so any cycle carrying a migration can pass it without that migration ever being parsed. Closed by hand here; nothing prevents a recurrence.
+
+---
+
+## 59. Artist discography depth — implemented, reviewed, returned to STEP B, ratified, committed, pushed and CI-verified
+
+**Pushed as `aba3a07`**, parent `abb3adc`. `origin/main` resolves to exactly that SHA, ahead/behind 0/0. The product decision is `product-spec.md` §8.9 and §6, the architectural consequence `architecture.md` §7, and the phase record sits inside the **third** Phase 1 reopening in `development-plan.md`.
+
+### What changed
+
+**Five files, 511 insertions, no deletions, and no `.md` among them.** `src/services/catalogue/jobs.ts` gains `attemptStateFor`, reading every job row for a kind and target across all statuses. `src/services/catalogue/artist-depth.ts` is new and owns the eligibility rule and the excluded identifier. `src/app/artists/[mbid]/page.tsx` calls it, enqueues in `after()` at `DEFAULT_JOB_PRIORITY` when the answer is `start`, and renders one status line while not `settled`. Two new test files.
+
+**The existing machinery is untouched.** `discoverAndIngestArtist`, `withinCurrentDepth`, `depth-policy.ts`, `scope.ts`, the job kind, the drain dispatch, `BACKGROUND_RETRY`, `enqueueJob`, `drainJobs`, the claim function, `seed.ts` and `seed-selection.ts` are all unchanged, and the diff contains **zero** occurrences of `DEFAULT_MAX_PER_ARTIST`, `withinCurrentDepth` or `OUTSIDE_CURRENT_DEPTH`.
+
+### One planned placement could not hold, and why
+
+**STEP D put the eligibility rule in `curated-tranche.ts`; that is impossible.** `jobs.ts:9` already imports `discoverAndIngestArtist` from that module, so a rule there needing `attemptStateFor` would close an import cycle — verified rather than assumed. A new module imports `jobs` and is imported only by the page. **`curated-tranche.ts` was not renamed** despite now hosting a function serving every artist; that cleanup is out of scope and recorded rather than done.
+
+### The finding that reopened the cycle
+
+**STEP G returned it to STEP B**, and the reopened STEP B ratified the narrower guarantee rather than widening the boundary. The evidence and the decision are summarised in the header blocks above and recorded authoritatively in `product-spec.md` §8.9 `[RATIFIED 2026-09-07]` and `architecture.md` §7 `[RESOLVED 2026-09-07]`. **The reopening corrected STEP G's own evidence**: the file deletions it cited are test-only and fenced to a local database.
+
+**This is the first cycle to use the return-to-step mechanism**, which `CLAUDE.md` gained mid-cycle. It worked as described — a later step held information the deciding step did not, and the boundary was re-decided rather than approximated.
+
+### Verification
+
+**Local `verify:full` is RED and is not reclassified** — twice, on an identical tree, at ~7× this repository's usual failure rate. Attribution meets the standard `CLAUDE.md` now sets and is recorded above.
+
+**CI run `34103201313` (#95), attempt 1, on exactly `aba3a07`: `completed/success`.** 380 unit and component, 681 integration, 1 seed, **126 end-to-end in 10.5m, zero failures, zero flaky, zero retries.** Exactly one run exists for the SHA. **The zero-flaky figure matters**: CI sets `retries: 2`, so a clean first-attempt pass means CI absorbed nothing.
+
+**No migration**, confirmed by a real `db:pending` comparison immediately before the push, so **STEP I did not gate** under the amended process.
+
+### Known limitations and residual items
+
+**The expansion has never been observed completing.** The placeholder `MUSICBRAINZ_CONTACT` makes `assertIdentifiable()` throw inside the drained job locally and in CI, so every end-to-end assertion is about **rows and rendering**, never job status. That a real expansion populates albums is established by `curated-recovery.test.ts` against a **mocked** client — that is the only evidence, and it is not live-integration evidence.
+
+**Three minor findings, recorded rather than fixed.**
+
+- **The status line can momentarily claim work that was never queued.** On a `start` view the line ships with the response and the enqueue runs afterwards in `after()`; if it fails it is swallowed, so the delivered page claimed something untrue. The window is one render, the next view retries, and the album page has the identical property — but it is a real inaccuracy.
+- **`attemptStateFor` is an unindexed scan** on `kind` and `target_mbid` across all statuses, in a request path, on a table that grows with every job. Negligible at ~2,000 rows and unfixable inside a no-migration boundary; an artist-level column would resolve it incidentally.
+- **Terminal failure permanently settles an artist**, which is approved behaviour. **[APPROVAL WITHDRAWN 2026-09-12 — the maintainer has ruled this a defect; see `product-feedback.md` F-034 and `architecture.md` §7. Preserved as written because it records what was approved at the time.]** Its only correction is deleting the job row — **the very operation the ratified guarantee depends on not happening.**
+
+**One operational incident.** During implementation, integration suites were run after the fixture seed, truncating `albums` and `artists` and producing 404s in artist end-to-end tests — the hazard `CLAUDE.md` names explicitly. Diagnosed as an empty catalogue rather than a regression, re-seeded, and re-run clean. **Seed after testing, not before.**
+
+**`npm run verify` fails locally** on `CLAUDE.md` and `docs/product-feedback.md` formatting — maintainer-owned, untouched here, and uncommitted so CI is unaffected.
+
+## 58. Upstream panel reach — implemented, reviewed, committed, pushed and CI-verified
+
+**Pushed as `abb3adc`**, parent `4dc07b5`. `origin/main` resolves to exactly that SHA, ahead/behind 0/0. **The authoritative decision is `product-spec.md` §8.10 `[DECIDED 2026-09-06]`**, with the architectural consequence in `architecture.md` §7 and the phase record inside the second Phase 1 reopening in `development-plan.md`. **This cycle addresses the feedback entry F-018 without resolving it**, for the reason below.
+
+### What changed
+
+**Three files, 410 insertions and 2 deletions, and no `.md` among them.** `src/services/catalogue/self-service.ts` gains `UPSTREAM_FETCH_DEPTH = 25` and passes it to `searchReleaseGroups` in place of `limit * 2`. `src/app/search/UpstreamPanel.tsx` gains `UPSTREAM_RESULTS = 10` and passes it in place of the literal `5`. `tests/integration/upstream-search.test.ts` is new. **Exactly two lines are behavioural**; everything else is comment or test.
+
+**The signature is unchanged.** `searchUpstream(query: string, limit = 10)` keeps its meaning — `limit` caps survivors — and simply stops influencing retrieval. **Independence is achieved by deleting the multiplier rather than by adding a parameter**, so no caller can reach the fetch depth at all.
+
+**Neither constant is exported**, and the tests assert observable behaviour rather than the constants, which would have been tautological.
+
+### The mechanism, which was not previously recorded anywhere
+
+**`product-spec.md` §8.10 recorded the five-candidate display cap and never the pool behind it.** `searchUpstream` requested `limit * 2` release groups, so the panel's five produced a pool of **ten**, which was then filtered through `classify().inScope` and again against every MBID the catalogue already holds before being sliced. **A displayed count below five was produced by filtering, not by upstream supply** — which is why F-018's report of "four or five" could never have been attributed to the cap alone.
+
+**Two consequences follow from the code rather than from any observation.** The pool was fixed at ten regardless of catalogue size while the already-held filter removes a growing share of it, so the defect **deepens with every curated tranche**. And the multiplier carried no comment and appeared in no document, which is why it — rather than the number five — is what the cycle corrects.
+
+**This also corrected a statement §8.10 already contained.** Its §8.9-interaction paragraph concluded that "with the gate gone, catalogue growth no longer degrades reachability", which the newly established mechanism contradicts. It is marked `[CORRECTED 2026-09-06]` with the original preserved, and the enlarged pool **reduces the sensitivity rather than eliminating it**, since the filter scales with catalogue size and twenty-five does not.
+
+### What the tests establish, and the one detail that makes them a regression test
+
+**Ten tests, the first coverage `searchUpstream` has ever had.** Integration rather than unit, because the pipeline has two external dependencies and only one can be honestly faked: MusicBrainz is stubbed at `fetch`, while the already-held filter runs against the **real database** rather than a mocked query builder.
+
+**The stub honours the requested URL limit.** A fixed array would have returned the same rows whatever was asked for, letting the old implementation pass — so the starvation fixture would have proved nothing. Its shape is **eighteen singles, then two held records, then five free ones**: `limit * 2` yields zero survivors at a display limit of five (fetching ten) and zero at ten (fetching twenty), while a fixed depth of twenty-five yields five.
+
+**Verified by experiment.** Temporarily restoring `limit * 2` failed three tests — `expected [ 20 ] to deeply equal [ 25 ]`, `expected [ 6, 40 ] to deeply equal [ 25, 25 ]` and `expected [] to have a length of 5` — and the implementation was then restored and re-confirmed green.
+
+**One test-quality observation, non-blocking and recorded rather than fixed.** The empty in-scope test proves the early return by spying on the admin client's `from` and asserting it is never called, because the return value is identical either way — a deleted early return would issue `.in('mbid', [])`, have its error discarded, and still yield `[]`. **It has no positive control** establishing that the `createAdminClient` namespace spy intercepts, unlike `self-service.test.ts`'s precedent, which asserts a call count before asserting no increment. The mechanism is near-certainly sound — `self-service.test.ts` depends on the same namespace-spy technique — but the test's non-vacuity is inferred rather than demonstrated.
+
+### Verification
+
+**Local `npm run verify:full` is RED — exit 1 — and is not reclassified.** All stages before Playwright passed: prettier, eslint, typecheck, **380 unit**, the build, **667 integration** (up from 657) and 1 seed. End-to-end returned **116 passed, 6 failed** in 16.2m. **All six passed on an isolated rerun**, none touched the changed surface, and all six `search.spec.ts` tests passed inside the red run itself. Across three end-to-end runs on this tree the failure sets differ — 12, 1, 6 — **with partial overlap**, and no mechanism is established.
+
+**CI run `34059566618` (#94), attempt 1, on exactly `abb3adc`: `completed/success`.** Both jobs green — 380 unit and component, 667 integration, 1 seed, **122 end-to-end in 13.5m, zero failures, zero flaky, zero retries**. Exactly one run exists for the SHA. **The combined commit status is `success` and both check-runs completed successfully; there are no formally required checks**, because branch protection returns HTTP 403 on a private repository without a paid plan.
+
+**The six local failures did not reproduce on CI.** That is direct evidence for the attribution above and stronger than the code-path reasoning it corroborates. **It does not make the local run green.**
+
+**No migration.** The commit touches no `supabase/` path, and `npm run db:pending` printed its green comparison — not a fail-open warning — immediately before the push, confirming 27 deployed migrations with none unapplied.
+
+### What remains open
+
+**F-018 itself is still `[OPEN]`.** The cycle repairs one of at least two mechanisms capable of producing the reported failures; **which was responsible in any observed search is unestablished.**
+
+**The populated panel is unobservable locally and in CI.** Every env file carries the placeholder contact, so `assertIdentifiable()` throws and `searchUpstream` returns `[]` — confirmed on the CI log by zero occurrences of the panel's heading and zero `musicbrainz.org` requests. **The display limit of ten is therefore established at the service layer and by inspection, never in a browser**, and CI's 122 passes say nothing about it.
+
+**Upstream artist matching remains `[OPEN]`**, blocked on verifying field-qualified Lucene syntax against the live API — a verification `architecture.md` §7a shows is routed through staging, where the contact is real. **"Show more" is deferred with a stated reason** rather than merely unresolved. **F-019's aliases and phonetic matching remain a separate candidate.** Response size and latency at depth 25 are **unmeasured**, since no live call can be made.
+
+## 57. Discovery-surface image loading — implemented, reviewed, committed, pushed and CI-verified
+
+**Pushed as `4dc07b5`**, parent `8f4aa00`. `origin/main` resolves to exactly that SHA, ahead/behind 0/0. **The authoritative decision is `design-reference.md` §11.10 and is not restated here** — this section records progress and evidence.
+
+### What changed
+
+**Two files, 95 insertions and 2 deletions, and no `.md` among them.** `src/components/AlbumGrid.tsx` exports `DENSITY`, gains a `BASE_COLUMNS` record beside `SOURCE` and `RENDER_PX`, indexes its `albums.map`, and passes `priority={index < BASE_COLUMNS[density]}` to the `AlbumCover` it already rendered. `src/components/AlbumGrid.test.ts` is new.
+
+**The rule is implemented centrally, in `AlbumGrid`**, so Home, Browse's Popular and Recently added, the list page and the artist discography receive it with no call site deciding anything. **No migration, no new database object, no service, page, component, configuration or fixture change** — `db:pending` reported the deployed database current before the push and again after, and the commit contains zero `supabase/` paths.
+
+**The cycle deliberately introduced no length boundary**, and no show-more, responsive hiding, query-limit change, shorter chart or per-breakpoint density. **Counts, composition, ordering, captions, densities, breakpoints, cell sizes and asset sizes are untouched.**
+
+### Why the numbers are stated twice, and what stops them drifting
+
+**Tailwind only generates classes it can see literally**, so an interpolated `grid-cols-${n}` would never be emitted and the grid would silently lose its columns. The count therefore **cannot** be computed from the ramp in production.
+
+`AlbumGrid.test.ts` pins them instead: it parses the bare unprefixed `grid-cols-N` out of each `DENSITY` string **in the test** and asserts it equals the recorded count, so re-tuning the ramp without moving the count **fails rather than drifts**. Two of its seven cases prove the parser first — a parser that silently matched a prefixed class would make every case after it pass for the wrong reason — one asserts the record covers exactly the three densities, and a third group pins the literal values so a coordinated but wrong change still has to be deliberate.
+
+### Verification actually established
+
+|                                                           |                                                                                                                                                        |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `npx tsc --noEmit`, `format:check`, `lint`, `typecheck`   | all exit 0                                                                                                                                             |
+| Invariant test, unit project                              | **7 passed**                                                                                                                                           |
+| `rm -rf .next && npm run verify`                          | exit 0 — **27 files, 380 tests**, clean compile                                                                                                        |
+| Playwright, all four grid surfaces                        | **22 passed** — `browse` 2, `home` 5, `lists` 8, `artist-sort` 7                                                                                       |
+| **CI #93 `34035787928`, attempt 1, on exactly `4dc07b5`** | **`completed/success`, both jobs — 380 unit and component, 657 integration, 1 seed, 122 end-to-end in 14.2m, zero failures, zero flaky, zero retries** |
+
+**The 22 Playwright tests establish structural regression only** — that every grid surface still renders with its links, captions and ordering intact. **They establish nothing about `priority`**, and cannot; see below.
+
+**Local `verify:full` was not run this cycle.** The targeted sequence above was run instead, and CI #93 covers the full suite on the exact SHA.
+
+### ⚠️ Verification limitations — the rendered outcome is unverified
+
+**The planned component test was not created.** The `component` Vitest project fails at worker startup: `jsdom@29.1.1` → `html-encoding-sniffer@6` → `require()` of `@exodus/bytes@1.15.1`, which is `"type": "module"` — **`ERR_REQUIRE_ESM` on Node v20.17.0**, thrown **before any test file is imported**. **Latent rather than new**: no `.test.tsx` has ever existed, so jsdom has never been instantiated and `verify` has always passed over an empty project. **Any `.test.tsx` present breaks `npm run verify`**, which is why the diagnostic scaffold was removed rather than left behind.
+
+**Nothing therefore asserts that exactly two, three or four leading images carry the marking, that they are the leading ones in DOM order, or that the remainder do not.** That was the missing test's whole job, and it is the assertion that would catch an off-by-one or a rule applied to every cell. **The invariant test and the typecheck are not offered as substitutes**, and **CI #93's green first job does not close it** — that job ran the same seven invariant cases.
+
+**No local fixture can observe it either.** All seven fixture albums are `artwork_status = 'pending'`, so `AlbumCover` takes its placeholder branch and **no `img` element renders on any local page**. The behaviour is unobservable end to end there regardless of the harness, which is why the plan proposed no browser test for it.
+
+**What `next/image` actually emits for a priority image in this project was never established**, because the probe that would have answered it could not run.
+
+**A post-deploy manual check exists and has not been run.** Before this deploy the deployed `/albums` served 41 real covers, all `loading="lazy"`. **That is manual inspection, not automated verification.** **No claim is made about the Vercel deployment**, which was not inspected.
+
+### Recorded at review, not fixed
+
+**The rule is per-density and universal, so Browse marks two on Popular and three on Recently added — and Recently added is never the largest contentful paint.** Three of the five marked images on that page are over-marked, which is the effect `priority` exists to avoid. §11.10 weighed universal against per-surface and chose universal for drift reasons, so **this is the decision working as decided rather than a defect**. Worth revisiting with measurement.
+
+**The environment blocker is itself unresolved work.** The next cycle wanting a component test meets the same wall. Unblocking it — Node 22 or later, a dependency override, or a different DOM environment — is an environment or configuration decision and was deliberately **not** folded into this cycle.
+
+---
+
+## 56. Phase 5 slice 3 — Home discovery surface: implemented, reviewed, committed, pushed and CI-verified
+
+**[GATE CLEARED 2026-09-06 08:55 UTC, while this checkpoint was being written.]** CI run **`34022383784`** (#92), attempt 1, on exactly `8f4aa00`: **`completed/success`, both jobs — 373 unit and component, 657 integration, 1 seed, 122 end-to-end in 10.8m, zero failures, zero flaky, zero retries.** **The 8 local `verify:full` failures did not reproduce** — the same 122 tests passed 122/122 on CI, which is direct evidence for the attribution recorded below and stronger than the artefact reasoning it corroborates. **It does not make the local run green**; `verify:full` remains RED on this host. The `CI PENDING` record below is **preserved as written** rather than rewritten.
+
+**Pushed as `8f4aa00`**, parent `67949e8`. `origin/main` resolves to exactly that SHA, ahead/behind 0/0. **The external gate is open**: CI #92 was still running when this was written. The decisions are `product-spec.md` §6 and §8.3, `architecture.md` §8, and `development-plan.md` Phase 5.
+
+### What shipped
+
+**Two files, 463 insertions and 78 deletions, and no `.md` among them.** `src/app/page.tsx` gains the section; `tests/e2e/home.spec.ts` is new. **No migration, no new database object, no service, component or configuration change** — `db:pending` reported the deployed database up to date before the push and again after, and the commit contains zero `supabase/` paths. **This slice needed no deployment step beyond the push**, which is a different risk profile from slice 1.
+
+**The page's large deletion count is re-indentation, and that was checked rather than assumed.** Comparing removed and added lines with whitespace stripped and comments excluded, **exactly one non-comment line was removed** — the `div` whose `className` became conditional. Every other existing line survives, and every user-facing string is intact.
+
+### The approved behaviour, verified against the code
+
+One section; **Popular this week as the only signal**; `getPopularAlbums` called with a named constant of twelve; **the result passed through with no sort, slice, map or filter anywhere in the file**; the section rendered for signed-out visitors and signed-in users with a profile; **the without-a-profile branch untouched and issuing no catalogue query**; **no `follows` read and no follow count** — the only four occurrences of "follow" are comment lines explaining the refusal; the whole section including its heading inside the length guard; an onward link to `/albums`; Browse, the feed, every service and every component byte-identical.
+
+**The same-ordering property was re-derived rather than assumed.** Home reads at depth `max(20, 12)` and Browse at `max(20, 24)`. For a chart of 20 rows or fewer both reads return everything and compute the same fill; between 21 and 24 both compute a zero shortfall; above 24 likewise. **Home is the leading twelve of Browse's result in every case.**
+
+### Five end-to-end tests, and why they are the only layer
+
+The page is an async server component whose composition depends on session and profile presence, and **the repository has no component-test precedent at all — not one `.test.tsx` exists.** The service and SQL beneath are unchanged and already covered by §55's thirty-one integration tests.
+
+**Each test proves what it claims.** The without-profile test **seeds a populated chart before asserting the section is absent**, so it proves the state gate rather than an empty database. The empty-state test **asserts that no album carries an external score** before asserting the section is gone, establishing its precondition rather than assuming it. Navigation is proven **by arrival at `/albums`**, not by a link existing. The ordering test **seeds qualifying users in reverse of catalogue order**, so an implementation ranking by identifier fails it — an earlier draft did not, and was corrected during implementation rather than left for review.
+
+### ✅ `CI PASSED` — the gate cleared **[2026-09-06 08:55 UTC; the pending text below is preserved as written]**
+
+**CI run `34022383784` (#92), attempt 1, on exactly `8f4aa00`, was `in_progress` when this was written.** **Exactly one run exists for this SHA.**
+
+| Job                                    | State                                                                                                                                                                   |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Format, lint, types, unit tests, build | **`completed/success`** — 08:37:54Z to 08:39:27Z, all nine substantive steps green                                                                                      |
+| Integration and end-to-end tests       | **`in_progress`** — Supabase start, environment, **integration tests**, browser install and fixture seed all `completed/success`; **the end-to-end step still running** |
+
+**This cycle is not fully verified and must not be described as such anywhere. A later update is required when #92 reaches a terminal state.** **Vercel's deployment is not CI** and was not used as evidence for it.
+
+### ⚠️ The local `verify:full` is RED, and is not reclassified
+
+**Exit 1.** 373 unit and component, **657 integration**, 1 seed all passed; end-to-end returned **114 passed, 8 failed** in 16.8m, the whole run 20.9m. The suite grew from 117 to 122.
+
+**The eight are `profile-collection` ×4, `search` ×2 and `want-to-listen` ×2, and one of them was tested against this slice's own mechanism rather than dismissed by resemblance.** The sign-in server action redirects to `/`, so the home page now renders — and issues a catalogue query — inside that redirect's response, and `profile-collection:204` failed exactly there, expecting `/` and receiving `/login`.
+
+**Three things rule that mechanism out.** `profile-collection` routes **eleven** tests through that same `signIn` helper and **one** failed, at position 92 in the degraded tail; its other three failures are thrown inside `rate`, inside `collect` and at a later navigation, all past sign-in. **Four other failures are on actions whose destination is not the home page at all** — two expecting a handle URL and receiving `/onboarding`, one expecting `/onboarding` and receiving `/signup`. And **this cycle's own spec performs a complete form sign-in landing on `/` against a populated chart and passed**, at position 52 in 2.1s.
+
+**Tests 1–90 all passed and the first failure is #91 of 122.** Mean per-test duration ran **3.8s across the first twenty against 10.3s across the last twenty**. **Zero strict-mode violations, zero permission errors.** All five home tests and both browse tests passed inside the run. **The host cause is not proven** and remains the `[OPEN]` characterisation §8 and §49 carry.
+
+### Evidence limitations and open observations from review
+
+**The twelve-item caller limit cannot bind in a browser.** The fixture catalogue holds seven albums, so a full chart is smaller than the limit. The limit's mechanism is covered by §55's unit tests; **that Home passes twelve is verified by inspection.** Manufacturing fixtures to make a number visible would be fabricating evidence.
+
+**No test compares the signed-out and signed-in sections directly.** The approved decision is that they are identical, and the implementation makes that so by construction — one gate, one call, one path — but a regression differing between them would pass. **Covered by inspection, not by test.**
+
+**Newly exposed, recorded rather than suppressed.** The external fill orders on `popularity_score` with **no secondary tiebreak**, and Home and Browse issue separate queries, so in the externally-filled region the two could in principle disagree under a score tie — which the documentation's "cannot give different answers" does not allow for. Scores are unique ordinals within a seed run, so the risk is low; the property is **pre-existing and untouched by this slice**, but newly reachable from two surfaces. Separately, **`AlbumGrid` still passes no `priority` to `next/image`** although `AlbumCover` accepts and forwards it — an existing §8 residual item that this slice makes more consequential, because the front door's largest contentful paint is now an unprioritised image.
+
+**Two composition details a designer may want to revisit**, both declared at implementation time: the section omits the trailing count Browse's header carries, and the onward link duplicates the "Browse the catalogue" button the signed-in state already shows.
+
+### Phase 5 state, for a future STEP 00
+
+**Slice 1 is CI-verified (§55). Slice 3 is implemented, pushed at `8f4aa00` and CI-verified by #92.** **Phase 5's definition of done is met by slice 3** — a brand-new account with zero follows lands on a populated home page and can reach the catalogue from it. **Phase 5 is NOT feature-complete and must not be described as such**: slice 2, _Highest rated this week_, remains outstanding, and `product-spec.md` §8.3 now records `[OPEN]` why it cannot be built as specified until a product decision is taken about what "a new rating" means. **Blending and editorial voice remain unscheduled**, and §8.9's one-field-or-two question remains open.
+
+---
+
+## 55. Phase 5 slice 1 — Popular this week: implemented, reviewed, committed, pushed, deployed and CI-verified
+
+**[GATE CLEARED 2026-09-05 20:14 UTC.]** CI run **`33988507711`** (#91), attempt 1, on exactly `67949e8`: **`completed/success`, both jobs — 373 unit and component, 657 integration, 1 seed, 117 end-to-end in 13.5m, zero failures, zero flaky, zero retries.** **The 29 local `verify:full` failures did not reproduce** — the same 117 tests passed 117/117 on CI, which is direct evidence for the attribution recorded below and stronger than the artefact reasoning it corroborates. **It does not make the local run green**; `verify:full` remains RED on this host. The `CI PENDING` record below is **preserved as written** rather than rewritten.
+
+**Pushed as `67949e8`**, parent `a7eaa66`. `origin/main` resolves to exactly that SHA, ahead/behind 0/0. **The external gate is open**: CI #91 was still running when this was written. The durable decisions are `product-spec.md` §8.3, `architecture.md` §8, `data-model.md` §7 and `development-plan.md` Phase 5.
+
+### What shipped
+
+**Nine files, 1,417 insertions, 9 deletions, and no `.md` file among them.**
+
+| File                                                             |                                                                                                             |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `supabase/migrations/20260905160000_create_discovery_charts.sql` | `discovery_chart_entries`, its indexes, grants, revokes, RLS and policy, plus `refresh_popular_this_week()` |
+| `src/services/discovery/chart.ts`                                | `POPULAR_FLOOR`, `internalReadDepth`, `externalShortfall`, `combinePopular`                                 |
+| `src/services/discovery/index.ts`                                | the body of `getPopularAlbums` only — **signature and return type unchanged**                               |
+| `src/app/api/cron/refresh-charts/route.ts`                       | the daily refresh endpoint                                                                                  |
+| `vercel.json`                                                    | a second cron entry, `0 5 * * *`                                                                            |
+| `src/lib/supabase/database.types.ts`                             | regenerated, never hand-edited                                                                              |
+| three test files                                                 | 20 unit, 31 integration, 2 end-to-end                                                                       |
+
+**Browse's Popular section now reflects longplayr's own activity**, with the external signal filling in behind it. At the present corpus the visible result is near-identical to before, which is deliberate: it exercises the fallback path on the surface it will run on for months at near-zero regression risk, and the chart is already in place when activity arrives.
+
+### The 20 is a floor, and the question went back to STEP B
+
+**STEP D escalated rather than choosing the least-work reading.** §8.3 fills below 20; Browse asks 24; the three readings differ in what a user sees. The record settles it — the 20 is attached to **the chart** in every authoritative sentence, and the **24 is a grid default shared verbatim with _Recently added_** that appears in no product document and never was a decision.
+
+**Resolved and implemented:** the chart holds every qualifying internal album in rank order; external entries complete it to 20 **only** when internal yields fewer; **none are added at 20 or above**; internal is **never truncated** to the floor; the caller's limit caps only what that caller renders. `getPopularAlbums(24)` is unchanged at its call site.
+
+### What the chart counts, and what it refuses to
+
+**Collection additions by `added_at` and relisten events by `occurred_at`, reached through `collection_entry_id`.** Verified against the executable SQL with comments stripped: the only tables referenced are `discovery_chart_entries`, `collection_entries`, `relisten_events` and `albums`, and **`activity`, `listened_on`, `liked`, `rating`, `reviews`, `follows`, `list_likes`, `review_likes` and `popularity_score` each occur zero times.**
+
+**Backfills count and the feed's rule does not apply here.** That is why the chart cannot be sourced from `activity`, and an integration test asserts the chart is identical with and without the corresponding `activity` rows.
+
+### The database boundary, measured rather than inferred
+
+RLS enabled with a single `select using (true)` policy; `anon` and `authenticated` hold **`SELECT` only** and cannot mutate; `service_role` full. `revoke execute … from public` **precedes** the grant to `service_role` — the trap `CLAUDE.md`'s 2026-09-04 amendment records — and `has_function_privilege` reports **`anon` false, `authenticated` false, `service_role` true**. FK cascades (`confdeltype = c`), the `(album_id)` cascade index exists, the CHECK admits only `popular_this_week`, and **there is no 20-row cap anywhere in the schema**.
+
+**The write path depends on `service_role` carrying `rolbypassrls`** — confirmed `t` — because the table has no INSERT policy. That is the same shape `upstream_payloads` and `ingestion_jobs` already use, and it fails safe.
+
+### Deployment ordering was honoured
+
+**The migration was applied to the deployed database before the push**, verified three independent ways: `db:pending` reported up to date; `supabase migration list --linked` showed `20260905160000` present on **both** local and remote with all 27 matched; and a second dry run returned `upToDate: true`. The `pre-push` hook ran the same check and passed. Browse is a public page reading the new table, so the reverse order would have repeated §42 and §46.
+
+### ✅ `CI PASSED` — the gate cleared **[2026-09-05 20:14 UTC; the pending text below is preserved as written]**
+
+**CI run `33988507711` (#91), attempt 1, on exactly `67949e8`, was `in_progress` when this was written.** **Exactly one run exists for this SHA.**
+
+| Job                                    | State                                                                                                          |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Format, lint, types, unit tests, build | **`completed/success`** — 19:54:27Z to 19:55:58Z, all nine substantive steps green                             |
+| Integration and end-to-end tests       | **`in_progress`** — `Start Supabase` and `Write environment` green; **the integration step was still running** |
+
+**`Start Supabase` succeeding is real external evidence and is not a pass**: it means all 27 migrations, this cycle's included, applied cleanly to a **fresh** database off this machine. **The unresolved gate is job 2**, which carries the 31 new integration tests and the 2 new end-to-end tests. **A later update is required when #91 reaches a terminal state.**
+
+### ⚠️ The local `verify:full` is RED, and is not reclassified
+
+**Exit 1.** 373 unit and component, **657 integration**, 1 seed all passed; end-to-end returned **88 passed, 29 failed** in 33.2m, with the whole run taking **38.4 minutes** against 18.7 last cycle.
+
+**None of the 29 is attributable, established from artefacts rather than resemblance.** **Tests 1–65 all passed; the first failure is #66** — computed by set difference, not sampled. **Mean per-test duration went from 5.0s across tests 1–20 to 24.3s across the last 20**, reproducing the model `architecture.md` §12 records. **`browse.spec.ts` passed 2/2 at positions 15 and 16**, in 1.0s and 0.675s. **No failure artefact contains `Recently added` or a `Popular` heading**, none of the six failing specs contains `goto('/albums')`, and none references `discovery_chart`, `getPopularAlbums`, `refresh_popular` or `POPULAR_FLOOR`. **Zero strict-mode violations, zero permission errors.** Two artefacts were read directly: both died stuck on `/signup` waiting for `/onboarding`.
+
+**The failing set moved rather than merely growing.** `lists`, `notifications`, `review-likes` and `search` failed here and not in the previous run; `profile-favourites` failed there and not here. A deterministic regression does not migrate between specs.
+
+**The machine was in active use during the run**, free memory at 28%. **That is context for the magnitude, not a proven root cause** — the host behaviour remains the `[OPEN]` characterisation §8 and §49 carry, and nothing here closes it.
+
+### Three evidence limitations, recorded rather than papered over
+
+**1. Mid-function transactional rollback is structurally established, not dynamically tested.** The `delete` and `insert` share one plpgsql body and therefore one transaction, so a failure inside the function rolls the delete back and Browse keeps serving the last good snapshot. **No test proves it**: forcing a mid-function failure needs DDL the PostgREST surface cannot issue. The test that exists is **named for what it actually proves** — that a _rejected_ call leaves the snapshot alone — and says so in its own doc-comment.
+
+**2. The floor-to-20 external fill is not browser-observable.** The fixture catalogue holds **seven albums and none with a `popularity_score`**, so the external fill can supply nothing there. The floor is proved by unit test against the pure rule; **inventing fixture scores to make a count visible would be fabricating fixtures to satisfy a test.**
+
+**3. `getPopularAlbums` is untested against an internal chart of 20 or more rows.** The unit tests prove the pure rule, the integration tests prove the SQL, and the end-to-end exercises a one-album chart — so a transposition in the three lines of wiring would pass every test. **The wiring was verified by inspection at STEP G, not by a test.**
+
+### Phase 5 state, for a future STEP 00
+
+**Phase 5 is entered. Slice 1, Popular this week, is implemented and pushed at `67949e8`, with CI `PENDING` on #91.** **Phase 5's definition of done is NOT met** — it requires a brand-new account with zero follows to land on a populated home page, and **slice 3 owns that outcome.** Slice 2 is _Highest rated this week_; slice 3 is the home discovery surface. **Blending and editorial voice remain unscheduled**, and §8.9's one-field-or-two question remains open.
+
+---
+
+## 54. Mobile sign-out reachability — implemented, reviewed, committed, pushed and CI-verified
+
+**[GATE CLEARED 2026-09-05.]** CI run **`33971432512`** (#90), attempt 1, on exactly `a7eaa66`: **`completed/success`, both jobs — 353 unit and component, 626 integration, 1 seed, 115 end-to-end in 13.6m, zero failures, zero flaky, zero retries.** The `CI PENDING` record below is **preserved as written** rather than rewritten. **The six local `verify:full` failures it recorded did not reproduce on CI** — the same 115 tests passed 115/115 — which is direct evidence for the attribution recorded there, and it does **not** make the local run green.
+
+**Built and pushed as `a7eaa66`**, _"Give sign-out a mobile route on the profile"_. **The external gate is open**: CI #90 on that exact SHA was still running when this was written. The durable decision record is `architecture.md` §16.3.
+
+**The decision text that follows was written before implementation and is preserved as written.** What actually happened is recorded after it, from "What was built" onwards, rather than by editing the decision back into agreement with the outcome.
+
+### The defect, confirmed by symbol search rather than by report
+
+**`signOut` is imported and used in exactly one place** — `layout.tsx:134`, inside the `hidden … md:flex` container. `MobileTabBar` carries **no** account controls; the profile page had none. **A signed-in user on a phone had no visible way to sign out.**
+
+**The container was enumerated completely**, which is what bounds this slice to one control:
+
+| Affordance                    | Mobile equivalent                |
+| ----------------------------- | -------------------------------- |
+| `/albums`, `/search`, `/feed` | Tab bar — Browse, Search, Feed   |
+| `/{handle}`, `/onboarding`    | Tab bar — "You" resolves to both |
+| `/login`, `/signup`           | Signed-out home page body        |
+| `/notifications`              | **Fixed by §53**                 |
+| **`Sign out`**                | **None — the only orphan**       |
+
+### What was approved
+
+**A sign-out control on the owner's own profile, in the identity block, alongside the notifications link**, using the existing `signOut` action and the existing server-side `isOwnProfile` gate. **All widths, no responsive class.** "You" still routes to the profile; the four-tab shape is untouched.
+
+**This is an _action_, not navigation** — §53's decision does not govern it, and this one was taken separately.
+
+### Rejected, deferred and untouched — kept distinct
+
+**Rejected:** a `/settings` route now (building ahead of Phase 6 and F-016 for one control); a fifth tab; any `MobileTabBar` change; a `<details>` disclosure (that convention is for irreversible actions); a confirmation dialog (**no such convention exists anywhere in `src/`**); mobile-only rendering (reintroduces breakpoint-conditional visibility); hiding it behind a further entry point.
+
+**Deferred, not rejected:** a dedicated account/settings surface, **when a third owner-only account affordance arrives** — account deletion or F-016 settings. Grouping or restyling the identity block's owner affordances.
+
+**Untouched:** F-016, F-018, F-019, F-020, Phase 5, the list-activity questions, documentation reconciliation, and any broader account redesign.
+
+### Verification expectations
+
+**390×844**, reusing the established precedent. A signed-in owner **actually signs out** — the evidence is the signed-out state, not DOM presence. The header control is **not visible** at that width, distinguishing visibility from DOM presence. The control does not render for a visitor or signed out. **`auth.spec.ts` must continue to pass unmodified**, with no second desktop sign-out journey.
+
+### A hazard for the plan to inspect
+
+**A second control named "Sign out" makes any unscoped `getByRole('button', { name: 'Sign out' })` ambiguous on a profile page.** `auth.spec.ts:95` is scoped to `banner`; `list-likes.spec.ts:143` and `:170` are unscoped but click from `/`, where the profile control does not render. **They appear safe and must be confirmed rather than assumed.**
+
+### What was built
+
+**Two files, and nothing else.** `src/app/[handle]/page.tsx` (**+32 / −0**) and `tests/e2e/auth.spec.ts` (**+109 / −1**), committed as **`a7eaa66`**. No migration, generated, configuration, package or CI file entered the commit.
+
+The control is an owner-only `<form action={signOut}>` in the identity block, **directly after the notifications link §53 added**, gated by the existing `isOwnProfile`. **No responsive class.** No new ownership logic, query, prop, state or styling abstraction; `MobileTabBar`, the header, the auth actions and `src/services/` are untouched. **The gate is evaluated in a server component**, so a non-owner never receives the element — and `signOut` ends the caller's own session, so the gate is presentational rather than a security boundary either way.
+
+**The hazard recorded above was confirmed rather than assumed.** A fresh audit found four `Sign out` locator sites: `auth.spec.ts:95` and `:183` scoped to `banner`, the new helper at `:163` scoped to `main`, and `list-likes.spec.ts:143`/`:170` unscoped **but preceded by `page.goto('/')` on the line immediately before**, where no profile renders. **No strict-mode ambiguity is created** — established structurally, and corroborated by zero strict-mode violations in any run.
+
+### The review returned NOT READY TO COMMIT, and the reason is the point
+
+**The first implementation reintroduced the race §51 had just removed.** The owner test clicked Sign out and called `page.goto('/notifications')` immediately; `signOut()` ends in **`redirect('/')`**, so the two navigations compete — the exact mechanism behind CI #86's two flaky tests. **It was the only unwaited sign-out click in the repository**: `auth.spec.ts:96`, `list-likes.spec.ts:144` and `:171` all wait.
+
+**One line corrected it** — `await expect(page).toHaveURL('/', NAV);` between the click and the navigation, using the file's existing `NAV` constant and a form already present at nine sites. **§51's fix waited on the header's signed-out state, which cannot be read at 390×844 because the header is hidden**; the URL can be read at any width, and the cleared session cookie arrives in the response headers before the redirect commits. **All four sign-out click sites now wait.**
+
+**The behavioural assertion was not replaced by the wait.** `/notifications` calls `getCurrentUser()` server-side and redirects to `/login` when there is no session, so session death is still proven by **the server refusing a protected route** — not by a URL reading and not by what the page happens to render.
+
+### Three tests, at the 390×844 precedent
+
+**The owner signs out**: the header control is asserted hidden first, the click goes through a `main`-scoped locator so the header cannot satisfy it, and the session is then proven gone. **A signed-in visitor on another profile** and **a signed-out visitor** both see nothing, which separates ownership from authentication rather than testing one twice. **The existing desktop journey is unmodified** and passed inside every run.
+
+### ⚠️ `CI PENDING` — and pending is not passed
+
+**CI run `33971432512` (#90), attempt 1, on exactly `a7eaa66`, was `in_progress` when this checkpoint was written.** **There is exactly one run for this SHA**, and no run for another SHA is substituted for it.
+
+| Job                                    | State                                                                                                               |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Format, lint, types, unit tests, build | **`completed/success`** — 14:18:50Z to 14:20:20Z, all nine substantive steps green                                  |
+| Integration and end-to-end tests       | **`in_progress`** — Supabase, integration and seed steps `completed/success`; **the end-to-end step still running** |
+
+**This cycle is not fully verified and must not be described as such anywhere.** **A later update is required when #90 reaches a terminal state.** The outstanding step is precisely the one carrying this cycle's three new tests. **Test totals are not yet available**, because GitHub does not serve run logs until a run is terminal.
+
+**§53's gate is a different gate and is not a substitute.** F-017 was fully verified by **CI #89 on `311bd70`**; that establishes nothing about `a7eaa66`.
+
+### ⚠️ The local `verify:full` is RED, and is not reclassified
+
+**Exit 1.** 353 unit and component, **626 integration**, 1 seed all passed; end-to-end returned **109 passed, 6 failed** in 15.8m. **The suite grew from 112 tests to 115** — the three added here — and the passing count rose from 95 to 109.
+
+**None of the six is attributable, established from the run's own artefacts rather than assumed.** They are `profile-collection` ×2, `profile-favourites` ×1 and `want-to-listen` ×3. **No failure snapshot shows a profile page**: four die inside their own signup or sign-in helpers, one on an album page with a closed browser session, one on a `goto` that aborts before any page loads. Signatures are timeouts, expired `toHaveURL` waits, `net::ERR_ABORTED` and one closed browser session — **nothing arriving in time**, with **zero value mismatches and zero permission errors**. **Zero strict-mode violations**, and the two snapshots that mention "Sign out" each show **one** banner button on a page that renders no profile.
+
+**The strongest evidence is that the failing set moves.** All six of the previous run's `profile-collection` failures — `:111`, `:138`, `:174`, `:191`, `:239`, `:280` — **passed this run**, several of them rendering the modified page, while two entirely different ones failed. **`auth.spec.ts` passed 7/7 inside the run.**
+
+**Contamination by the changed test was ruled out from configuration, not asserted.** `workers: 1`, `fullyParallel: false`, and **zero** use of `storageState`, `test.use`, `describe.serial` or `beforeAll` anywhere in `tests/e2e/`, so every test gets a fresh browser context. `auth.spec.ts` ran at positions 8–14, before every failure. Its cleanup deletes by **exact** email match, which cannot reach the `e2e-pc-`, `e2e-fav-` or `e2e-w2l-` accounts.
+
+### The database was already current, and this cycle changed nothing about it
+
+**26 migrations applied, 0 unapplied**, confirmed before the push by `npm run db:pending` returning an affirmative _"Deployed database is up to date with local migrations"_ — the **reachable** path, not the fail-open one. **This cycle introduced no migration**, so the deploy-before-migrate hazard that took profile pages down twice does not apply here. The `pre-push` hook ran the same check and passed.
+
+### Newly exposed, recorded and deliberately not investigated
+
+**The signed-out header block has the same shape of defect this cycle just repaired.** "Create account" (`/signup`) and "Sign in" (`/login`) sit in the same `hidden … md:flex` container. Their mobile equivalent is the **home page body only**, so a signed-out visitor deep in the app — an album page, a profile, search results — may have **no visible route to sign in or sign up without returning home**. **Page-conditional rather than absent**, which is why the enumeration above recorded those two as covered. Not investigated, not fixed, and outside this cycle's scope.
+
+### Two documentation markers that are now wrong
+
+**`architecture.md:1253`** still reads _"[DECIDED 2026-09-05. Approved scope; not implemented.]"_ for §53's decision, which **`311bd70` shipped**. **`architecture.md:1295`** carries the identical marker for this cycle and **became stale the moment `a7eaa66` was committed**. Both are left exactly as they are: `architecture.md` is not edited in a checkpoint step, and the wider documentation backlog remains a separate cycle.
+
+---
+
+## 53. Mobile route to notifications — implemented, reviewed, committed, pushed and CI-verified
+
+**Commit `311bd70`, CI run `33962435001` (#89) on that exact SHA** — `completed/success`, **attempt 1**, both jobs, **353 unit and component, 626 integration, 1 seed, 112 end-to-end in 13.2m**, with **zero failures and zero flaky**.
+
+**This section was written while the run was still going and closed provisionally; the gate cleared at 11:25 UTC.** That sequence is recorded rather than smoothed over. **The four local failures did not reproduce on CI**, which corroborates their classification as unattributable.
+
+**No migration, and nothing deployed.** The commit contains none, and that was **not inferred from the file list**: `npm run db:pending` reported current on its genuine-pass path, and an independent ledger check confirmed **26 migrations with 0 unapplied**. The durable record is `architecture.md` §16.3.
+
+### What shipped
+
+**Two files, 91 insertions, zero deletions** — `src/app/[handle]/page.tsx` and `tests/e2e/notifications.spec.ts`.
+
+| Evidence                            | Result                                                 |
+| ----------------------------------- | ------------------------------------------------------ |
+| `npm run verify` from a clean build | exit 0, **353 passed**                                 |
+| Integration                         | **626 passed**                                         |
+| Fixture seed                        | passed                                                 |
+| `notifications.spec.ts`             | **10 passed** in isolation **and inside the full run** |
+| **`verify:full`**                   | **RED** — see the banner above                         |
+
+**Four tests at the 390×844 precedent `collection.spec.ts` established.** The owner test proves **navigation, not presence** — it asserts the header link hidden, clicks a link scoped to `main` so the header cannot satisfy it, and lands on `/notifications` with the page rendered. A signed-in visitor and a signed-out visitor both see nothing, proving the gate is **ownership, not authentication**. The desktop test asserts only that the header link is still visible; **navigating through it is deliberately not asserted, because this cycle does not change it.**
+
+**Two review findings were recorded rather than waved through**: the negative tests assert absence without first anchoring that the page rendered, and STEP F's attribution reasoning wrongly claimed the failing specs never render a profile — they do, via `signUp`. The conclusion survived on better evidence.
+
+### The defect, confirmed in code rather than reported
+
+**The unread dot on the mobile "You" tab promises a destination that cannot be reached.** The only entry point to `/notifications` is `layout.tsx:100`, inside a `hidden … md:flex` container; `MobileTabBar`'s four destinations are `/albums`, `/search`, `/feed` and "You"; and the profile page has no link. **Two phases' work is affected** — notifications shipped in Phase 3 slice 5 and `list_liked` was added in Phase 4 slice 2 — and neither is readable on a phone except by typing the URL.
+
+### What was approved
+
+**An owner-only link to `/notifications` in the profile page's identity block.** The **"You" tab continues routing to the profile.** Markup is an implementation concern.
+
+**§16.3 is completed, not amended.** Its decisions stand: four tabs, the indicator on "You", no fifth tab, no tab-bar redesign, notifications via the personal surface. **It named the surface and never the location**, and nothing was built there — so its sentence described an assumption, not a route. **`MobileTabBar`'s inline comment asserting that notifications are reachable on mobile is currently false and becomes true when this ships; it needs no edit, it needs the code to catch up.**
+
+### Rejected, deferred and out of scope — kept distinct
+
+**Rejected:** a fifth tab (by §16.3); routing "You" to notifications, which would strand the profile on mobile; routing "You" conditionally on unread, which `MobileTabBar`'s own destination-stability reasoning forbids; un-hiding the header link, which relocates the decision rather than implementing it.
+
+**Deferred, not rejected:** an unread count on the new link. The "You" dot is unchanged, and a second indicator on one journey duplicates state.
+
+**Not in scope:** indicator logic, `MobileTabBar`, the header, `unreadNotificationCount`, notification functionality, the notifications page, the profile's other sections, information-architecture redesign, documentation reconciliation, F-016, F-018, F-019, F-020, Phase 5 and the list-activity questions.
+
+### The accepted tradeoff
+
+**Two taps — "You" → profile → notifications.** One-tap options need a fifth tab or a mobile header affordance, both rejected. **The identity-block placement is deliberate**: burying the link below Favourites, Lists and Collection would satisfy reachability and fail discoverability.
+
+### Verification expectations
+
+**390×844, following the existing precedent at `tests/e2e/collection.spec.ts:281`.** A signed-in owner reaches notifications from their own profile; the header link is **not visible** at that viewport; the link does not render for a visitor or signed out; desktop is unchanged; `MobileTabBar` untouched. **Visibility, not DOM presence** — both affordances are `md:`-toggled and remain in the DOM at every width.
+
+---
+
+## 52. Phase 4 slice 3 — list activity: implemented, reviewed, committed, pushed, deployed and CI-verified
+
+**Commit `972b709`, CI run `33956953561` (#88) on that exact SHA** — `completed/success`, **attempt 1**, both jobs, **353 unit and component, 626 integration, 1 seed, 108 end-to-end in 12.4m**, with **zero failures and zero flaky**.
+
+**This section was written while the run was still going and closed provisionally; the gate cleared afterwards.** That sequence is recorded rather than smoothed over. **With this, all three Phase 4 slices are CI-verified — `a1c9550` (#80), `fa90372` (#84) and `972b709` (#88) — and the phase's definition of done is met.**
+
+**Both migrations were deployed to staging before the push and verified at schema level**, not inferred from the CLI's exit code: the enum carries five values, `activity.list_id` exists with `ON DELETE CASCADE`, the constraint carries all five branches and `ELSE false`, `feed_activity`'s return type carries the two list columns, and both `REVOKE … FROM PUBLIC` and `GRANT … TO authenticated` are present. **The deployment emitted a `pg-delta` catalog-caching warning; it did not affect the migration, and the schema was read directly to establish that.** The durable design record is `architecture.md` §16.6.
+
+### What was approved
+
+**A feed event when a list is created, and for nothing else.**
+
+| Mutation                                              | This slice                                  |
+| ----------------------------------------------------- | ------------------------------------------- |
+| `createList`                                          | **Emits `list_created`**                    |
+| `updateList`, `addAlbumToList`, `removeAlbumFromList` | **No event — deferred, not rejected**       |
+| `reorderListItem`                                     | **No event** — argued against on its merits |
+
+**In scope:** the `list_created` enum value; `activity.list_id` with `on delete cascade`; extending `activity_subject_matches_type` for the new type **and asserting `list_id is null` on the four existing types**; the `createList` write point; grants and RLS review for the changed path; extending `feed_activity` with its `authenticated`-only grant re-applied; the `FeedItem` type becoming discriminated; and the feed UI rendering a list event.
+
+**Out of scope:** `list_updated` and its enum value; the four non-creation mutations; any change to the four existing activity types or their write points; notifications; list likes; and every unrelated open or deferred item.
+
+### What shipped, and what verified it
+
+**Ten files**: two migrations, four production files, three test files, and the regenerated types. **Two migrations, because Postgres refuses to use a new enum value in the transaction that added it** — the label is committed alone and the constraint that references it follows.
+
+| Evidence                            | Result                                                                         |
+| ----------------------------------- | ------------------------------------------------------------------------------ |
+| Unit and component                  | **353 passed**                                                                 |
+| Integration                         | **626 passed** (was 615)                                                       |
+| Fixture seed                        | passed                                                                         |
+| `tests/e2e/feed.spec.ts`            | **3/3 in isolation and inside the full run**, including the definition of done |
+| `npm run verify` from a clean build | exit 0                                                                         |
+| Deployed schema                     | verified object by object on staging                                           |
+| **`verify:full`**                   | **RED** — see the banner above                                                 |
+
+**The four excluded mutations are proven silent structurally, not only by test**: there is **no trigger on `activity`** and **no database function that writes to it**, so they cannot emit an event by any database path. The anti-burst test asserts total silence — it queries _all_ activity for the user with no type filter — and is not vacuous, since `add_list_item` inserts and `remove_list_item` deletes on every iteration.
+
+**Two review defects were found and fixed before commit**: a constraint test whose name claimed four types while covering two, and a module header that still said this module writes no activity. Both are recorded because a review that finds nothing is usually a review that looked at nothing.
+
+### The narrowing, stated as a decision rather than as a reading
+
+**`development-plan.md`'s slicing table says slice 3 contains `list_created` / `list_updated` and feed integration.** That table is left exactly as written. **The approved implementation is narrower**: `list_created` only. **Phase 4's definition of done is still met in full** — it requires only that a list's creation appear in followers' feeds — but **the phase's stated content changes**, and update activity becomes a later decision.
+
+### Why the feed surface is in, unlike Phase 3 slice 2
+
+That slice was write-path-only **because no feed query or surface existed**. One exists now, and the definition of done requires the creation to be visible. **The precedent's reason does not transfer.**
+
+### Hazards recorded before anything was written — both closed
+
+**`ALTER TYPE … ADD VALUE` is one-way**, and cannot be used in the transaction that adds it. **`activity_subject_matches_type` has no `ELSE`**, so an unhandled enum value falls through to NULL and **satisfies the CHECK** — the new type would be entirely unconstrained if the `CASE` is not extended. **`feed_activity`'s two INNER joins would silently drop list events**, so extension is not additive, and its return-type change forces a drop/recreate that **must re-apply the `authenticated`-only grant** established in §16.5.
+
+### Unresolved, and not answered by this decision
+
+What `list_updated` should mean; which future list mutations should produce activity; how often update activity should speak; and **whether any `feed_activity` consumer beyond `src/services/social/feed.ts` and `src/components/FeedItem.tsx` assumes `album` is non-null** — those two were inspected, the sweep was not exhaustive, and this must be confirmed before implementation.
+
+### Documentation backlog and evidence limitations
+
+**Deliberately separate, and now larger.** These are a later cycle, not part of this slice, and none was repaired here:
+
+| Discrepancy                         | State                                                                                                                                     |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `CLAUDE.md` project status          | Says Phase 4 slices 2 and 3 are unbuilt and names `a1c9550` (run #80) as the last CI-verified commit. **Eight CI-verified commits later** |
+| `development-plan.md:369`           | Says slices 2 and 3 are not built                                                                                                         |
+| `architecture.md` §12, two headings | Both read _"Approved scope; not implemented"_ for work shipped and CI-verified                                                            |
+| `product-feedback.md` inbox         | **20 entries all `NEW`**; _"Triaged, promoted or closed: Nothing yet"_, though F-015 drove two complete cycles                            |
+| Section ordering here               | No longer monotonic (§46, §52, §51, §50, §48, §47). Pre-existing                                                                          |
+
+**`docs/product-feedback.md` was modified externally at 09:32 on 2026-09-05, mid-implementation** — F-017 to F-020 added: notifications unreachable on mobile, upstream search capped at five results, MusicBrainz aliases not ingested, and a recorded search-engine choice. **It was deliberately left untouched.** None met the bar for interrupting the cycle — no data integrity, security, auth, destructive or production-regression issue — though **F-017 is a confirmed defect** and is worth triage.
+
+**Evidence limitations.** **CI #88 has not finished**, so nothing external verifies this commit yet. `verify:full` is **RED** and is not reclassified. Passing tests are not proof of product correctness; the consumer sweep and the pattern searches are bounded rather than exhaustive; and **the anti-burst guarantee is structural for database paths but rests on a bounded search for application call sites**.
+
+**Three product questions remain genuinely unresolved, and must not be inferred from this slice's silence:** what **`list_updated`** should mean; **which future list mutations**, if any, should produce activity; and **how often** update activity may speak. `addAlbumToList`, `updateList` and `removeAlbumFromList` are **deferred, not rejected**.
+
+---
+
+## 51. The sign-out race in the list-like notification tests — implemented, reviewed, committed, pushed and CI-verified
+
+**Commit `3d62bfa`, CI run `33949428033` (#87) on that exact SHA** — `completed/success`, **attempt 1**, both jobs, **353 unit and component, 615 integration, 1 seed, 108 end-to-end in 11.5m**, with **zero failures, zero retries and zero flaky**.
+
+**This section was first written while the run was still going**; the cycle was closed provisionally at 06:36 UTC and the gate cleared at 06:36:50 UTC. **The flaky count returned to zero from #86's two — consistent with the fix, and one run against a base rate of one flaky run in six. It is not proof.**
+
+**No migration, and nothing deployed.** `npm run db:pending` reported the deployed database current on its genuine-pass path, and an independent `supabase migration list --linked` confirmed **all 24 local migrations present remotely** before the push. **The design record is `architecture.md` §12.**
+
+### What shipped
+
+**Two inserted assertions in `tests/e2e/list-likes.spec.ts`, and nothing else** — 2 insertions, 0 deletions, one file. At each of the two sites the test now waits for the header's `Sign in` link before navigating to the login form.
+
+|                           |                                                                                                                                  |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| **The defect**            | Sign out clicked, then `page.goto('/login')` immediately. `signOut()` ends in `redirect('/')`, so the navigations race           |
+| **Why it must be scoped** | The signed-out home page renders a **second** `Sign in` link in its body; an unscoped locator matches both and fails strict mode |
+| **Why `NAV`**             | The file's existing constant for waits after a server action, used six times there. **No existing timeout changed**              |
+| **Not touched**           | `signOut()`, production code, schema, migrations, config, CI, timeouts, retries, workers, any other spec                         |
+
+### Verified locally, and what that does not establish
+
+**Independently verified at STEP F; STEP G returned READY TO COMMIT.** Six consecutive isolated runs of `list-likes.spec.ts` green with both named tests passing; `auth.spec.ts` and `notifications.spec.ts` green; the defective pattern **mechanically absent** on a re-run of the same scan; `npm run verify` green from a clean build, 353 tests. Every pre-existing assertion is unchanged — a sorted assertion-set comparison against the pristine file shows **only the two additions**.
+
+> **None of that proves the inferred race was the cause, or that flakiness is gone.** The tests were flaky rather than failing, so repeated greens cannot discriminate the fix from chance.
+
+### What remains open in this cycle
+
+**CI #87's result, and its flaky count in particular.** **The three `want-to-listen.spec.ts` failures remain unexplained**, are not claimed to share this cause, and were deliberately out of scope. **Whether this race class exists in forms the bounded scan cannot see is unknown.**
+
+**Unchanged by this cycle:** the **`[OPEN]`** production-build gate question, the **`[DEFERRED]`** `verify:full` policy question, the memory-exhaustion finding, the invalid setup-time measurement, and the constraint that no expansion of the API-signup conversion is justified.
+
+---
+
+## 50. End-to-end session establishment — implemented, reviewed, committed, pushed and CI-verified
+
+**Commit `a9da122`, CI run `33944073233` (#86) on that exact SHA** — `completed/success`, **attempt 1**, both jobs, **353 unit and component, 615 integration, 1 seed, 106 end-to-end passed in 10.7m with 2 flaky**, zero assertion mismatches.
+
+**This section was first written while the run was still going.** The cycle was closed **provisionally pending CI** at 04:23 UTC and the gate **cleared at 04:31:47 UTC**; that sequence is recorded rather than smoothed over. **The 2 flaky tests are both in `list-likes.spec.ts`, are the first CI has reported, and are not caused by this change** — see the banner above.
+
+**No migration, and nothing deployed.** `npm run db:pending` reported the deployed database already current, on its genuine-pass path rather than its offline fail-open path. **The design record is `architecture.md` §12. This section records where things stand.**
+
+### What shipped
+
+**Seventeen session-establishment conversions across two specs, and nothing else.**
+
+|                                  |                                                                                                                                               |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`follows.spec.ts`**            | **7 of 7.** `createAccount` reused for both users; `signIn` **copied** from the sibling spec; the now-dead `signUp` deleted; header corrected |
+| **`profile-collection.spec.ts`** | **10 of 11.** Existing `createUserViaApi` and `signIn` applied; `signUp` retained for line 112                                                |
+| **Fixture**                      | `createUserViaApi` gained the required postcondition read-back — it previously threw on insert error but never verified the row               |
+| **Not converted**                | `collect`, `rate`, `collectViaApi`/`rateViaApi` usage, any other spec, and the 15 duplicated `signUp` definitions                             |
+| **Not touched**                  | Production code, schema, migrations, `playwright.config.ts`, timeouts, retries, workers, `package.json`, CI, machine configuration            |
+
+### The measurement, and why it establishes nothing
+
+**The approved protocol was executed in full — 24 measured invocations, order-reversed passes, one controlled dev server, machine state recorded at every arm boundary — and the result is void.** Swap capacity moved 10,240 → 12,288 → 14,336 → 13,312 → 11,264 MB during the session; the blocked arm order put AFTER inside the degradation peak while BEFORE bracketed it; all six AFTER `profile-collection` runs failed while the identical tree passed 12/12 twice in isolation an hour before.
+
+> **The naive medians imply a 3.5× regression. They are an artifact of scheduling, not a property of the code, and no reading is taken in either direction.**
+
+**Across every measurement run: 325 timeouts, 37 `net::ERR_ABORTED`, 2 `session closed`, and zero assertion mismatches. BEFORE failed too once it entered the degraded window.** That is what rules out an implementation defect behind the arm asymmetry.
+
+**No machine or repository change resulted.** Container count constant at 9, Docker 3.83 GiB / 8 CPUs identical at start and end, both specs byte-identical afterwards, dev server terminated and port 3000 confirmed free.
+
+### What this does not change
+
+**The memory constraint is unaltered** — this cycle did not make the local suite faster, and does not claim to. **`verify:full` remains RED** for the established environmental reason. **The production-build gate question remains `[OPEN]`**, the 2026-08-28 rejection intact, and the `verify:full` pre-commit policy question remains **`[DEFERRED]`**. `docs/product-feedback.md` was not modified.
+
+**No expansion beyond this slice is justified on the current evidence**, and that constraint is the cycle's main output alongside the code.
+
+---
+
+## 49. End-to-end reliability — investigated, implemented, reviewed, committed, pushed and CI-verified
+
+**Commit `9f7ea20`, CI run `33911061116` (#85) on that exact SHA** — `completed/success`, **attempt 1**, both jobs, **353 unit and component, 615 integration, 1 seed, 108 end-to-end in 10.2m**, with **zero failures, zero flaky tests and zero retries**.
+
+**This section was first written while the run was still going.** The cycle was closed **provisionally pending CI** at 19:34 UTC and the gate **cleared at 19:40:49 UTC**; that sequence is recorded rather than smoothed over. **CI verifies this SHA on CI infrastructure only** — reuse was already disabled there, so #85 confirms the change is a no-op on CI and **cannot verify the local behaviour it exists to fix**.
+
+**No migration, and nothing deployed.** `npm run db:pending` reported the deployed database already current, on its genuine-pass path rather than its offline fail-open path. **The design record is `architecture.md` §12; the finding is recorded in §8 and the open decisions in §11. This section records where things stand.**
+
+### What prompted it
+
+**A maintainer override.** The local end-to-end suite had been failing intermittently and taking upwards of thirty minutes, and that was ranked ahead of the other candidates on the explicit grounds that **waiting twenty-plus minutes for a failure is the dominant cost**, with the requirement that the process stay rigorous rather than be relaxed to go faster.
+
+### What was established
+
+**The cause is host memory exhaustion, not CPU load** — the full evidence is in §8 and `architecture.md` §12. The short form: free physical memory ≈0.01 GB with 11.5 of 12.3 GB of swap consumed **before any test ran**; failures exclusively timeouts, `ERR_ABORTED` and `session closed` and **never assertion failures**; per-test duration degrading 7.9s → 24.5s within a run while CI runs the same commit flat at 108/108 in 12.4m; file descriptors and database connections measured and eliminated; parallelism never available because the suite is already `workers: 1`.
+
+**F-015 is superseded in its causal claim only, and retained.** Its correlation with load average was real. Load average counts processes blocked on I/O, which is what swapping produces — so the correlation is a symptom of the same cause rather than a second one.
+
+### What shipped
+
+**One line of `playwright.config.ts`**, plus its explanatory comment: `reuseExistingServer` changed from `!process.env.CI` to **`false`**.
+
+|                       |                                                                                                                                                         |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **The defect**        | An orphaned server from an interrupted run was **silently adopted**, so a run could exercise stale code and report success. **Observed, not theorised** |
+| **The behaviour now** | Playwright refuses to start when the port is occupied — verified by execution, exit 1, _"http://localhost:3000 is already used"_                        |
+| **The escape hatch**  | `PLAYWRIGHT_BASE_URL` skips the `webServer` block entirely — verified by execution                                                                      |
+| **CI**                | Unaffected; reuse was already disabled there. **Established by configuration, not by execution**                                                        |
+| **What was not done** | No retry added, no timeout raised, no test excluded, weakened or skipped, no verification command changed                                               |
+
+### What this cycle did **not** do
+
+**It did not make the local suite faster or greener, and does not claim to.** It explained the failure mode and removed a silent-failure risk. **`verify:full` remains RED locally for the established environmental reason and is not reclassified.** `npm run verify` passed from a clean build — 353 unit and component tests, exit 0.
+
+**It did not decide the production-build question.** The controlled A/B is recorded in `architecture.md` §12 with its residual confound: production faster in both orders (51.5s/26.7s, then 44.4s/29.8s reversed), swap growth +587M/+395M against +148M/+210M, but **production started from the lower-swap state in both passes**. Direction supported; **the 41% mean is not an established magnitude**. The **2026-08-28 rejection is intact and not reopened** — it measured compilation latency on an idle machine, this measured memory footprint on an exhausted one, and both can be true. The **correctness** half is untouched by timing evidence and stays `[OPEN]` (§11).
+
+**It did not amend `CLAUDE.md`.** Whether a locally RED `verify:full` may satisfy the pre-commit requirement when CI passes the same SHA was **raised and deliberately deferred**, not answered (§11).
+
+**It did not modify `docs/product-feedback.md`.** F-015's disposition in the inbox is the maintainer's to record; §8 is the authoritative record of the outcome.
+
+### Local versus CI verification, kept separate
+
+**Local:** `npm run verify` green from a clean build (exit 0, 353 unit and component). The three behavioural checks above, two of them by execution. **`verify:full` RED.**
+
+**External:** **CI #85, `completed/success` on exactly `9f7ea20`** — the only run for this SHA, attempt 1, no reruns. CI #84 passed on the **parent** `fa90372`; that is transitive coverage of the parent tree and remains **not** verification of this work. **The two are kept distinct.**
 
 ---
 
