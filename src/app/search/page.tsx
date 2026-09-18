@@ -11,6 +11,7 @@ import { searchCatalogue } from '@/services/search';
 
 import { shouldOfferFallback } from './fallback';
 import { UpstreamPanel, UpstreamPending } from './UpstreamPanel';
+import { albumPath, artistPath } from '@/lib/paths';
 
 export const metadata = { title: 'Search · longplayr' };
 
@@ -171,7 +172,7 @@ export default async function SearchPage({ searchParams }: PageProps<'/search'>)
                      * album does not behave differently depending on which
                      * surface found it.
                      */}
-                    <Link href={`/albums/${album.mbid}`} className="w-12 shrink-0">
+                    <Link href={albumPath(album)} className="w-12 shrink-0">
                       <AlbumCover
                         mbid={album.mbid}
                         title={album.title}
@@ -182,7 +183,7 @@ export default async function SearchPage({ searchParams }: PageProps<'/search'>)
                     </Link>
 
                     <div className="min-w-0 flex-1">
-                      <Link href={`/albums/${album.mbid}`} className="group block">
+                      <Link href={albumPath(album)} className="group block">
                         <span className="block truncate text-sm text-text group-hover:underline">
                           {album.title}
                         </span>
@@ -212,7 +213,7 @@ export default async function SearchPage({ searchParams }: PageProps<'/search'>)
               <ul className="flex flex-col">
                 {results.artists.map((artist) => (
                   <li key={artist.id} className={ROW}>
-                    <Link href={`/artists/${artist.mbid}`} className="group block py-2.5">
+                    <Link href={artistPath(artist)} className="group block py-2.5">
                       <span className="text-sm text-text group-hover:underline">{artist.name}</span>
                       {artist.disambiguation && (
                         <span className="ml-2 text-xs text-text-muted">

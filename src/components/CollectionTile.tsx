@@ -2,6 +2,7 @@ import Link from 'next/link';
 
 import { AlbumCover } from '@/components/AlbumCover';
 import { formatScore } from '@/components/ScoreBadge';
+import { albumPath } from '@/lib/paths';
 
 /**
  * A collection grid tile, in one of two modes.
@@ -56,6 +57,7 @@ export type CollectionMode = 'compact' | 'detailed';
 
 export type TileAlbum = {
   mbid: string;
+  slug: string;
   title: string;
   credit: string;
   /**
@@ -128,14 +130,14 @@ export function CollectionTile({ album, mode }: { album: TileAlbum; mode: Collec
   // reads as an uninterrupted wall rather than a broken table.
   if (mode === 'compact')
     return (
-      <Link href={`/albums/${album.mbid}`} className="group block">
+      <Link href={albumPath(album)} className="group block">
         {cover}
         <CollectionState album={album} />
       </Link>
     );
 
   return (
-    <Link href={`/albums/${album.mbid}`} className="group block">
+    <Link href={albumPath(album)} className="group block">
       {cover}
       <p
         className="mt-2 truncate text-xs leading-snug text-text group-hover:underline"

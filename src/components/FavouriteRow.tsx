@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { AlbumCover } from '@/components/AlbumCover';
 import { AlbumGridShell } from '@/components/AlbumGrid';
 import type { FavouriteListItem } from '@/services/collection/favourites';
+import { albumPath } from '@/lib/paths';
 
 /**
  * The favourites row — up to ten pinned albums, in the order their owner chose.
@@ -37,7 +38,7 @@ export function FavouriteRow({ albums }: { albums: FavouriteListItem[] }) {
     <AlbumGridShell density="relaxed">
       {albums.map((album) => (
         <li key={album.favouriteId}>
-          <Link href={`/albums/${album.mbid}`} className="group block">
+          <Link href={albumPath(album)} className="group block">
             <AlbumCover
               mbid={album.mbid}
               title={album.title}

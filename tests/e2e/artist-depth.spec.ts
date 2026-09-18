@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
 import { expect, test } from '@playwright/test';
+import { artistUrl } from './urls';
 
 /**
  * On-demand artist depth — the trigger, in a browser.
@@ -93,7 +94,7 @@ test.afterAll(async () => {
 test('a first view queues exactly one expansion, and says it is doing so', async ({ page }) => {
   const admin = adminClient();
 
-  await page.goto(`/artists/${RADIOHEAD}`);
+  await page.goto(await artistUrl(RADIOHEAD));
 
   // The discography is on the page before anything upstream has been asked
   // for — the whole point of enqueueing rather than awaiting.
@@ -135,7 +136,7 @@ test('a terminally failed attempt still stops a second one', async ({ page }) =>
   });
   if (error) throw error;
 
-  await page.goto(`/artists/${RADIOHEAD}`);
+  await page.goto(await artistUrl(RADIOHEAD));
   await expect(page.getByRole('heading', { name: 'Discography' })).toBeVisible(NAV);
   // Says the honest thing rather than nothing…
   await expect(page.getByTestId('discography-failed')).toBeVisible(NAV);
@@ -154,10 +155,10 @@ test('a repeat view while one is outstanding queues nothing further', async ({ p
   // first view's row is still outstanding when the second arrives.
   const admin = adminClient();
 
-  await page.goto(`/artists/${RADIOHEAD}`);
+  await page.goto(await artistUrl(RADIOHEAD));
   await waitForJobs(admin, RADIOHEAD, 1);
 
-  await page.goto(`/artists/${RADIOHEAD}?sort=oldest`);
+  await page.goto(`${await artistUrl(RADIOHEAD)}?sort=oldest`);
   await expect(page.getByRole('heading', { name: 'Discography' })).toBeVisible(NAV);
 
   await page.waitForTimeout(2_000);
@@ -175,7 +176,7 @@ test('a settled artist shows no status line', async ({ page }) => {
   });
   if (error) throw error;
 
-  await page.goto(`/artists/${RADIOHEAD}`);
+  await page.goto(await artistUrl(RADIOHEAD));
 
   await expect(page.getByRole('heading', { name: 'Discography' })).toBeVisible(NAV);
   await expect(page.getByTestId('discography-pending')).toHaveCount(0);
@@ -192,7 +193,7 @@ test('a later view drains, so refreshing moves an outstanding expansion along', 
   // First view: the job is created and drained. The drain fails, because the
   // placeholder contact makes `assertIdentifiable()` throw inside the job, so
   // the row lands back on `pending` with one attempt spent.
-  await page.goto(`/artists/${RADIOHEAD}`);
+  await page.goto(await artistUrl(RADIOHEAD));
   await expect(page.getByRole('heading', { name: 'Discography' })).toBeVisible(NAV);
   await waitForJobs(admin, RADIOHEAD, 1);
   await expect

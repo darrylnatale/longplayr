@@ -6,6 +6,7 @@ import { ArtistCredit } from '@/components/ArtistCredit';
 import { creditIsSolely } from '@/services/catalogue/credit';
 
 import type { AlbumSummary, AlbumSummaryWithArtists } from '@/services/catalogue/queries';
+import { albumPath } from '@/lib/paths';
 
 /**
  * The square artwork grid — the product's signature surface.
@@ -163,7 +164,7 @@ function CoverLink({
   showTitle?: boolean;
 }) {
   return (
-    <Link href={`/albums/${album.mbid}`} className="group block">
+    <Link href={albumPath(album)} className="group block">
       <AlbumCover
         mbid={album.mbid}
         title={album.title}

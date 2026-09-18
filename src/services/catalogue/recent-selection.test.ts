@@ -24,6 +24,7 @@ function album(
   return {
     id: `id-${n}`,
     mbid: `mbid-${n}`,
+    slug: `slug-${n}`,
     title,
     display_credit: artistMbids.join(' & '),
     primary_type: 'album',
@@ -31,7 +32,13 @@ function album(
     first_release_date: '2020-01-01',
     first_release_date_precision: 'day',
     releaseYear: '2020',
-    artists: artistMbids.map((mbid) => ({ id: `a-${mbid}`, mbid, name: mbid, linkable: true })),
+    artists: artistMbids.map((mbid) => ({
+      id: `a-${mbid}`,
+      mbid,
+      slug: mbid,
+      name: mbid,
+      linkable: true,
+    })),
   };
 }
 

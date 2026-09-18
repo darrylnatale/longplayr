@@ -18,6 +18,8 @@ import { isPseudoArtist } from './artist-depth';
 export type CreditedArtist = {
   id: string;
   mbid: string;
+  /** Where the artist's page lives. The MBID stays canonical identity. */
+  slug: string;
   name: string;
   /**
    * False for a pseudo-artist. **Not a filter** — the name is still printed,
@@ -31,7 +33,7 @@ export type CreditedArtist = {
 /** The embed shape, as PostgREST returns it. Order is not guaranteed. */
 export type AlbumArtistRow = {
   position: number;
-  artists: { id: string; mbid: string; name: string } | null;
+  artists: { id: string; mbid: string; slug: string; name: string } | null;
 };
 
 /**
@@ -54,6 +56,7 @@ export function toCreditedArtists(rows: AlbumArtistRow[] | null): CreditedArtist
     .map((row) => ({
       id: row.artists.id,
       mbid: row.artists.mbid,
+      slug: row.artists.slug,
       name: row.artists.name,
       linkable: !isPseudoArtist(row.artists.mbid),
     }));

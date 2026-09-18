@@ -14,9 +14,9 @@
 
 **The verification gate moved, and `CLAUDE.md` now carries it. [APPLIED 2026-09-15]** Work happens on a branch and reaches `main` only through a green CI run; STEP F runs `npm run verify` plus targeted suites; **the migration gate moved from STEP I to STEP J**, so the order is **CI green → migration applied → merge**. The decision is `architecture.md` §12; the process is `CLAUDE.md`. **The two no longer disagree.** (§68, §69)
 
-**Verified 2026-09-18 against the repository, the remote and CI.** `main` is at **`49999a3`**, the merge of PR #23; `origin/main` identical. **Nothing is open.** **31 migrations, 0 unapplied** — `20260918120000_reserve_deleted_handles` (§87) and `20260918170000_readable_url_slugs` (§88) were each applied to the deployed database at STEP J, between a green run and the merge, and confirmed afterwards. **§87's post-merge run `35365720989` came back `completed/success`, so that gate is cleared and §87 is fully verified.** §88's post-merge run on `49999a3` had not been read when this was written (F-051: a pull-request run tests the base as it was when it started, so the post-merge run is not redundant).
+**Verified 2026-09-18 against the repository, the remote and CI.** `main` is at **`173f17f`**, the merge of PR #24; `origin/main` identical. **Nothing is open.** **32 migrations, 0 unapplied** — `20260918120000_reserve_deleted_handles` (§87) and `20260918170000_readable_url_slugs` (§88) were each applied to the deployed database at STEP J, between a green run and the merge, and confirmed afterwards. **§87's post-merge run `35365720989` came back `completed/success`, so that gate is cleared and §87 is fully verified.** §88's post-merge run on `49999a3` had not been read when this was written (F-051: a pull-request run tests the base as it was when it started, so the post-merge run is not redundant).
 
-**Seventeen cycles merged between 2026-09-15 and 2026-09-18** — PRs #7 to #23, recorded as §72 to §88. **§74, §87 and §88 are the only cycles to have carried a migration.** **§79, §87 and §88 are the only cycles to have failed CI and been reopened**; both were remediated and merged on a second run. **§80, §83 and §84 were confirmed on production** rather than merely merged.
+**Eighteen cycles merged between 2026-09-15 and 2026-09-18** — PRs #7 to #24, recorded as §72 to §89. **§74, §87, §88 and §89 carried a migration.** **§79, §87 and §88 failed CI and were reopened**; both were remediated and merged on a second run. **§80, §83 and §84 were confirmed on production** rather than merely merged.
 
 > **⚠️ The phase plan has been under-weighted, and the maintainer pointed it out on 2026-09-18.** Every cycle from §72 to §86 was selected from `docs/product-feedback.md`. **`CLAUDE.md` STEP A asks for _the current project state **and** any triaged product feedback_**, and the first half has gone effectively unconsulted for three days.
 >
@@ -29,6 +29,38 @@
 **Four feedback entries were filed on 2026-09-16 at the maintainer's request** — **F-041** (filtering, sorting and exclusion), **F-042** (filtering a grid by collection state), **F-043** (follow back from notifications) and **F-044** (the test environment fails more often than the code does). **F-041 surfaced that longplayr holds no genre data at all**, deliberately excluded at ingest, so that filter is an ingest, schema and backfill change rather than a UI one.
 
 **A decision session on 2026-09-16 answered eight open product questions** and promoted five entries to decided-and-unbuilt — readable URLs, browse-everything, the cover-art prompt (now built, §78), discography refresh, and Recently added's two rules. **It also opened F-040**, a collision between the new upstream-contribution principle and the read-only-catalogue non-negotiable. The records are in `product-spec.md` §6 and §8.9, `design-reference.md` §11.11, and `architecture.md` §18. Three cycles closed and merged today — PR #7 (`5479041`), PR #8 (`8544330`) and **PR #9 (`4c0a0f7`, CI #112, 132 end-to-end, zero flaky)**. The first two carried no migration; **§74 did**, and STEP J gated for it, applying `20260915160000` to the deployed database between a green CI run and the merge. **Post-merge run #111 on `8544330` came back `completed/success`**, so the tree before this cycle is independently green. **The double-CI cost of the branch model is now observed on five consecutive cycles** and remains recorded rather than decided.
+
+> ## ✅ §89 — A slug is just the title, and counts up only when it has to — **[GATE CLEARED: CI `35375489528` `completed/success` on `90ea7b3`, 134 end-to-end, zero flaky]**
+>
+> **`kid-a`, not `kid-a-208b8292f8`.** §88 shipped an identity-hash suffix on every slug so that assignment could be a pure function of one row. The maintainer chose plain slugs with a counter instead, **hours later and with the trade in front of them**: the product has no users, the catalogue is test data, and re-ingesting all of it is acceptable.
+>
+> **This knowingly relaxes `product-spec.md` §6**, which required collision resolution that is _deterministic rather than insertion-ordered_. A counter is insertion-ordered by nature. **The relaxation is recorded as a decision rather than absorbed quietly**, and the constraint it relaxes is still in §6.
+>
+> **The instability is narrower than that phrasing suggests, and that is why it is reasonable.** A slug is assigned once and then left alone: the first _Kid A_ keeps `kid-a`, a later one takes `kid-a-2`, and **nothing promotes the later album when the earlier is renamed or deleted** — asserted directly. **No album's URL ever changes because of another album.** Only a full re-ingest in a different order reshuffles anything.
+>
+> **Three costs, all identified before shipping.** Assignment now reads before it writes, so it is racy — closed with a transaction-scoped advisory lock keyed on the base slug, which serialises only inserts that would actually contend. An ordinary column accepts a direct write where a generated one refused it — closed by firing the update trigger on a **slug** change as well as a title change, so the written value is recomputed away. And **a non-Latin title now falls back to `album`, `album-2`, `album-3`** rather than to distinct hashes: a run of meaningless URLs, arriving with the first non-Latin releases rather than today.
+>
+> ### 🔎 An empty-string default that exists for the type generator
+>
+> **Switching from a generated column to an ordinary one made `slug` _required_ on every Insert.** `database.types.ts` marks a generated column optional; a plain `NOT NULL` column without a default is mandatory — which would have forced every caller and every test fixture to supply a slug it must not choose. A default restores optionality. **The value is never stored**, because the BEFORE INSERT trigger overwrites it unconditionally.
+>
+> ### ⚠️ A migration bug CI structurally could not catch, found by probing instead
+>
+> **The backfill numbered rows within each base slug independently**, which assigns `kid-a-2` to the second album titled _Kid A_ — **and also to an album genuinely titled _Kid A 2_**, whose own base is `kid-a-2`. Two rows, one slug, and the unique index built immediately afterwards would have **aborted the migration against the deployed catalogue**. Titles like _Vol. 2_ make it entirely plausible rather than contrived.
+>
+> **The triggers never had this problem**, because they search for the first _free_ candidate rather than counting within a partition. The backfill now performs the same search.
+>
+> **CI was green on the version carrying the bug**, and could not have been otherwise: **CI applies migrations to an empty database, so a backfill there has no rows to get wrong.** This is the first time `F-032`'s recorded blind spot has had teeth — the deployed catalogue is the only place that statement has anything to do.
+>
+> **It was found by running the migration's own sequence against a populated local table** — no index and no triggers during the backfill, exactly as the migration orders them. _Kid A_, _Kid A_, _Kid A 2_ and _Kid A 3_ backfill to `kid-a`, `kid-a-2`, `kid-a-2-2` and `kid-a-3`, with no duplicates, no nulls, and the index building cleanly.
+>
+> **Two probes of the harness itself failed first and were discarded rather than reported** — one blanked slugs while the unique index still existed, one dropped `NOT NULL` in the wrong order. Neither was evidence about the migration.
+>
+> ### 📄 What the deployment itself proved
+>
+> **The migration applied to the deployed database and the unique index built**, which is direct evidence the corrected backfill produced **no duplicate slugs across the real catalogue** — the assertion CI could never make.
+>
+> **Two migrations reached production in one day, each caught once before it got there**: §88's prefix collision by CI, §89's backfill collision by a probe CI cannot replace. **Neither mechanism would have caught the other's bug.**
 
 > ## ✅ §88 — Albums and artists have a readable slug, and nothing uses it yet — **[GATE CLEARED: CI `35369440813` `completed/success`, 740 integration, 134 end-to-end, zero flaky]**
 >

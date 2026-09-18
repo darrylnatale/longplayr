@@ -5,6 +5,7 @@ import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
 
 import { addAlbum } from './actions';
+import { albumPath } from '@/lib/paths';
 
 function Submit() {
   const { pending } = useFormStatus();
@@ -22,10 +23,10 @@ function Submit() {
 export function AddFromUpstream({ mbid }: { mbid: string }) {
   const [state, formAction] = useActionState(addAlbum, {});
 
-  if (state.addedMbid) {
+  if (state.addedSlug) {
     return (
       <Link
-        href={`/albums/${state.addedMbid}`}
+        href={albumPath({ slug: state.addedSlug })}
         className="shrink-0 text-xs text-text underline underline-offset-4"
       >
         Added — view

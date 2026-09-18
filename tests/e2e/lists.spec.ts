@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
 import { expect, test, type Page } from '@playwright/test';
+import { albumUrl } from './urls';
 
 /**
  * Lists, end to end. Phase 4, slice 1.
@@ -87,7 +88,7 @@ async function createList(page: Page, handle: string, title: string, ranked = fa
 
 /** Adds an album to a named list from that album's page. */
 async function addAlbum(page: Page, mbid: string, listTitle: string) {
-  await page.goto(`/albums/${mbid}`);
+  await page.goto(await albumUrl(mbid));
   await page.getByLabel('Add to a list').selectOption({ label: listTitle });
   await page.getByRole('button', { name: 'Add', exact: true }).click();
 }

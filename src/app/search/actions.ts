@@ -6,7 +6,7 @@ import { after } from 'next/server';
 import { drainJobs } from '@/services/catalogue/jobs';
 import { addAlbumFromUpstream } from '@/services/catalogue/self-service';
 
-export type AddState = { error?: string; addedMbid?: string };
+export type AddState = { error?: string; addedSlug?: string };
 
 /**
  * How many queued jobs to run once the response has been sent.
@@ -57,5 +57,5 @@ export async function addAlbum(_prev: AddState, formData: FormData): Promise<Add
   });
 
   revalidatePath('/search');
-  return { addedMbid: result.data.mbid };
+  return { addedSlug: result.data.slug };
 }

@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
 import { expect, test, type Page } from '@playwright/test';
+import { albumUrl } from './urls';
 
 /**
  * Notifications, end to end.
@@ -245,7 +246,7 @@ test('a review-like notification opens the album it was written about', async ({
 
   await page.goto('/notifications');
   await page.getByText(/Yusuf Karim liked your review of/).click();
-  await expect(page).toHaveURL(`/albums/${IN_RAINBOWS}`, NAV);
+  await expect(page).toHaveURL(await albumUrl(IN_RAINBOWS), NAV);
 });
 
 test('the list paginates without repeating a notification', async ({ page }) => {

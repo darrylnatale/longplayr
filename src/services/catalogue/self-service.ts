@@ -171,7 +171,7 @@ export async function remainingAllowance(
  */
 export async function addAlbumFromUpstream(
   mbid: string,
-): Promise<Result<{ mbid: string }, AddError>> {
+): Promise<Result<{ mbid: string; slug: string }, AddError>> {
   const user = await getCurrentUser();
   if (!user) return err('unauthenticated', 'You need to be signed in to add a record.');
 
@@ -217,7 +217,7 @@ export async function addAlbumFromUpstream(
     // record they already had is not their business, and inventing an error for
     // it would report a failure where the request succeeded.
     if (!held.hasCredits) await reconcileCredits(admin, held.id, mbid);
-    return ok({ mbid });
+    return ok({ mbid, slug: await slugFor(admin, mbid) });
   }
 
   let result: Awaited<ReturnType<typeof ingestReleaseGroup>>;
@@ -254,5 +254,23 @@ export async function addAlbumFromUpstream(
   // cover lands seconds after the add rather than on the next daily cron.
   await enqueueJob('fetch_artwork', mbid, { admin, priority: INTERACTIVE_JOB_PRIORITY });
 
-  return ok({ mbid });
+  return ok({ mbid, slug: await slugFor(admin, mbid) });
+}
+
+/**
+ * The album's readable slug, for the link the caller is about to render.
+ *
+ * **Read rather than derived.** The slug is assigned by a database trigger and
+ * may carry a counter that depends on the rest of the table, so the only way to
+ * know it is to ask. A second small query, on a path that has just done far
+ * more expensive work.
+ *
+ * **Throws rather than returning a Result.** By the time this runs the row
+ * exists — it was either already held or just ingested — so its absence is a
+ * genuine fault and not an outcome the UI renders (`src/services/result.ts`).
+ */
+async function slugFor(admin: Admin, mbid: string): Promise<string> {
+  const { data, error } = await admin.from('albums').select('slug').eq('mbid', mbid).single();
+  if (error) throw error;
+  return data.slug;
 }

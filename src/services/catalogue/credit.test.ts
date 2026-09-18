@@ -15,7 +15,7 @@ import { creditIsSolely, toCreditedArtists, type AlbumArtistRow } from './credit
 const VARIOUS_ARTISTS = '89ad4ac3-39f7-470e-963a-56509c546377';
 
 function artist(name: string, mbid: string) {
-  return { id: `id-${name}`, mbid, name };
+  return { id: `id-${name}`, mbid, slug: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name };
 }
 
 describe('toCreditedArtists', () => {

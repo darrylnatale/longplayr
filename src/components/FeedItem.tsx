@@ -4,6 +4,7 @@ import { AlbumCover } from '@/components/AlbumCover';
 import { Avatar } from '@/components/Avatar';
 import { formatScore } from '@/components/ScoreBadge';
 import type { FeedItem as Item } from '@/services/social/feed';
+import { albumPath } from '@/lib/paths';
 
 /**
  * One feed event, in one of two weights.
@@ -126,10 +127,7 @@ type ListItem = Extract<Item, { type: 'list_created' }>;
 
 function AlbumLink({ item }: { item: AlbumItem }) {
   return (
-    <Link
-      href={`/albums/${item.album.mbid}`}
-      className="text-text transition-colors hover:text-accent"
-    >
+    <Link href={albumPath(item.album)} className="text-text transition-colors hover:text-accent">
       {item.album.title}
     </Link>
   );
@@ -175,7 +173,7 @@ function Compact({ item }: { item: AlbumItem }) {
 function Full({ item }: { item: AlbumItem }) {
   return (
     <li className="flex gap-4 border-b border-border py-4">
-      <Link href={`/albums/${item.album.mbid}`} className="w-16 shrink-0">
+      <Link href={albumPath(item.album)} className="w-16 shrink-0">
         <AlbumCover
           mbid={item.album.mbid}
           title={item.album.title}

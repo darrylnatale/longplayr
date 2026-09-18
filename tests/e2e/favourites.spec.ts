@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
 import { expect, test, type Page } from '@playwright/test';
+import { albumUrl } from './urls';
 
 /**
  * Favouriting and unfavouriting from the album action card.
@@ -99,7 +100,7 @@ async function collectionSize(handle: string) {
 
 test('favourite an uncollected album, and it stays uncollected', async ({ page }) => {
   const user = await signUp(page);
-  await page.goto(`/albums/${IN_RAINBOWS}`);
+  await page.goto(await albumUrl(IN_RAINBOWS));
 
   // Not collected, not favourited.
   await expect(page.getByRole('button', { name: 'Add to collection' })).toBeVisible();
@@ -120,7 +121,7 @@ test('the toggle survives a full cycle in both directions', async ({ page }) => 
   // The regression this file exists for. The card's kind never changes here, so
   // React keeps the subtree across every one of these mutations.
   const user = await signUp(page);
-  await page.goto(`/albums/${IN_RAINBOWS}`);
+  await page.goto(await albumUrl(IN_RAINBOWS));
 
   const button = favouriteButton(page);
 
@@ -152,7 +153,7 @@ test('favourite an album already in the collection, leaving its state untouched'
   const user = await signUp(page);
 
   // Collect and score it first.
-  await page.goto(`/albums/${WATCH_THE_THRONE}`);
+  await page.goto(await albumUrl(WATCH_THE_THRONE));
   await page.getByRole('button', { name: 'Rate', exact: true }).click();
   await page.getByLabel('Your score').fill('8.5');
   await page.getByRole('button', { name: 'Save' }).click();
@@ -182,7 +183,7 @@ test('favourite an album already in the collection, leaving its state untouched'
 test('a favourite made on the album page shows on the profile', async ({ page }) => {
   const user = await signUp(page);
 
-  await page.goto(`/albums/${IN_RAINBOWS}`);
+  await page.goto(await albumUrl(IN_RAINBOWS));
   await favouriteButton(page).click();
   await expect(favouriteButton(page)).toHaveAttribute('aria-pressed', 'true', ACTION);
 
@@ -202,7 +203,7 @@ test('Like and Favourite are separate controls, not one toggle', async ({ page }
   // They are different relations. If a shortcut ever derived one from the
   // other, this is where it shows.
   const user = await signUp(page);
-  await page.goto(`/albums/${IN_RAINBOWS}`);
+  await page.goto(await albumUrl(IN_RAINBOWS));
 
   await favouriteButton(page).click();
   await expect(favouriteButton(page)).toHaveAttribute('aria-pressed', 'true', ACTION);
@@ -221,7 +222,7 @@ test('Like and Favourite are separate controls, not one toggle', async ({ page }
 });
 
 test('a signed-out visitor is offered no favourite control', async ({ page }) => {
-  await page.goto(`/albums/${IN_RAINBOWS}`);
+  await page.goto(await albumUrl(IN_RAINBOWS));
 
   await expect(page.getByRole('link', { name: 'Sign in to add' })).toBeVisible();
   await expect(favouriteButton(page)).toHaveCount(0);

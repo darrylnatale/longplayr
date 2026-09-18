@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
 import { expect, test, type Page } from '@playwright/test';
+import { albumUrl } from './urls';
 
 /**
  * Want to Listen, from the album action card.
@@ -104,7 +105,7 @@ async function counts(handle: string) {
 
 test('want an uncollected album, and it stays uncollected', async ({ page }) => {
   const user = await signUp(page);
-  await page.goto(`/albums/${IN_RAINBOWS}`);
+  await page.goto(await albumUrl(IN_RAINBOWS));
 
   await expect(page.getByRole('button', { name: 'Add to collection' })).toBeVisible();
   await expect(wantButton(page)).toHaveAttribute('aria-pressed', 'false');
@@ -125,7 +126,7 @@ test('the toggle survives a full cycle, and a reload', async ({ page }) => {
   // The regression this file exists for, run as the prescribed sequence:
   // false, add, true, remove, false, reload, verify.
   const user = await signUp(page);
-  await page.goto(`/albums/${IN_RAINBOWS}`);
+  await page.goto(await albumUrl(IN_RAINBOWS));
 
   const button = wantButton(page);
   await expect(button).toHaveAttribute('aria-pressed', 'false');
@@ -157,7 +158,7 @@ test('the toggle survives a full cycle, and a reload', async ({ page }) => {
 test('want a collected album without disturbing anything about it', async ({ page }) => {
   const user = await signUp(page);
 
-  await page.goto(`/albums/${WATCH_THE_THRONE}`);
+  await page.goto(await albumUrl(WATCH_THE_THRONE));
   await page.getByRole('button', { name: 'Rate', exact: true }).click();
   await page.getByLabel('Your score').fill('8.5');
   await page.getByRole('button', { name: 'Save' }).click();
@@ -188,7 +189,7 @@ test('adding to the collection clears the wish, one way only', async ({ page }) 
   // collecting, must leave the album collected and off the list — and the
   // control must reflect that without a manual refresh.
   const user = await signUp(page);
-  await page.goto(`/albums/${IN_RAINBOWS}`);
+  await page.goto(await albumUrl(IN_RAINBOWS));
 
   await wantButton(page).click();
   await expect(wantButton(page)).toHaveAttribute('aria-pressed', 'true', ACTION);
@@ -205,7 +206,7 @@ test('adding to the collection clears the wish, one way only', async ({ page }) 
 
 test('Want to Listen and Favourite do not move each other', async ({ page }) => {
   const user = await signUp(page);
-  await page.goto(`/albums/${IN_RAINBOWS}`);
+  await page.goto(await albumUrl(IN_RAINBOWS));
 
   await wantButton(page).click();
   await expect(wantButton(page)).toHaveAttribute('aria-pressed', 'true', ACTION);
@@ -231,7 +232,7 @@ test('liking does not disturb the wish, though it does collect', async ({ page }
   // disappears — through the clearing rule on entry creation, not because Like
   // touched the wishlist.
   const user = await signUp(page);
-  await page.goto(`/albums/${IN_RAINBOWS}`);
+  await page.goto(await albumUrl(IN_RAINBOWS));
 
   await wantButton(page).click();
   await expect(wantButton(page)).toHaveAttribute('aria-pressed', 'true', ACTION);
@@ -252,7 +253,7 @@ test('liking does not disturb the wish, though it does collect', async ({ page }
 });
 
 test('a signed-out visitor is offered no Want to Listen control', async ({ page }) => {
-  await page.goto(`/albums/${IN_RAINBOWS}`);
+  await page.goto(await albumUrl(IN_RAINBOWS));
 
   await expect(page.getByRole('link', { name: 'Sign in to add' })).toBeVisible();
   await expect(wantButton(page)).toHaveCount(0);

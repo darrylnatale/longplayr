@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
 import { expect, test } from '@playwright/test';
+import { albumUrl } from './urls';
 
 /**
  * Phase 2's first user-visible slice, end to end: a real user adds an album to
@@ -73,7 +74,7 @@ test('add an album to the collection, then remove it', async ({ page }) => {
   await page.getByRole('button', { name: 'Claim handle' }).click();
   await expect(page).toHaveURL(`/${user.handle}`, NAV);
 
-  await page.goto(`/albums/${ALBUM_MBID}`);
+  await page.goto(await albumUrl(ALBUM_MBID));
 
   const add = page.getByRole('button', { name: 'Add to collection' });
   await expect(add).toBeVisible();
@@ -99,7 +100,7 @@ test('add an album to the collection, then remove it', async ({ page }) => {
 test('a signed-out visitor is invited to sign in rather than shown a control that fails', async ({
   page,
 }) => {
-  await page.goto(`/albums/${ALBUM_MBID}`);
+  await page.goto(await albumUrl(ALBUM_MBID));
 
   await expect(page.getByRole('link', { name: 'Sign in to add' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Add to collection' })).toBeHidden();
@@ -121,7 +122,7 @@ test('rate an album, change the score, then clear it', async ({ page }) => {
   await expect(page).toHaveURL(`/${user.handle}`, NAV);
 
   // Uncollected to begin with.
-  await page.goto(`/albums/${ALBUM_MBID}`);
+  await page.goto(await albumUrl(ALBUM_MBID));
   await expect(page.getByRole('button', { name: 'Add to collection' })).toBeVisible();
 
   // Rating an uncollected album collects it.
@@ -166,7 +167,7 @@ test('like an uncollected album, then unlike it', async ({ page }) => {
   await page.getByRole('button', { name: 'Claim handle' }).click();
   await expect(page).toHaveURL(`/${user.handle}`, NAV);
 
-  await page.goto(`/albums/${ALBUM_MBID}`);
+  await page.goto(await albumUrl(ALBUM_MBID));
   await expect(page.getByRole('button', { name: 'Add to collection' })).toBeVisible();
 
   const like = page.getByRole('button', { name: 'Like', exact: true });
@@ -205,7 +206,7 @@ test('relisten an uncollected album, then relisten again', async ({ page }) => {
   await page.getByRole('button', { name: 'Claim handle' }).click();
   await expect(page).toHaveURL(`/${user.handle}`, NAV);
 
-  await page.goto(`/albums/${ALBUM_MBID}`);
+  await page.goto(await albumUrl(ALBUM_MBID));
   await expect(page.getByRole('button', { name: 'Add to collection' })).toBeVisible();
 
   // No count is shown at zero.
@@ -241,7 +242,7 @@ test('write a review, edit it, then delete it', async ({ page }) => {
   await page.getByRole('button', { name: 'Claim handle' }).click();
   await expect(page).toHaveURL(`/${user.handle}`, NAV);
 
-  await page.goto(`/albums/${ALBUM_MBID}`);
+  await page.goto(await albumUrl(ALBUM_MBID));
   await expect(page.getByRole('button', { name: 'Add to collection' })).toBeVisible();
 
   // Writing about an uncollected album collects it.
@@ -295,7 +296,7 @@ test('the review editor works at phone width', async ({ page }) => {
   await page.getByRole('button', { name: 'Claim handle' }).click();
   await expect(page).toHaveURL(`/${user.handle}`, NAV);
 
-  await page.goto(`/albums/${ALBUM_MBID}`);
+  await page.goto(await albumUrl(ALBUM_MBID));
   await page.getByRole('button', { name: 'Write a review…' }).click();
 
   const editor = page.getByLabel('Your review');

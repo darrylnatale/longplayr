@@ -89,7 +89,7 @@ export type ListError =
  */
 const LIST_ITEM_SELECT = `
   id, position,
-  albums(id, mbid, title, display_credit, primary_type, artwork_status, first_release_date, first_release_date_precision, album_artists(position, artists(id, mbid, name)))
+  albums(id, mbid, slug, title, display_credit, primary_type, artwork_status, first_release_date, first_release_date_precision, album_artists(position, artists(id, mbid, slug, name)))
 ` as const;
 
 type ItemRow = {
@@ -98,6 +98,7 @@ type ItemRow = {
   albums: {
     id: string;
     mbid: string;
+    slug: string;
     title: string;
     display_credit: string;
     primary_type: Database['public']['Enums']['album_type'];

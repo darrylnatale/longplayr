@@ -182,6 +182,7 @@ export type CollectionListItem = {
   entryId: string;
   albumId: string;
   mbid: string;
+  slug: string;
   title: string;
   credit: string;
   /** Null when the catalogue holds no release date — never invented. */
@@ -270,7 +271,7 @@ export async function listCollection(
   let query = supabase
     .from('collection_entries')
     .select(
-      'id, album_id, rating, liked, relisten_count, albums(mbid, title, display_credit, artwork_status, first_release_date)',
+      'id, album_id, rating, liked, relisten_count, albums(mbid, slug, title, display_credit, artwork_status, first_release_date)',
       { count: 'exact' },
     )
     .eq('user_id', userId);
@@ -334,6 +335,7 @@ export function toCollectionListItem(row: {
   relisten_count: number;
   albums: {
     mbid: string;
+    slug: string;
     title: string;
     display_credit: string;
     artwork_status: Database['public']['Enums']['artwork_status'];
@@ -347,6 +349,7 @@ export function toCollectionListItem(row: {
       entryId: row.id,
       albumId: row.album_id,
       mbid: row.albums.mbid,
+      slug: row.albums.slug,
       title: row.albums.title,
       credit: row.albums.display_credit,
       // A partial date is stored as a full date with a precision marker, so the

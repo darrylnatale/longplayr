@@ -54,6 +54,7 @@ export type FavouriteListItem = {
   /** 1-10. Gaps are legal — unpinning frees a position without renumbering. */
   position: number;
   mbid: string;
+  slug: string;
   title: string;
   credit: string;
   hasArtwork: boolean;
@@ -73,6 +74,7 @@ export function toFavouriteListItem(row: {
   position: number;
   albums: {
     mbid: string;
+    slug: string;
     title: string;
     display_credit: string;
     artwork_status: Database['public']['Enums']['artwork_status'];
@@ -86,6 +88,7 @@ export function toFavouriteListItem(row: {
       albumId: row.album_id,
       position: row.position,
       mbid: row.albums.mbid,
+      slug: row.albums.slug,
       title: row.albums.title,
       credit: row.albums.display_credit,
       // Only `found` means there is an image to fetch; `absent` and `failed`
@@ -124,7 +127,7 @@ export async function listProfileFavourites(userId: string): Promise<FavouriteLi
   // embed needs no foreign-key disambiguation.
   const { data, error } = await supabase
     .from('favourite_albums')
-    .select('id, album_id, position, albums(mbid, title, display_credit, artwork_status)')
+    .select('id, album_id, position, albums(mbid, slug, title, display_credit, artwork_status)')
     .eq('user_id', userId)
     .order('position', { ascending: true });
 

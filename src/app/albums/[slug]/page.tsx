@@ -7,10 +7,11 @@ import { AddToListForm } from '@/components/AddToListForm';
 import { AlbumCover } from '@/components/AlbumCover';
 import { coverArtPromptUrl } from '@/services/catalogue/artwork-worklist';
 import { Container } from '@/components/Container';
+import { artistPath } from '@/lib/paths';
 import { ScoreBadge } from '@/components/ScoreBadge';
 import { ReviewLikeButton } from '@/components/ReviewLikeButton';
 import { SectionHeader } from '@/components/SectionHeader';
-import { getAlbumByMbid } from '@/services/catalogue/queries';
+import { getAlbumBySlug } from '@/services/catalogue/queries';
 import { drainJobs } from '@/services/catalogue/jobs';
 import { enqueueJob, INTERACTIVE_JOB_PRIORITY } from '@/services/catalogue/queue';
 import { getMyCollectionState } from '@/services/collection';
@@ -54,9 +55,9 @@ import {
  * Read-only. The action card is a presentation shell; Phase 2 wires it.
  */
 
-export async function generateMetadata({ params }: PageProps<'/albums/[mbid]'>) {
-  const { mbid } = await params;
-  const album = await getAlbumByMbid(mbid);
+export async function generateMetadata({ params }: PageProps<'/albums/[slug]'>) {
+  const { slug } = await params;
+  const album = await getAlbumBySlug(slug);
   if (!album) return { title: 'Not found · longplayr' };
   return { title: `${album.title} by ${album.display_credit} · longplayr` };
 }
@@ -126,9 +127,9 @@ async function resolveActionState(albumId: string): Promise<ActionCardState> {
   };
 }
 
-export default async function AlbumPage({ params }: PageProps<'/albums/[mbid]'>) {
-  const { mbid } = await params;
-  const album = await getAlbumByMbid(mbid);
+export default async function AlbumPage({ params }: PageProps<'/albums/[slug]'>) {
+  const { slug } = await params;
+  const album = await getAlbumBySlug(slug);
 
   if (!album) notFound();
 
@@ -151,7 +152,9 @@ export default async function AlbumPage({ params }: PageProps<'/albums/[mbid]'>)
   if (album.hydration_status === 'pending') {
     after(async () => {
       try {
-        await enqueueJob('ingest_release_group', mbid, { priority: INTERACTIVE_JOB_PRIORITY });
+        await enqueueJob('ingest_release_group', album.mbid, {
+          priority: INTERACTIVE_JOB_PRIORITY,
+        });
         await drainJobs(1);
       } catch {
         // Deliberately swallowed. The job is queued and the daily cron will
@@ -274,7 +277,7 @@ export default async function AlbumPage({ params }: PageProps<'/albums/[mbid]'>)
                 <span key={artist.id}>
                   {index > 0 && <span className="text-text-muted">, </span>}
                   <Link
-                    href={`/artists/${artist.mbid}`}
+                    href={artistPath(artist)}
                     className="underline decoration-border-strong underline-offset-4 transition-colors hover:decoration-accent"
                   >
                     {artist.name}

@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
 import { expect, test, type Page } from '@playwright/test';
+import { albumUrl } from './urls';
 
 /**
  * The optional listen date on Add to Collection.
@@ -111,7 +112,7 @@ async function wishCount(handle: string) {
 
 test('adding without a date behaves exactly as before', async ({ page }) => {
   const user = await signUp(page);
-  await page.goto(`/albums/${IN_RAINBOWS}`);
+  await page.goto(await albumUrl(IN_RAINBOWS));
 
   // The date is not in the way: one click still collects.
   await expect(dateField(page)).toHaveCount(0);
@@ -125,7 +126,7 @@ test('adding without a date behaves exactly as before', async ({ page }) => {
 
 test('a supplied date persists, and survives a reload', async ({ page }) => {
   const user = await signUp(page);
-  await page.goto(`/albums/${IN_RAINBOWS}`);
+  await page.goto(await albumUrl(IN_RAINBOWS));
 
   await disclosure(page).click();
   await expect(dateField(page)).toBeVisible();
@@ -144,7 +145,7 @@ test('a supplied date persists, and survives a reload', async ({ page }) => {
 
 test('a date backdated by decades persists, and does not move added_at', async ({ page }) => {
   const user = await signUp(page);
-  await page.goto(`/albums/${WATCH_THE_THRONE}`);
+  await page.goto(await albumUrl(WATCH_THE_THRONE));
 
   await disclosure(page).click();
   await dateField(page).fill('1997-05-21');
@@ -161,7 +162,7 @@ test('the disclosure can be dismissed, and then no date is sent', async ({ page 
   // Closing unmounts the field, so a date typed and then dismissed is not
   // submitted — the intended reading of "add without a date".
   const user = await signUp(page);
-  await page.goto(`/albums/${ACID_RAP}`);
+  await page.goto(await albumUrl(ACID_RAP));
 
   await disclosure(page).click();
   await dateField(page).fill('2001-01-01');
@@ -178,7 +179,7 @@ test('adding a wanted album with a date collects it and clears the wish', async 
   // The single sanctioned path still owns the clearing rule: the date rides
   // along with it rather than routing around it.
   const user = await signUp(page);
-  await page.goto(`/albums/${IN_RAINBOWS}`);
+  await page.goto(await albumUrl(IN_RAINBOWS));
 
   await page.getByRole('button', { name: 'Want to listen' }).click();
   await expect(page.getByRole('button', { name: 'On your list' })).toBeVisible(ACTION);
@@ -196,7 +197,7 @@ test('adding a wanted album with a date collects it and clears the wish', async 
 
 test('a collected album offers no date input', async ({ page }) => {
   const user = await signUp(page);
-  await page.goto(`/albums/${IN_RAINBOWS}`);
+  await page.goto(await albumUrl(IN_RAINBOWS));
 
   await page.getByRole('button', { name: 'Add to collection' }).click();
   await expect(page.getByText('In your collection')).toBeVisible(ACTION);
@@ -220,7 +221,7 @@ test('a collected album offers no date input', async ({ page }) => {
 
 test('the date field is reachable and operable from the keyboard', async ({ page }) => {
   const user = await signUp(page);
-  await page.goto(`/albums/${ACID_RAP}`);
+  await page.goto(await albumUrl(ACID_RAP));
 
   // The disclosure is a real button: it takes focus and responds to Enter.
   await disclosure(page).focus();

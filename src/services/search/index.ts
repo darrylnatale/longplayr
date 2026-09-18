@@ -20,6 +20,7 @@ import type { Database } from '@/lib/supabase/database.types';
 export type AlbumHit = {
   id: string;
   mbid: string;
+  slug: string;
   title: string;
   display_credit: string;
   primary_type: Database['public']['Enums']['album_type'];
@@ -44,6 +45,7 @@ export type AlbumHit = {
 export type ArtistHit = {
   id: string;
   mbid: string;
+  slug: string;
   name: string;
   disambiguation: string | null;
   album_count: number;

@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
 import { expect, test, type Page } from '@playwright/test';
+import { albumUrl } from './urls';
 
 /**
  * Favourites on the public profile overview, end to end.
@@ -216,5 +217,5 @@ test('a favourite links through to its album', async ({ page }) => {
   await page.goto(`/${user.handle}`);
   await favouritesRow(page).getByRole('link').first().click();
 
-  await expect(page).toHaveURL(`/albums/${IN_RAINBOWS}`, NAV);
+  await expect(page).toHaveURL(await albumUrl(IN_RAINBOWS), NAV);
 });

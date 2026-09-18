@@ -11,6 +11,7 @@ import { getMyListLikes, listLikeCount } from '@/services/social/list-likes';
 import { getCurrentProfile } from '@/services/profiles';
 
 import { removeItemAction, reorderItemAction, toggleListLikeAction } from './actions';
+import { albumPath } from '@/lib/paths';
 
 /**
  * The public list page.
@@ -128,7 +129,7 @@ export default async function ListPage({ params }: PageProps<'/lists/[id]'>) {
                 {index + 1}
               </span>
 
-              <Link href={`/albums/${item.album.mbid}`} className="w-14 shrink-0">
+              <Link href={albumPath(item.album)} className="w-14 shrink-0">
                 <AlbumCover
                   mbid={item.album.mbid}
                   title={item.album.title}
@@ -140,7 +141,7 @@ export default async function ListPage({ params }: PageProps<'/lists/[id]'>) {
 
               <span className="min-w-0 flex-1">
                 <Link
-                  href={`/albums/${item.album.mbid}`}
+                  href={albumPath(item.album)}
                   className="block truncate text-text transition-colors hover:text-accent"
                 >
                   {item.album.title}

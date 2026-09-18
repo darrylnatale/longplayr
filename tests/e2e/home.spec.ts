@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
 import { expect, test, type Page } from '@playwright/test';
+import { albumUrl } from './urls';
 
 /**
  * The home page's discovery section — Phase 5 slice 3.
@@ -150,8 +151,8 @@ async function seedRankedChart(admin: SupabaseClient): Promise<string[]> {
   // Ranked order: three qualifying users, then two, then the two singles in
   // whatever order the `album_id` tiebreak settles — which is why only the
   // leading pair is asserted against this.
-  const href = (index: number) => `/albums/${chosen[index].mbid as string}`;
-  return [href(3), href(2), href(1), href(0)];
+  const href = (index: number) => albumUrl(chosen[index].mbid as string);
+  return Promise.all([href(3), href(2), href(1), href(0)]);
 }
 
 /** The discovery section on the home page. */
