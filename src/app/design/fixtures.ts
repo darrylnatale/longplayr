@@ -19,6 +19,7 @@ import type { TileAlbum } from '@/components/CollectionTile';
 export const GALLERY_ALBUMS: TileAlbum[] = [
   {
     mbid: 'b1392450-e666-3926-a536-22c65f834433',
+    slug: 'ok-computer',
     title: 'OK Computer',
     credit: 'Radiohead',
     year: 1997,
@@ -29,6 +30,7 @@ export const GALLERY_ALBUMS: TileAlbum[] = [
   },
   {
     mbid: '1b022e01-4da6-387b-8658-8678046e4cef',
+    slug: 'nevermind',
     title: 'Nevermind',
     credit: 'Nirvana',
     year: 1991,
@@ -39,6 +41,7 @@ export const GALLERY_ALBUMS: TileAlbum[] = [
   },
   {
     mbid: 'b5b4bb4b-8ba5-3acf-88cb-4cae2699d8da',
+    slug: 'hybrid-theory',
     title: 'Hybrid Theory',
     credit: 'Linkin Park',
     year: 2000,
@@ -49,6 +52,7 @@ export const GALLERY_ALBUMS: TileAlbum[] = [
   },
   {
     mbid: '09474d62-17dd-3a4f-98fb-04c65f38a479',
+    slug: 'meteora',
     title: 'Meteora',
     credit: 'Linkin Park',
     year: 2003,
@@ -59,6 +63,7 @@ export const GALLERY_ALBUMS: TileAlbum[] = [
   },
   {
     mbid: '48117b90-a16e-34ca-a514-19c702df1158',
+    slug: 'discovery',
     title: 'Discovery',
     credit: 'Daft Punk',
     year: 2001,
@@ -69,6 +74,7 @@ export const GALLERY_ALBUMS: TileAlbum[] = [
   },
   {
     mbid: 'f50fbcb4-bfcd-3784-b4c9-44f4793e66b2',
+    slug: 'toxicity',
     title: 'Toxicity',
     credit: 'System of a Down',
     year: 2001,
@@ -79,6 +85,7 @@ export const GALLERY_ALBUMS: TileAlbum[] = [
   },
   {
     mbid: '6e335887-60ba-38f0-95af-fae7774336bf',
+    slug: 'in-rainbows',
     title: 'In Rainbows',
     credit: 'Radiohead',
     year: 2007,
@@ -89,6 +96,7 @@ export const GALLERY_ALBUMS: TileAlbum[] = [
   },
   {
     mbid: 'f959a46a-a136-3134-9412-6572b23fad95',
+    slug: 'demon-days',
     title: 'Demon Days',
     credit: 'Gorillaz',
     year: 2005,
@@ -99,6 +107,7 @@ export const GALLERY_ALBUMS: TileAlbum[] = [
   },
   {
     mbid: 'f6b1b900-6108-32f0-abbd-2855af9151eb',
+    slug: 'remain-in-light',
     title: 'Remain in Light',
     credit: 'Talking Heads',
     year: 1980,
@@ -109,6 +118,7 @@ export const GALLERY_ALBUMS: TileAlbum[] = [
   },
   {
     mbid: 'f5093c06-23e3-404f-aeaa-40f72885ee3a',
+    slug: 'the-dark-side-of-the-moon',
     title: 'The Dark Side of the Moon',
     credit: 'Pink Floyd',
     year: 1973,
@@ -119,6 +129,7 @@ export const GALLERY_ALBUMS: TileAlbum[] = [
   },
   {
     mbid: 'f2026101-945b-3d05-9ef4-aa718fc3feef',
+    slug: 'the-wall',
     title: 'The Wall',
     credit: 'Pink Floyd',
     year: 1979,
@@ -129,6 +140,7 @@ export const GALLERY_ALBUMS: TileAlbum[] = [
   },
   {
     mbid: 'aa997ea0-2936-40bd-884d-3af8a0e064dc',
+    slug: 'random-access-memories',
     title: 'Random Access Memories',
     credit: 'Daft Punk',
     year: 2013,
@@ -139,6 +151,7 @@ export const GALLERY_ALBUMS: TileAlbum[] = [
   },
   {
     mbid: 'a348ba2f-f8b3-4686-b928-e63d8d94d543',
+    slug: 'am',
     title: 'AM',
     credit: 'Arctic Monkeys',
     year: 2013,
@@ -149,6 +162,7 @@ export const GALLERY_ALBUMS: TileAlbum[] = [
   },
   {
     mbid: '08aa7a6c-3e43-4459-87b2-e47faf3a088a',
+    slug: 'currents',
     title: 'Currents',
     credit: 'Tame Impala',
     year: 2015,
@@ -159,6 +173,7 @@ export const GALLERY_ALBUMS: TileAlbum[] = [
   },
   {
     mbid: '9162580e-5df4-32de-80cc-f45a8d8a9b1d',
+    slug: 'abbey-road',
     title: 'Abbey Road',
     credit: 'The Beatles',
     year: 1969,
@@ -169,6 +184,7 @@ export const GALLERY_ALBUMS: TileAlbum[] = [
   },
   {
     mbid: 'bcba43e7-2f72-3b60-b234-577e77fd2d9e',
+    slug: 'the-black-parade',
     title: 'The Black Parade',
     credit: 'My Chemical Romance',
     year: 2006,
@@ -179,6 +195,7 @@ export const GALLERY_ALBUMS: TileAlbum[] = [
   },
   {
     mbid: '2a0981fb-9593-3019-864b-ce934d97a16e',
+    slug: 'in-utero',
     title: 'In Utero',
     credit: 'Nirvana',
     year: 1993,
@@ -189,6 +206,7 @@ export const GALLERY_ALBUMS: TileAlbum[] = [
   },
   {
     mbid: 'de9bf827-a9b0-348b-a7c9-556c03c3fb07',
+    slug: 'american-idiot',
     title: 'American Idiot',
     credit: 'Green Day',
     year: 2004,
@@ -199,6 +217,7 @@ export const GALLERY_ALBUMS: TileAlbum[] = [
   },
   {
     mbid: '19e7c9f3-7c4c-3a56-ba50-4156b39f76ca',
+    slug: 'rust-in-peace',
     title: 'Rust in Peace',
     credit: 'Megadeth',
     year: 1990,
@@ -209,6 +228,7 @@ export const GALLERY_ALBUMS: TileAlbum[] = [
   },
   {
     mbid: 'e8c09b4e-33ae-368b-8f70-24b4e14fb9ad',
+    slug: 'hot-fuss',
     title: 'Hot Fuss',
     credit: 'The Killers',
     year: 2004,
@@ -219,6 +239,7 @@ export const GALLERY_ALBUMS: TileAlbum[] = [
   },
   {
     mbid: 'b88655ba-7469-48b8-a296-b9011ab73ef3',
+    slug: 'damn',
     title: 'DAMN.',
     credit: 'Kendrick Lamar',
     year: 2017,
@@ -229,6 +250,7 @@ export const GALLERY_ALBUMS: TileAlbum[] = [
   },
   {
     mbid: '4b16a1bc-8644-48ae-9b3e-8ae36aa30cfc',
+    slug: 'born-to-die',
     title: 'Born to Die',
     credit: 'Lana Del Rey',
     year: 2012,
@@ -239,6 +261,7 @@ export const GALLERY_ALBUMS: TileAlbum[] = [
   },
   {
     mbid: 'e8f70201-8899-3f0c-9e07-5d6495bc8046',
+    slug: 'metallica',
     title: 'Metallica',
     credit: 'Metallica',
     year: 1991,
@@ -249,6 +272,7 @@ export const GALLERY_ALBUMS: TileAlbum[] = [
   },
   {
     mbid: 'ca5dfcc3-83fb-3eee-9061-c27296b77b2c',
+    slug: 'californication',
     title: 'Californication',
     credit: 'Red Hot Chili Peppers',
     year: 1999,

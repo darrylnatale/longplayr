@@ -48,7 +48,7 @@ type FeedItemBase = {
 export type FeedItem =
   | (FeedItemBase & {
       type: 'listened' | 'relistened' | 'rated' | 'reviewed';
-      album: { mbid: string; title: string; credit: string; hasArtwork: boolean };
+      album: { mbid: string; slug: string; title: string; credit: string; hasArtwork: boolean };
       score: number | null;
       reviewBody: string | null;
     })
@@ -177,6 +177,7 @@ export function toFeedItem(row: FeedRow): FeedItem[] {
       type: row.type,
       album: {
         mbid: row.album_mbid,
+        slug: row.album_slug,
         title: row.album_title,
         credit: row.album_credit,
         // Only `found` means there is an image to fetch. `absent` and `failed`

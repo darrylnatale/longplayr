@@ -3,7 +3,7 @@
 import { useActionState } from 'react';
 import { useFormStatus } from 'react-dom';
 
-import type { CollectionActionState } from '@/app/albums/[mbid]/actions';
+import type { CollectionActionState } from '@/app/albums/[slug]/actions';
 
 /**
  * The like toggle beneath someone else's review.

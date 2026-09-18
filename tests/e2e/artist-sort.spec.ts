@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
 import { expect, test, type Page } from '@playwright/test';
+import { albumUrl, artistUrl } from './urls';
 
 /**
  * Discography sorting on the artist page.
@@ -121,7 +122,7 @@ async function stateFor(handle: string, mbid: string) {
 }
 
 test('the artist page renders its discography', async ({ page }) => {
-  await page.goto(`/artists/${RADIOHEAD}`);
+  await page.goto(await artistUrl(RADIOHEAD));
 
   await expect(page.getByRole('heading', { name: 'Radiohead', level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Discography' })).toBeVisible();
@@ -134,25 +135,25 @@ test('a single-release discography is offered no sort control', async ({ page })
   // Sorting one album is meaningless, so the control is withheld rather than
   // rendered inert. Every fixture artist holds exactly one release, which is
   // also why ordering itself is proven in the unit tests rather than here.
-  await page.goto(`/artists/${RADIOHEAD}`);
+  await page.goto(await artistUrl(RADIOHEAD));
 
   await expect(page.getByRole('link', { name: 'Oldest' })).toHaveCount(0);
   await expect(page.getByText('Newest')).toHaveCount(0);
 });
 
 test('?sort=oldest is a valid address and renders the discography', async ({ page }) => {
-  const response = await page.goto(`/artists/${RADIOHEAD}?sort=oldest`);
+  const response = await page.goto(`${await artistUrl(RADIOHEAD)}?sort=oldest`);
 
   expect(response?.status()).toBe(200);
   await expect(page.getByRole('heading', { name: 'Radiohead', level: 1 })).toBeVisible();
   await expect(page.getByRole('link', { name: /In Rainbows/ })).toBeVisible();
   // The address survives — the sort is server-rendered state, not client state.
-  await expect(page).toHaveURL(`/artists/${RADIOHEAD}?sort=oldest`);
+  await expect(page).toHaveURL(`${await artistUrl(RADIOHEAD)}?sort=oldest`);
 });
 
 test('an unrecognised sort falls back to the default rather than erroring', async ({ page }) => {
   for (const value of ['banana', '', 'NEWEST', 'oldest%20', '1']) {
-    const response = await page.goto(`/artists/${RADIOHEAD}?sort=${value}`);
+    const response = await page.goto(`${await artistUrl(RADIOHEAD)}?sort=${value}`);
 
     expect(response?.status(), `?sort=${value} should render`).toBe(200);
     await expect(page.getByRole('link', { name: /In Rainbows/ })).toBeVisible();
@@ -162,7 +163,7 @@ test('an unrecognised sort falls back to the default rather than erroring', asyn
 test('a repeated sort parameter does not break the page', async ({ page }) => {
   // `searchParams` hands back an array when a key repeats; the parser takes the
   // first rather than stringifying the array into nonsense.
-  const response = await page.goto(`/artists/${RADIOHEAD}?sort=oldest&sort=newest`);
+  const response = await page.goto(`${await artistUrl(RADIOHEAD)}?sort=oldest&sort=newest`);
 
   expect(response?.status()).toBe(200);
   await expect(page.getByRole('link', { name: /In Rainbows/ })).toBeVisible();
@@ -173,7 +174,7 @@ test('sorting mutates no collection state', async ({ page }) => {
   // and proves each one is untouched by visiting the artist page under a sort.
   const user = await signUp(page);
 
-  await page.goto(`/albums/${IN_RAINBOWS}`);
+  await page.goto(await albumUrl(IN_RAINBOWS));
   await page.getByRole('button', { name: 'Rate', exact: true }).click();
   await page.getByLabel('Your score').fill('8.1');
   await page.getByRole('button', { name: 'Save' }).click();
@@ -207,12 +208,12 @@ test('sorting mutates no collection state', async ({ page }) => {
 test('the album page is unchanged after sorting', async ({ page }) => {
   const user = await signUp(page);
 
-  await page.goto(`/albums/${IN_RAINBOWS}`);
+  await page.goto(await albumUrl(IN_RAINBOWS));
   await page.getByRole('button', { name: 'Add to collection' }).click();
   await expect(page.getByText('In your collection')).toBeVisible(ACTION);
 
-  await page.goto(`/artists/${RADIOHEAD}?sort=oldest`);
-  await page.goto(`/albums/${IN_RAINBOWS}`);
+  await page.goto(`${await artistUrl(RADIOHEAD)}?sort=oldest`);
+  await page.goto(await albumUrl(IN_RAINBOWS));
 
   // Still collected, and still unrated — the sort read nothing into it.
   await expect(page.getByText('In your collection')).toBeVisible();

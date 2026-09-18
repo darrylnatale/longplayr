@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
 import { expect, test, type Page } from '@playwright/test';
+import { albumUrl } from './urls';
 
 /**
  * The collection read path, end to end: a real user collects real albums and
@@ -88,14 +89,14 @@ async function signUp(page: Page) {
 
 /** Plain add, from the album page. */
 async function collect(page: Page, mbid: string) {
-  await page.goto(`/albums/${mbid}`);
+  await page.goto(await albumUrl(mbid));
   await page.getByRole('button', { name: 'Add to collection' }).click();
   await expect(page.getByText('In your collection')).toBeVisible(ACTION);
 }
 
 /** Rating an uncollected album collects it — the implicit path. */
 async function rate(page: Page, mbid: string, score: string) {
-  await page.goto(`/albums/${mbid}`);
+  await page.goto(await albumUrl(mbid));
   await page.getByRole('button', { name: 'Rate', exact: true }).click();
   await page.getByLabel('Your score').fill(score);
   await page.getByRole('button', { name: 'Save' }).click();
@@ -143,12 +144,12 @@ test('artwork carries a state line, and never a caption', async ({ page }) => {
 
   await rate(page, WATCH_THE_THRONE, '8.5');
 
-  await page.goto(`/albums/${IN_RAINBOWS}`);
+  await page.goto(await albumUrl(IN_RAINBOWS));
   await page.getByRole('button', { name: 'Like', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Liked' })).toBeVisible(ACTION);
 
   // Two relistens, so this tile shows ×2.
-  await page.goto(`/albums/${UNKNOWN_PLEASURES}`);
+  await page.goto(await albumUrl(UNKNOWN_PLEASURES));
   await page.getByRole('button', { name: 'Relisten', exact: true }).click();
   await expect(page.getByText('In your collection')).toBeVisible(ACTION);
   await page.getByRole('button', { name: /Relisten/ }).click();
@@ -179,7 +180,7 @@ test('a relisten count of one is not drawn', async ({ page }) => {
   const user = await createUserViaApi(admin);
   await signIn(page, user);
 
-  await page.goto(`/albums/${IN_RAINBOWS}`);
+  await page.goto(await albumUrl(IN_RAINBOWS));
   await page.getByRole('button', { name: 'Relisten', exact: true }).click();
   await expect(page.getByText('In your collection')).toBeVisible(ACTION);
 
@@ -214,13 +215,13 @@ test('a tile links through to the album page, from both surfaces', async ({ page
 
   await page.goto(`/${user.handle}`);
   await tileFor(page, 'In Rainbows').getByRole('link').click();
-  await expect(page).toHaveURL(`/albums/${IN_RAINBOWS}`, NAV);
+  await expect(page).toHaveURL(await albumUrl(IN_RAINBOWS), NAV);
 
   // The destination renders the same grid, so it needs its own assertion
   // rather than inheriting one.
   await page.goto(`/${user.handle}/collection`);
   await tileFor(page, 'In Rainbows').getByRole('link').click();
-  await expect(page).toHaveURL(`/albums/${IN_RAINBOWS}`, NAV);
+  await expect(page).toHaveURL(await albumUrl(IN_RAINBOWS), NAV);
 });
 
 test('an album with no state draws no line at all', async ({ page }) => {

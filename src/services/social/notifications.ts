@@ -3,6 +3,7 @@ import type { Database } from '@/lib/supabase/database.types';
 
 import { countRows, COUNT_ONLY } from '../count';
 import { getCurrentProfile } from '../profiles';
+import { albumPath } from '@/lib/paths';
 
 /**
  * Notifications — the directed counterpart to the feed.
@@ -73,7 +74,7 @@ export const NOTIFICATIONS_PAGE_SIZE = 20;
 const NOTIFICATION_SELECT = `
   id, type, created_at, read_at,
   actor:profiles!notifications_actor_id_fkey(id, handle, display_name, avatar_url),
-  review_likes(reviews(collection_entries(albums(mbid, title)))),
+  review_likes(reviews(collection_entries(albums(mbid, slug, title)))),
   list_likes(lists(id, title))
 ` as const;
 
@@ -258,7 +259,7 @@ export async function notificationTarget(id: string): Promise<string | null> {
     .select(
       `type,
        actor:profiles!notifications_actor_id_fkey(handle),
-       review_likes(reviews(collection_entries(albums(mbid)))),
+       review_likes(reviews(collection_entries(albums(mbid, slug)))),
        list_likes(lists(id))`,
     )
     .eq('id', id)
@@ -271,14 +272,14 @@ export async function notificationTarget(id: string): Promise<string | null> {
     type: NotificationType;
     actor: { handle: string } | null;
     review_likes: {
-      reviews: { collection_entries: { albums: { mbid: string } | null } | null } | null;
+      reviews: { collection_entries: { albums: { slug: string } | null } | null } | null;
     } | null;
     list_likes: { lists: { id: string } | null } | null;
   };
 
   if (row.type === 'review_liked') {
-    const mbid = row.review_likes?.reviews?.collection_entries?.albums?.mbid;
-    return mbid ? `/albums/${mbid}` : null;
+    const slug = row.review_likes?.reviews?.collection_entries?.albums?.slug;
+    return slug ? albumPath({ slug }) : null;
   }
 
   // A list like opens the list it was given to, mirroring the album above.

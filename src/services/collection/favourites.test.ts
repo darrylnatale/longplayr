@@ -12,6 +12,7 @@ import { toFavouriteListItem } from './favourites';
 
 const album = {
   mbid: 'b1392450-e666-3926-a536-22c65f834433',
+  slug: 'ok-computer',
   title: 'OK Computer',
   display_credit: 'Radiohead',
   artwork_status: 'found' as const,
@@ -28,6 +29,7 @@ describe('a pinned album', () => {
       albumId: 'album-1',
       position: 1,
       mbid: album.mbid,
+      slug: 'ok-computer',
       title: 'OK Computer',
       credit: 'Radiohead',
       hasArtwork: true,

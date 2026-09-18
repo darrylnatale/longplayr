@@ -26,7 +26,7 @@ type Album = Database['public']['Tables']['albums']['Row'];
 type Artist = Database['public']['Tables']['artists']['Row'];
 
 export type AlbumDetail = Album & {
-  artists: Pick<Artist, 'id' | 'mbid' | 'name'>[];
+  artists: Pick<Artist, 'id' | 'mbid' | 'slug' | 'name'>[];
   tracks: { position: number; medium_position: number; title: string; length_ms: number | null }[];
   editionCount: number;
   releaseDateLabel: string | null;
@@ -51,7 +51,7 @@ export type ArtistDetail = Artist & {
 
 export type AlbumSummary = Pick<
   Album,
-  'id' | 'mbid' | 'title' | 'display_credit' | 'primary_type' | 'artwork_status'
+  'id' | 'mbid' | 'slug' | 'title' | 'display_credit' | 'primary_type' | 'artwork_status'
 > & {
   first_release_date: string | null;
   first_release_date_precision: Database['public']['Enums']['date_precision'] | null;
@@ -75,11 +75,12 @@ export type AlbumSummary = Pick<
 export type AlbumSummaryWithArtists = AlbumSummary & { artists: CreditedArtist[] };
 
 const ALBUM_SUMMARY_COLUMNS =
-  'id, mbid, title, display_credit, primary_type, artwork_status, first_release_date, first_release_date_precision, album_artists(position, artists(id, mbid, name))';
+  'id, mbid, slug, title, display_credit, primary_type, artwork_status, first_release_date, first_release_date_precision, album_artists(position, artists(id, mbid, slug, name))';
 
 function toSummary(row: {
   id: string;
   mbid: string;
+  slug: string;
   title: string;
   display_credit: string;
   primary_type: Database['public']['Enums']['album_type'];
@@ -97,18 +98,26 @@ function toSummary(row: {
   };
 }
 
-/** Full album detail, or null when we do not hold it. */
-export async function getAlbumByMbid(mbid: string): Promise<AlbumDetail | null> {
+/**
+ * Full album detail, or null when we do not hold it.
+ *
+ * **Looked up by slug, not by MBID.** `product-spec.md` §6 made the switch a
+ * clean one: the identifier form stops resolving rather than redirecting, so
+ * there is deliberately no fallback here. The MBID remains canonical identity
+ * and is still what ingest, artwork and every job key on — it is simply not
+ * what a URL carries.
+ */
+export async function getAlbumBySlug(slug: string): Promise<AlbumDetail | null> {
   const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('albums')
     .select(
       `*,
-       album_artists(position, artists(id, mbid, name)),
+       album_artists(position, artists(id, mbid, slug, name)),
        releases!releases_album_id_fkey(id, mbid)`,
     )
-    .eq('mbid', mbid)
+    .eq('slug', slug)
     .maybeSingle();
 
   if (error) throw error;
@@ -187,8 +196,8 @@ export function byReleaseDate(sort: DiscographySort) {
  * and never grouped by type (`product-spec.md` §6), with undated releases last
  * either way.
  */
-export async function getArtistByMbid(
-  mbid: string,
+export async function getArtistBySlug(
+  slug: string,
   sort: DiscographySort = 'newest',
 ): Promise<ArtistDetail | null> {
   const supabase = await createClient();
@@ -196,7 +205,7 @@ export async function getArtistByMbid(
   const { data: artist, error } = await supabase
     .from('artists')
     .select('*')
-    .eq('mbid', mbid)
+    .eq('slug', slug)
     .maybeSingle();
 
   if (error) throw error;

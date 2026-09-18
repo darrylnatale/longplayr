@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
 import { expect, test, type Page } from '@playwright/test';
+import { albumUrl } from './urls';
 
 /**
  * Liking someone else's review, end to end.
@@ -166,7 +167,7 @@ test('a signed-in reader likes and unlikes someone else’s review', async ({ pa
   await accountWithReview(body);
   await signUp(page);
 
-  await page.goto(`/albums/${ALBUM_MBID}`);
+  await page.goto(await albumUrl(ALBUM_MBID));
 
   // The review is there to be liked, and the control starts unpressed.
   await expect(reviewItem(page, body)).toBeVisible();
@@ -192,7 +193,7 @@ test('no like count is rendered beside a review', async ({ page }) => {
   await accountWithReview(body);
   await signUp(page);
 
-  await page.goto(`/albums/${ALBUM_MBID}`);
+  await page.goto(await albumUrl(ALBUM_MBID));
   await likeButton(page, body).click();
   await expect(likeButton(page, body)).toHaveAttribute('aria-pressed', 'true', ACTION);
 
@@ -212,7 +213,7 @@ test('the review author is offered no like control on their own review', async (
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).toHaveURL('/', NAV);
 
-  await page.goto(`/albums/${ALBUM_MBID}`);
+  await page.goto(await albumUrl(ALBUM_MBID));
 
   // Their own review is not in the list at all — it has a home in the action
   // card instead — so there is nothing to like and no control to offer. Scoped
@@ -226,7 +227,7 @@ test('a signed-out visitor sees the review and no control', async ({ page }) => 
   const body = uniqueBody();
   await accountWithReview(body);
 
-  await page.goto(`/albums/${ALBUM_MBID}`);
+  await page.goto(await albumUrl(ALBUM_MBID));
 
   await expect(reviewItem(page, body)).toBeVisible();
   await expect(likeButton(page, body)).toHaveCount(0);

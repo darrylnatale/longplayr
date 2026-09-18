@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { expect, test } from '@playwright/test';
 import { config } from 'dotenv';
+import { albumUrl } from './urls';
 
 /**
  * Progressive hydration on the album page.
@@ -45,7 +46,7 @@ test('a pending album says its tracklist is still being fetched', async ({ page 
     .eq('mbid', IN_RAINBOWS);
 
   try {
-    await page.goto(`/albums/${IN_RAINBOWS}`);
+    await page.goto(await albumUrl(IN_RAINBOWS));
 
     await expect(page.getByTestId('tracklist-pending')).toBeVisible();
     await expect(page.getByText('No tracklist available for this release.')).toHaveCount(0);
@@ -70,7 +71,7 @@ test('a fetched album renders its tracklist normally', async ({ page }) => {
   test.skip(!data, 'fixture catalogue not seeded');
   expect(data!.hydration_status).toBe('fetched');
 
-  await page.goto(`/albums/${IN_RAINBOWS}`);
+  await page.goto(await albumUrl(IN_RAINBOWS));
 
   await expect(page.getByTestId('tracklist-pending')).toHaveCount(0);
 });

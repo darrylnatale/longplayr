@@ -19,11 +19,12 @@ import { combinePopular, externalShortfall, internalReadDepth } from './chart';
  */
 
 const COLUMNS =
-  'id, mbid, title, display_credit, primary_type, artwork_status, first_release_date, first_release_date_precision, popularity_score';
+  'id, mbid, slug, title, display_credit, primary_type, artwork_status, first_release_date, first_release_date_precision, popularity_score';
 
 function toSummary(row: {
   id: string;
   mbid: string;
+  slug: string;
   title: string;
   display_credit: string;
   primary_type: AlbumSummary['primary_type'];

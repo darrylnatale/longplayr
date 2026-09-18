@@ -3,12 +3,13 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { AlbumGrid } from '@/components/AlbumGrid';
+import { artistPath } from '@/lib/paths';
 import { Container } from '@/components/Container';
 import { SectionHeader } from '@/components/SectionHeader';
 import { expansionStateFor } from '@/services/catalogue/artist-depth';
 import { drainJobs } from '@/services/catalogue/jobs';
 import { enqueueJob, DEFAULT_JOB_PRIORITY } from '@/services/catalogue/queue';
-import { getArtistByMbid, type DiscographySort } from '@/services/catalogue/queries';
+import { getArtistBySlug, type DiscographySort } from '@/services/catalogue/queries';
 
 /**
  * Artist page — the canonical discography composition.
@@ -32,9 +33,9 @@ import { getArtistByMbid, type DiscographySort } from '@/services/catalogue/quer
  * rather than built around.
  */
 
-export async function generateMetadata({ params }: PageProps<'/artists/[mbid]'>) {
-  const { mbid } = await params;
-  const artist = await getArtistByMbid(mbid);
+export async function generateMetadata({ params }: PageProps<'/artists/[slug]'>) {
+  const { slug } = await params;
+  const artist = await getArtistBySlug(slug);
   if (!artist) return { title: 'Not found · longplayr' };
   return { title: `${artist.name} · longplayr` };
 }
@@ -61,10 +62,10 @@ function sortFrom(value: string | string[] | undefined): DiscographySort {
  * Newest is the default, so it is the bare address — the same convention page
  * one uses on the collection destination, where `?page=1` is never written.
  */
-function DiscographySortLinks({ mbid, sort }: { mbid: string; sort: DiscographySort }) {
+function DiscographySortLinks({ slug, sort }: { slug: string; sort: DiscographySort }) {
   const options: { value: DiscographySort; label: string; href: string }[] = [
-    { value: 'newest', label: 'Newest', href: `/artists/${mbid}` },
-    { value: 'oldest', label: 'Oldest', href: `/artists/${mbid}?sort=oldest` },
+    { value: 'newest', label: 'Newest', href: artistPath({ slug }) },
+    { value: 'oldest', label: 'Oldest', href: artistPath({ slug }, 'oldest') },
   ];
 
   return (
@@ -99,10 +100,10 @@ function activeSpan(dates: (string | null)[]): string | null {
   return first === last ? first : `${first}–${last}`;
 }
 
-export default async function ArtistPage({ params, searchParams }: PageProps<'/artists/[mbid]'>) {
-  const { mbid } = await params;
+export default async function ArtistPage({ params, searchParams }: PageProps<'/artists/[slug]'>) {
+  const { slug } = await params;
   const sort = sortFrom((await searchParams).sort);
-  const artist = await getArtistByMbid(mbid, sort);
+  const artist = await getArtistBySlug(slug, sort);
 
   if (!artist) notFound();
 
@@ -127,7 +128,7 @@ export default async function ArtistPage({ params, searchParams }: PageProps<'/a
    * the artist page was the outlier, and that was not deliberate.
    * `architecture.md` §7, *A later view drains too*.
    */
-  const expansion = await expansionStateFor(mbid);
+  const expansion = await expansionStateFor(artist.mbid);
 
   /*
    * **Enqueue on `start`, `outstanding` and `stale` — never on `failed`.**
@@ -172,7 +173,9 @@ export default async function ArtistPage({ params, searchParams }: PageProps<'/a
          * than once. A target-filtered claim is the recorded escalation and
          * costs a migration.
          */
-        await enqueueJob('discover_curated_artist', mbid, { priority: DEFAULT_JOB_PRIORITY });
+        await enqueueJob('discover_curated_artist', artist.mbid, {
+          priority: DEFAULT_JOB_PRIORITY,
+        });
         await drainJobs(1);
       } catch {
         // Swallowed, exactly as the album page swallows its own: the reader
@@ -208,7 +211,7 @@ export default async function ArtistPage({ params, searchParams }: PageProps<'/a
          * saying the same thing twice.
          */}
         <SectionHeader
-          trailing={count > 1 ? <DiscographySortLinks mbid={mbid} sort={sort} /> : undefined}
+          trailing={count > 1 ? <DiscographySortLinks slug={slug} sort={sort} /> : undefined}
         >
           Discography
         </SectionHeader>

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 
 import type { CreditedArtist } from '@/services/catalogue/credit';
+import { artistPath } from '@/lib/paths';
 
 /**
  * An album's credit, as links to the artists it names.
@@ -60,7 +61,7 @@ export function ArtistCredit({
            * "Various Artists" with nowhere to go.
            */}
           {artist.linkable ? (
-            <Link href={`/artists/${artist.mbid}`} className="hover:text-accent hover:underline">
+            <Link href={artistPath(artist)} className="hover:text-accent hover:underline">
               {artist.name}
             </Link>
           ) : (

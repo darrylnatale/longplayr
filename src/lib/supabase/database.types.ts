@@ -1045,6 +1045,7 @@ export type Database = {
           album_artwork_status: Database["public"]["Enums"]["artwork_status"]
           album_credit: string
           album_mbid: string
+          album_slug: string
           album_title: string
           created_at: string
           id: string

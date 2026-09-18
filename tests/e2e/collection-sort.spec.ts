@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { config } from 'dotenv';
 import { expect, test, type Page } from '@playwright/test';
+import { albumUrl } from './urls';
 
 /**
  * Collection sorting, in a browser.
@@ -94,14 +95,14 @@ async function signUp(page: Page) {
 
 /** Plain add, from the album page. */
 async function collect(page: Page, mbid: string) {
-  await page.goto(`/albums/${mbid}`);
+  await page.goto(await albumUrl(mbid));
   await page.getByRole('button', { name: 'Add to collection' }).click();
   await expect(page.getByText('In your collection')).toBeVisible(ACTION);
 }
 
 /** Add with a listen date, through the disclosure the date lives behind. */
 async function collectListenedOn(page: Page, mbid: string, date: string) {
-  await page.goto(`/albums/${mbid}`);
+  await page.goto(await albumUrl(mbid));
   await page.getByRole('button', { name: /^Add with a listen date…$/ }).click();
   await page.getByLabel('Listened on').fill(date);
   await page.getByRole('button', { name: 'Add to collection' }).click();
@@ -116,7 +117,7 @@ async function collectListenedOn(page: Page, mbid: string, date: string) {
  * action (design-reference.md §6.4). Every call here is the second case.
  */
 async function rate(page: Page, mbid: string, score: string) {
-  await page.goto(`/albums/${mbid}`);
+  await page.goto(await albumUrl(mbid));
   await page.getByRole('button', { name: /^Rate(?: this album)?$/ }).click();
   await page.getByLabel('Your score').fill(score);
   await page.getByRole('button', { name: 'Save' }).click();
@@ -504,11 +505,11 @@ test('sorting mutates no collection state', async ({ page }) => {
   // and proves each one is untouched by visiting the collection under a sort.
   const user = await scoredCollectionOfFourViaApi(page);
 
-  await page.goto(`/albums/${IN_RAINBOWS}`);
+  await page.goto(await albumUrl(IN_RAINBOWS));
   await page.getByRole('button', { name: /^Favourited?$/ }).click();
   await expect(page.getByRole('button', { name: 'Favourited' })).toBeVisible(ACTION);
 
-  await page.goto(`/albums/${UNKNOWN_PLEASURES}`);
+  await page.goto(await albumUrl(UNKNOWN_PLEASURES));
   await page.getByRole('button', { name: 'Like', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Liked' })).toBeVisible(ACTION);
 
