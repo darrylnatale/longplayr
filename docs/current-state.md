@@ -14,9 +14,9 @@
 
 **The verification gate moved, and `CLAUDE.md` now carries it. [APPLIED 2026-09-15]** Work happens on a branch and reaches `main` only through a green CI run; STEP F runs `npm run verify` plus targeted suites; **the migration gate moved from STEP I to STEP J**, so the order is **CI green → migration applied → merge**. The decision is `architecture.md` §12; the process is `CLAUDE.md`. **The two no longer disagree.** (§68, §69)
 
-**Verified 2026-09-18 against the repository, the remote and CI.** `main` is at **`e330549`**, the merge of PR #22; `origin/main` identical. **Nothing is open.** **30 migrations, 0 unapplied** — `20260918120000_reserve_deleted_handles` was applied to the deployed database at STEP J, between a green run and the merge, and confirmed twice. **The post-merge run `35365720989` on `e330549` was still in flight when this was written** (F-051: a pull-request run tests the base as it was when it started, so the post-merge run is not redundant).
+**Verified 2026-09-18 against the repository, the remote and CI.** `main` is at **`49999a3`**, the merge of PR #23; `origin/main` identical. **Nothing is open.** **31 migrations, 0 unapplied** — `20260918120000_reserve_deleted_handles` (§87) and `20260918170000_readable_url_slugs` (§88) were each applied to the deployed database at STEP J, between a green run and the merge, and confirmed afterwards. **§87's post-merge run `35365720989` came back `completed/success`, so that gate is cleared and §87 is fully verified.** §88's post-merge run on `49999a3` had not been read when this was written (F-051: a pull-request run tests the base as it was when it started, so the post-merge run is not redundant).
 
-**Sixteen cycles merged between 2026-09-15 and 2026-09-18** — PRs #7 to #22, recorded as §72 to §87. **§74 and §87 are the only cycles to have carried a migration.** **§79 and §87 are the only cycles to have failed CI and been reopened**; both were remediated and merged on a second run. **§80, §83 and §84 were confirmed on production** rather than merely merged.
+**Seventeen cycles merged between 2026-09-15 and 2026-09-18** — PRs #7 to #23, recorded as §72 to §88. **§74, §87 and §88 are the only cycles to have carried a migration.** **§79, §87 and §88 are the only cycles to have failed CI and been reopened**; both were remediated and merged on a second run. **§80, §83 and §84 were confirmed on production** rather than merely merged.
 
 > **⚠️ The phase plan has been under-weighted, and the maintainer pointed it out on 2026-09-18.** Every cycle from §72 to §86 was selected from `docs/product-feedback.md`. **`CLAUDE.md` STEP A asks for _the current project state **and** any triaged product feedback_**, and the first half has gone effectively unconsulted for three days.
 >
@@ -29,6 +29,32 @@
 **Four feedback entries were filed on 2026-09-16 at the maintainer's request** — **F-041** (filtering, sorting and exclusion), **F-042** (filtering a grid by collection state), **F-043** (follow back from notifications) and **F-044** (the test environment fails more often than the code does). **F-041 surfaced that longplayr holds no genre data at all**, deliberately excluded at ingest, so that filter is an ingest, schema and backfill change rather than a UI one.
 
 **A decision session on 2026-09-16 answered eight open product questions** and promoted five entries to decided-and-unbuilt — readable URLs, browse-everything, the cover-art prompt (now built, §78), discography refresh, and Recently added's two rules. **It also opened F-040**, a collision between the new upstream-contribution principle and the read-only-catalogue non-negotiable. The records are in `product-spec.md` §6 and §8.9, `design-reference.md` §11.11, and `architecture.md` §18. Three cycles closed and merged today — PR #7 (`5479041`), PR #8 (`8544330`) and **PR #9 (`4c0a0f7`, CI #112, 132 end-to-end, zero flaky)**. The first two carried no migration; **§74 did**, and STEP J gated for it, applying `20260915160000` to the deployed database between a green CI run and the merge. **Post-merge run #111 on `8544330` came back `completed/success`**, so the tree before this cycle is independently green. **The double-CI cost of the branch model is now observed on five consecutive cycles** and remains recorded rather than decided.
+
+> ## ✅ §88 — Albums and artists have a readable slug, and nothing uses it yet — **[GATE CLEARED: CI `35369440813` `completed/success`, 740 integration, 134 end-to-end, zero flaky]**
+>
+> **The data half of `product-spec.md` §6's readable URLs, and deliberately nothing else.** No route changes, no link changes, no behaviour change at all.
+>
+> **The split was found by planning rather than guessed at, and is recorded because the reasoning generalises.** The end-to-end suite navigates by MBID in roughly **fourteen spec files** and the link sites run to a dozen more, so converting the URLs is a mechanical sweep large enough to deserve its own cycle — and far safer once the data it depends on is already proven in production. **STEP E narrowed the boundary mid-implementation and said so**, rather than rushing a half-converted product.
+>
+> **Every slug carries a hash of its own identifier, and that is what makes it deterministic.** §6 requires collision resolution that is **deterministic rather than insertion-ordered**, which a bare title slug cannot give: the first of two albums called _Greatest Hits_ takes the plain slug and the second a numeric suffix, so the same catalogue ingested in a different order produces different URLs — and a later arrival sorting earlier changes a slug already shared. A per-row suffix removes collision logic, the uniqueness race and the order dependence together.
+>
+> **A generated column rather than application code**, so the slug cannot drift from the title it describes: an upstream rename updates it in the same statement, and no ingest path can forget to maintain it. `slugify()` is `IMMUTABLE`, which a generated column requires and which **rules out `unaccent`** — that reads a dictionary which can change underneath it, so a fixed `translate` map folds accents instead. **Non-Latin titles slugify to nothing and fall back to a literal**, so a Japanese title becomes `album-<hash>` rather than a broken slug.
+>
+> ### ⚠️ CI caught a real design flaw that every local probe had missed
+>
+> **Run `35368459727` failed in under a minute**: `duplicate key value violates unique constraint "albums_slug_key"`, in `search.test.ts`. 710 tests passed; that suite could not even set up.
+>
+> **The first version took eight characters from the _front_ of the MBID, and a prefix is only as well distributed as its input.** `search.test.ts` builds every fixture as `0b0e4f1e-5555-4000-8000-…`, so all twelve shared a prefix and the two albums titled _Blonde_ produced the same slug on the first insert.
+>
+> **Real MusicBrainz identifiers are random v4 UUIDs and would almost never have shown this, which is exactly why catching it mattered.** The design was depending on the input happening to be random and **nothing anywhere said so**. Any structured or sequential identifier would have broken it.
+>
+> **The local probes missed it because they used identifiers with distinct prefixes** — an honest limitation of the probe approach, now written into the migration itself. **Ten hex characters of `md5(mbid)`** replaced the prefix: the whole identifier is hashed, structured inputs distribute, and the space is about 1.1e12. The regression test uses the search suite's own MBID shape rather than a convenient one.
+>
+> **The migration was amended rather than followed by a second one**, because it was unmerged and had never been applied to the deployed database — so no environment anywhere holds the old expression.
+>
+> ### 🔎 One thing recorded rather than fixed
+>
+> **Supabase's generated types expose `slug` as writable** — `slug?: string` on Insert and Update — although Postgres rejects any write to a generated column. A type-generation quirk, not a schema fault: the database is the real gate and an integration assertion proves a direct write fails. **`database.types.ts` must never be hand-edited**, so this stands as a known gap where TypeScript will not stop someone trying.
 
 > ## ✅ §87 — An account can be deleted, and its handle never comes back — **[GATE CLEARED: CI `35361448010` `completed/success`, 518 unit, 731 integration, 134 end-to-end, zero flaky]**
 >
