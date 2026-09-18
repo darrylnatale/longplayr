@@ -135,6 +135,7 @@ describe('account deletion', () => {
   let reviewId: string;
   let listId: string;
   let additionId: number;
+  let otherListId: string;
 
   beforeAll(async () => {
     subject = await createUser();
@@ -178,14 +179,54 @@ describe('account deletion', () => {
 
     await admin.from('list_items').insert({ list_id: listId, album_id: albumId, position: 1 });
 
+    // A list belonging to the other user, so the subject has something of
+    // somebody else's to like.
+    const { data: otherList, error: otherListError } = await admin
+      .from('lists')
+      .insert({ user_id: other.id, title: 'A list that must survive the deletion.' })
+      .select('id')
+      .single();
+    if (otherListError) throw otherListError;
+    otherListId = otherList.id;
+
     // Relationships in both directions, so the cascade is tested from each
     // side rather than only from the one the subject initiated.
-    await admin.from('follows').insert({ follower_id: subject.id, followee_id: other.id });
-    await admin.from('follows').insert({ follower_id: other.id, followee_id: subject.id });
+    const { data: outboundFollow, error: outboundError } = await admin
+      .from('follows')
+      .insert({ follower_id: subject.id, followee_id: other.id })
+      .select('id')
+      .single();
+    if (outboundError) throw outboundError;
 
-    // Likes the subject gave, and one they received.
+    const { data: inboundFollow, error: inboundError } = await admin
+      .from('follows')
+      .insert({ follower_id: other.id, followee_id: subject.id })
+      .select('id')
+      .single();
+    if (inboundError) throw inboundError;
+
+    // Likes the subject gave, and one they received on their own list.
+    await admin.from('list_likes').insert({ user_id: subject.id, list_id: otherListId });
     await admin.from('list_likes').insert({ user_id: other.id, list_id: listId });
     await admin.from('review_likes').insert({ user_id: subject.id, review_id: reviewId });
+
+    // Notifications are written by the service rather than by a trigger, so
+    // inserting the follows above does not produce them. Both directions are
+    // created explicitly: `data-model.md` §8 requires deleting a user to remove
+    // the notifications they *caused* for other people, not only the ones they
+    // received, and only inserting one direction would leave that untested.
+    await admin.from('notifications').insert({
+      recipient_id: subject.id,
+      actor_id: other.id,
+      type: 'followed',
+      follow_id: inboundFollow.id,
+    });
+    await admin.from('notifications').insert({
+      recipient_id: other.id,
+      actor_id: subject.id,
+      type: 'followed',
+      follow_id: outboundFollow.id,
+    });
 
     await admin
       .from('activity')
@@ -261,13 +302,31 @@ describe('account deletion', () => {
   });
 
   it("removes another person's like on the deleted user's content", async () => {
-    // The like belonged to `other`, not to the subject. It must still go, since
-    // the thing it was about no longer exists.
+    // This like belonged to `other`, not to the subject. It must still go,
+    // because the list it was about no longer exists.
     const { count } = await admin
       .from('list_likes')
       .select('*', { count: 'exact', head: true })
-      .eq('user_id', other.id);
+      .eq('user_id', other.id)
+      .eq('list_id', listId);
     expect(count).toBe(0);
+  });
+
+  it("leaves the other user's own list and its likes alone", async () => {
+    // The mirror of the assertion above, and the one that would catch a cascade
+    // reaching too far: the subject's like on someone else's list goes, the
+    // list itself stays.
+    const { count: lists } = await admin
+      .from('lists')
+      .select('*', { count: 'exact', head: true })
+      .eq('id', otherListId);
+    expect(lists).toBe(1);
+
+    const { count: likes } = await admin
+      .from('list_likes')
+      .select('*', { count: 'exact', head: true })
+      .eq('list_id', otherListId);
+    expect(likes).toBe(0);
   });
 
   it('leaves the auth user gone rather than soft-deleted', async () => {
