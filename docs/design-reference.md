@@ -318,11 +318,55 @@ near 105px, where a caption is unreadable. A section that wants metadata has to
 take the larger cell that pays for it. This is the same bargain the Detailed
 collection mode strikes (decision D), applied to catalogue surfaces.
 
+### 11.11 Which section leads is a separate decision from how leading is expressed **[DECIDED 2026-09-13]**
+
+**11.5 settled how a lead is signalled — density, never decoration — and said nothing about which section deserves it.** Browse assigned `relaxed` to Popular, and that assignment was never examined as a decision. This examines it.
+
+**Decided: Recently added takes the lead — `relaxed`, captioned — and Popular becomes the `standard`, caption-free secondary strip. Home's single discovery section follows the same choice.** 11.5's mechanism is unchanged and is used exactly as written.
+
+**Why, measured rather than felt.** Browse Popular is an internal chart with an external top-up. On the deployed database the internal chart held **7 rows against a caller limit of 24**, so **the lead section was roughly 70% external ListenBrainz fill, ordered by how mainstream each record is.** The front page was not accidentally mass-market; it was sorted that way. Meanwhile **the curated tranche, being recent, sat in the quieter strip** — the hierarchy was inverted relative to the catalogue's own identity.
+
+**Recency is not a quality signal, and this decision does not claim it is.** At 948 albums and 4 profiles, _recent_ happens to be _curated_, which is why this works now and is not a permanent ranking principle. **It is a cold-start treatment with an exit: it reopens when the internal chart reaches §8.3's floor of 20 from real activity.** Recorded that way so it is revisited on a measurement rather than on taste.
+
+**Nothing about composition changes.** §8.3's external fill and its floor of 20 are untouched, `getPopularAlbums` is unchanged, and no catalogue row is added, reordered or removed. **Capping the fill was considered and rejected**: with 7 internal rows, Popular would render seven cells on a 948-album catalogue, which reads as broken rather than as honest.
+
+**The exit condition narrowed on 2026-09-16, and half of this decision became permanent.** The paragraph above frames the whole arrangement as a cold-start treatment that reopens at twenty internal entries. `product-spec.md` §8.3 has since decided that **an external popularity score never orders a lead section** — not "not yet", but never.
+
+**So the trigger survives and what it can restore does not.** This may still reopen when the internal chart reaches §8.3's floor of twenty, and **what would then take the lead is longplayr's own engagement data.** The **external fill can never take the lead back**, whatever the chart does. Recorded here rather than left to be reconciled, because this section is where a future reader will come looking for the exit and would otherwise read it as unconditional.
+
+### 11.12 A caption's credit is a link, and the tile link makes room for it **[DECIDED 2026-09-15]**
+
+**11.5 ties captions to `relaxed` cells and says what a caption may contain. It does not say whether any of it is clickable, and the answer turned out to be structural rather than cosmetic.**
+
+**The obstacle.** `AlbumGrid` wraps the cover **and the whole caption** in one anchor to the album. An `<a>` inside an `<a>` is invalid HTML, so a credit link could not simply be nested — the caption had to leave the anchor first. This is why an apparently one-line change touches the most-visited component in the product.
+
+**Decided: the album anchor wraps the cover and the title; the credit line sits outside it as its own element, carrying one link per credited artist.** The year line stays outside with the credit.
+
+**What this costs, stated rather than discovered later.** The cell stops being one uniform album target — the credit strip now goes somewhere else, which is the entire point, but it does mean **the tile is no longer clickable-anywhere.** `CollectionTile` records "the whole tile is a link" as a property that was missing _"for far longer than it should have been"_, so this is a deliberate partial retreat from it and not a regression to be repaired later.
+
+**Title hover is unaffected.** The `group` marker stays on the anchor and the title stays inside it, so `group-hover:underline` behaves exactly as before. Hovering the credit no longer underlines the title, which is correct: the two now lead to different pages.
+
+**The stretched-link alternative was considered and rejected.** Making the anchor cover the cell via `::after` and floating the credit above it in stacking order would have preserved a large uniform album target using real anchors. It was rejected because the hit-testing becomes something a future reader has to reconstruct from two positioned pseudo-elements, and this grid is the one place in the product where that cost is paid on every surface at once. **Density and legibility are unchanged; only what is inside the anchor moved.**
+
+**The artist page's suppression rule changes meaning, and this is where that shows. [2026-09-15]** `creditFor` suppresses a credit equal to the page's own artist. With the credit rendered from the relation rather than from `display_credit`, **the comparison becomes one of identity rather than of two strings that happened to differ** — so an album by a renamed artist, which previously rendered a credit because the cached string and the current name disagreed, is now correctly recognised as being by that same artist and suppressed. **That is the decided behaviour and not a defect**, and `product-spec.md` §6 records what it costs.
+
+**The search result row takes the same treatment, and it is a different shape. [2026-09-15]** That row is a **flex** layout rather than a stacked caption, and the whole of it — cover, title and metadata line — was one anchor to the album. Lifting the credit out therefore **restructures the row** rather than merely re-nesting it: the cover and the title each become their own anchor, and the metadata line sits beside them as a sibling.
+
+**The consequence is the same one, and it lands harder here.** A result row stops being clickable anywhere, and a list of results is scanned and clicked more freely than a grid of covers. **It is accepted for consistency**: the same album must not behave differently depending on which surface found it, and the credit genuinely leads somewhere else now. The stretched-link alternative was rejected a second time, on the reasoning already recorded above.
+
+**A multi-artist credit becomes several links inside a truncated single line**, and that is accepted under 11.5's existing bargain — metadata buys the cell that pays for it, and `relaxed` is the only density that carries a caption at all. **No new control is added to a tile**, so §10.6's warning about how many controls a tile can carry before the record-shelf reading breaks is not engaged: a link on text that was already printed is not a control.
+
 ### 11.6 Stored artwork size follows grid density
 
-Cover Art Archive offers three sizes and the pipeline stores all three — 250,
-500 and 1200. Which one a grid draws from is a property of the **density**, not
-of the page that happens to be rendering it.
+Cover Art Archive offers three sizes. Which one a grid draws from is a property
+of the **density**, not of the page that happens to be rendering it.
+
+**[CORRECTED 2026-09-13 — this paragraph said the pipeline stores all three, which
+stopped being true the previous day.]** `f68e050` dropped **1200** because nothing
+requested it; `ARTWORK_SIZES` is `[250, 500]`. **Both sizes this decision names
+are still stored, so the rule below is unaffected** — and `architecture.md` §7
+records that a dropped size is deferred rather than foreclosed, since artwork is
+re-fetchable from Cover Art Archive at will.
 
 A `relaxed` cell reaches 170–240px, which is 340–720 device pixels on the 2× and
 3× displays most people are reading on. Serving the 250px asset there meant the
@@ -337,6 +381,96 @@ is whether that width was invented rather than photographed.
 Recorded as a design rule rather than a delivery detail because on these
 surfaces the artwork **is** the content (§8). A soft cover is not a performance
 characteristic, it is a degraded product.
+
+### 11.10 Image loading priority follows grid density too — and no grid gets a length boundary
+
+**[DECIDED 2026-09-06. Approved scope; not implemented.]** Two questions
+`current-state.md` §11 has carried against §8, taken together because they are
+the same kind of question about the same surfaces. §11.6 above established that
+_which asset_ a grid draws is a property of density rather than of the page; the
+first decision here says the same of _when_ it loads.
+
+#### The rule
+
+**`AlbumGrid` marks the leading cells of one row at its narrowest breakpoint as
+`priority`: two for `relaxed`, three for `standard`, four for `dense`.**
+
+**The number is derived, not chosen.** It is each density's base column count
+from the ramp §11.5 records — `relaxed` opens at two across, `standard` at
+three, `dense` at four — so it stays correct if the ramp ever moves, and no new
+number enters the system.
+
+**One row at the narrowest breakpoint rather than the widest, deliberately.**
+`priority` exists to mark the LCP element, and the first cell in DOM order is
+top-left at every breakpoint, so a small leading set covers the LCP candidate on
+every viewport. Marking a first row at the widest breakpoint instead — eight
+cells at `relaxed`, twelve at `standard` — would guarantee above-the-fold
+coverage but over-mark on a phone, where only the opening row is visible and
+where a slow connection makes the cost highest. **A browser deprioritises when
+everything is high**, so over-marking defeats the mechanism it is reaching for.
+
+**The accepted cost:** on a wide viewport, cells past the opening row stay lazy
+although they are above the fold. That is ordinary `next/image` behaviour and is
+not what the recorded evidence — Next flagging the first Popular cover as LCP —
+is about.
+
+#### Where it applies, and where it stops
+
+**Every `AlbumGrid` instance**, because the decision is a property of how a grid
+loads rather than of what a surface wants: Home's discovery section, Browse's
+Popular and Recently added, the list page and the artist discography. Expressed
+**inside `AlbumGrid`** rather than at each call site, so the surfaces cannot
+drift apart. `AlbumCover` already accepts and forwards `priority`; **no new
+abstraction is created and no density, breakpoint, cell size or asset size
+changes.**
+
+**It stops at the `AlbumGridShell` consumers that build their own cells** —
+`CollectionGrid`, `FavouriteRow` and the design gallery. Reaching those means
+editing the collection and profile surfaces, and **no LCP evidence has been
+recorded for either.** That residue is open, not scope.
+
+#### No length boundary, and why the recorded trigger has not fired
+
+**No length boundary is introduced at any width on any surface.** No "show
+more", no shorter chart at narrow widths, no responsive hiding of surplus cells,
+no query-limit change and no per-breakpoint density. Home and Browse keep their
+counts, composition, ordering and captions exactly as they are.
+
+`current-state.md` §8 measured Browse at **8,122px on a 390px viewport** and
+recorded it as **"observation, not a defect"**, deferring the question to when
+"the real charts arrive **and** a 'show more' boundary has to be decided
+anyway". **The charts arrived; the second half did not.** Nothing in the product
+requires a show-more, and the only thing that would is a decided browsing model
+— `product-spec.md` §8.9's deferred F-005 question, which that section says must
+not "be answered by implementation under pressure". **Introducing a boundary now
+would answer part of it by implication.**
+
+§8 also named the two alternatives it declined: changing the query limit, or
+inventing a per-breakpoint density. **Hiding surplus cells responsively is the
+second wearing different clothes**, and it would additionally make Browse's
+section-header count untrue, since that count reflects what was fetched.
+
+**What would reverse this:** a measurement showing the height costs readers
+something, or F-005 being decided. Both are outside this decision.
+
+#### What stays open
+
+- **Whether the discovery surfaces ever need a length boundary.** Restated above
+  rather than answered; the trigger is now precise.
+- **What Browse's Popular and Recently added counts should be as product
+  decisions.** `product-spec.md` §8.3 records that Browse's limit "is not a
+  product decision and never was — it is a grid default shared verbatim with
+  Recently added". **Choosing a different number without evidence that any
+  particular number reads better would be invention**, so the numbers stand and
+  the question stands with them.
+- **Whether `FavouriteRow` and `CollectionGrid` should carry the rule**, pending
+  LCP evidence for the profile and collection surfaces.
+- **Whether this document should eventually carry a full Home surface entry.**
+  `product-spec.md` §6 now defines what Home is; its visual treatment belongs
+  here and is absent. **Deliberately not written in this cycle**: an entry saying
+  only how images load would be a stub, and a fuller one would mean deciding
+  Home's density, captions and count, which is a design pass rather than a
+  documentation correction.
 
 ### 11.8 Grid surfaces take the `wide` container. The profile did not.
 

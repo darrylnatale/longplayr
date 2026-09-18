@@ -6,10 +6,19 @@ import { handleSchema } from './handle';
 
 export type Profile = Database['public']['Tables']['profiles']['Row'];
 
-export type CreateProfileError = 'invalid_handle' | 'handle_taken' | 'already_exists';
+export type CreateProfileError =
+  'invalid_handle' | 'handle_taken' | 'handle_reserved' | 'already_exists';
 
 /** Postgres unique-violation. Used to turn a race into a clean outcome. */
 const UNIQUE_VIOLATION = '23505';
+
+/**
+ * Emitted by the reservation trigger, matched here.
+ *
+ * A marker rather than prose because the alternative is matching on a message
+ * that could contain any word — including a handle someone chose.
+ */
+const RESERVED_HANDLE_MARKER = 'profiles_handle_not_reserved';
 
 /**
  * The signed-in auth user, or null. Cheap — reads the verified session.
@@ -59,11 +68,40 @@ export async function getProfileByHandle(handle: string): Promise<Profile | null
   return data;
 }
 
-/** Whether a handle is free. Advisory only — creation is the real check. */
+/**
+ * Whether a handle is free. Advisory only — creation is the real check.
+ *
+ * **Two ways to be unavailable**: somebody holds it, or a deleted account left
+ * it reserved (`data-model.md` §9.5). Both are checked here so the form can say
+ * so before the submit, and **neither is trusted** — the database refuses a
+ * reserved handle at insert whatever this returns.
+ */
 export async function isHandleAvailable(handle: string): Promise<boolean> {
   const parsed = handleSchema.safeParse(handle);
   if (!parsed.success) return false;
-  return (await getProfileByHandle(parsed.data)) === null;
+
+  if (await getProfileByHandle(parsed.data)) return false;
+  return !(await isHandleReserved(parsed.data));
+}
+
+/**
+ * Whether a deleted account left this handle reserved.
+ *
+ * **Errors are swallowed and read as "not reserved", deliberately.** This is an
+ * advisory lookup in front of an authoritative database trigger, so the cost of
+ * being wrong here is a rejection at submit rather than a wrong outcome — and a
+ * read failure must not block a signup for a handle that is very probably free.
+ */
+async function isHandleReserved(handle: string): Promise<boolean> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('reserved_handles')
+    .select('handle')
+    .eq('handle', handle)
+    .maybeSingle();
+
+  if (error) return false;
+  return data !== null;
 }
 
 /**
@@ -98,10 +136,16 @@ export async function createProfile(input: {
 
   if (error) {
     if (error.code === UNIQUE_VIOLATION) {
-      // Either the handle is taken, or this user already has a profile.
-      // The primary-key constraint names the latter.
+      // Three outcomes share this SQLSTATE, and the message is what separates
+      // them. The primary-key constraint names an existing profile; the
+      // reservation trigger raises unique_violation carrying its own marker,
+      // because a reserved handle *is* permanently taken and the caller should
+      // not have to know a second error class to say so.
       if (error.message.includes('pkey')) {
         return err('already_exists', 'You already have a profile.');
+      }
+      if (error.message.includes(RESERVED_HANDLE_MARKER)) {
+        return err('handle_reserved', 'That handle is not available.');
       }
       return err('handle_taken', 'That handle is already taken.');
     }

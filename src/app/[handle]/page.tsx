@@ -206,6 +206,28 @@ export default async function ProfilePage({ params }: PageProps<'/[handle]'>) {
             )}
 
             {/*
+             * Settings, by the same rule as the two affordances around it.
+             *
+             * `/settings` has no entry in the header nav and no tab on the bar,
+             * so without this it is a page that exists and cannot be reached —
+             * which is precisely the defect the Notifications link above was
+             * added to repair (F-017). Adding a sixth tab would change the
+             * bar's composition, which is a design decision this slice does not
+             * own; the own-profile block already is where account affordances
+             * live.
+             *
+             * **No responsive class, for the same reason as its neighbours.**
+             */}
+            {isOwnProfile && (
+              <Link
+                href="/settings"
+                className="mt-2 inline-block text-xs text-text-muted transition-colors hover:text-text"
+              >
+                Settings
+              </Link>
+            )}
+
+            {/*
              * The mobile route out, and the only one there was not.
              *
              * `signOut` was reachable from exactly one place — the header's

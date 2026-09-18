@@ -796,6 +796,18 @@ export type Database = {
           },
         ]
       }
+      reserved_handles: {
+        Row: {
+          handle: string
+        }
+        Insert: {
+          handle: string
+        }
+        Update: {
+          handle?: string
+        }
+        Relationships: []
+      }
       review_likes: {
         Row: {
           created_at: string
