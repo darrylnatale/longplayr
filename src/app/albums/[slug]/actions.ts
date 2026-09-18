@@ -100,7 +100,7 @@ export async function addAlbumAction(
     return { error: result.message };
   }
 
-  revalidatePath(`/albums/[mbid]`, 'page');
+  revalidatePath('/albums/[slug]', 'page');
   return {};
 }
 
@@ -114,7 +114,7 @@ export async function removeAlbumAction(
 
   if (!result.ok) return { error: result.message };
 
-  revalidatePath(`/albums/[mbid]`, 'page');
+  revalidatePath('/albums/[slug]', 'page');
   return {};
 }
 
@@ -161,7 +161,7 @@ export async function rateAlbumAction(
   const result = await rateAlbum(albumId, rating);
   if (!result.ok) return { error: result.message };
 
-  revalidatePath(`/albums/[mbid]`, 'page');
+  revalidatePath('/albums/[slug]', 'page');
   return {};
 }
 
@@ -187,7 +187,7 @@ export async function toggleLikeAction(
   const result = await setLiked(albumId, liked);
   if (!result.ok) return { error: result.message };
 
-  revalidatePath(`/albums/[mbid]`, 'page');
+  revalidatePath('/albums/[slug]', 'page');
   return {};
 }
 
@@ -213,7 +213,7 @@ export async function markRelistenAction(
   const result = await markRelisten(albumId);
   if (!result.ok) return { error: result.message };
 
-  revalidatePath(`/albums/[mbid]`, 'page');
+  revalidatePath('/albums/[slug]', 'page');
   return {};
 }
 
@@ -248,7 +248,7 @@ export async function saveReviewAction(
   const result = await saveReview(albumId, body);
   if (!result.ok) return { error: result.message };
 
-  revalidatePath(`/albums/[mbid]`, 'page');
+  revalidatePath('/albums/[slug]', 'page');
   return {};
 }
 
@@ -267,7 +267,7 @@ export async function deleteReviewAction(
   const result = await deleteReview(albumId);
   if (!result.ok) return { error: result.message };
 
-  revalidatePath(`/albums/[mbid]`, 'page');
+  revalidatePath('/albums/[slug]', 'page');
   return {};
 }
 
@@ -300,7 +300,7 @@ export async function toggleFavouriteAction(
   const result = favourited ? await addFavourite(albumId) : await removeFavourite(albumId);
   if (!result.ok) return { error: result.message };
 
-  revalidatePath(`/albums/[mbid]`, 'page');
+  revalidatePath('/albums/[slug]', 'page');
   return {};
 }
 
@@ -353,7 +353,7 @@ export async function toggleReviewLikeAction(
   const result = liked ? await likeReview(reviewId) : await unlikeReview(reviewId);
   if (!result.ok) return { error: result.message };
 
-  revalidatePath(`/albums/[mbid]`, 'page');
+  revalidatePath('/albums/[slug]', 'page');
   return {};
 }
 
@@ -367,7 +367,7 @@ export async function toggleWantToListenAction(
   const result = wanted ? await addWantToListen(albumId) : await removeWantToListen(albumId);
   if (!result.ok) return { error: result.message };
 
-  revalidatePath(`/albums/[mbid]`, 'page');
+  revalidatePath('/albums/[slug]', 'page');
   return {};
 }
 

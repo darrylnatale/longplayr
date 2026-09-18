@@ -194,7 +194,7 @@ test('sorting mutates no collection state', async ({ page }) => {
 
   // Visit the artist page under both sorts and an invalid one.
   for (const query of ['', '?sort=oldest', '?sort=newest', '?sort=nonsense']) {
-    await page.goto(`/artists/${RADIOHEAD}${query}`);
+    await page.goto(`${await artistUrl(RADIOHEAD)}${query}`);
     await expect(page.getByRole('heading', { name: 'Discography' })).toBeVisible();
   }
 
