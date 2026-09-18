@@ -57,38 +57,66 @@ alter table public.artists add column slug text;
 -- identifier that never changes. The order is arbitrary in the sense that any
 -- order would have been valid — it is fixed here so the backfill is repeatable
 -- rather than dependent on physical row order.
+--
+-- **This runs against a catalogue that already exists**, which is the one part
+-- of this migration CI cannot exercise: CI applies migrations to an empty
+-- database, so the backfill there has no rows to get wrong. `F-032` records
+-- that blind spot.
 
-with numbered as (
-  select
-    id,
-    coalesce(nullif(public.slugify(title), ''), 'album') as base,
-    row_number() over (
-      partition by coalesce(nullif(public.slugify(title), ''), 'album')
-      order by created_at, mbid
-    ) as n
-  from public.albums
-)
-update public.albums a
-   set slug = case when numbered.n = 1 then numbered.base
-                   else numbered.base || '-' || numbered.n end
-  from numbered
- where numbered.id = a.id;
+-- **A one-pass `row_number()` is wrong here, and it took a probe to see why.**
+-- Numbering within each base independently assigns `kid-a-2` to the second
+-- album titled *Kid A* — and also to an album genuinely titled *Kid A 2*,
+-- whose own base is `kid-a-2`. Two rows, one slug, and the unique index below
+-- would abort the migration.
+--
+-- The triggers never had this problem: they search for the first *free*
+-- candidate rather than counting within a partition. So the backfill does the
+-- same search, one row at a time, in the fixed order described above. Slower,
+-- and correct against a catalogue that already contains whatever titles it
+-- contains.
 
-with numbered as (
-  select
-    id,
-    coalesce(nullif(public.slugify(name), ''), 'artist') as base,
-    row_number() over (
-      partition by coalesce(nullif(public.slugify(name), ''), 'artist')
-      order by created_at, mbid
-    ) as n
-  from public.artists
-)
-update public.artists a
-   set slug = case when numbered.n = 1 then numbered.base
-                   else numbered.base || '-' || numbered.n end
-  from numbered
- where numbered.id = a.id;
+do $$
+declare
+  row_record record;
+  base text;
+  candidate text;
+  n integer;
+begin
+  for row_record in
+    select id, coalesce(nullif(public.slugify(title), ''), 'album') as base
+      from public.albums
+     order by created_at, mbid
+  loop
+    base := row_record.base;
+    candidate := base;
+    n := 1;
+
+    while exists (select 1 from public.albums where slug = candidate) loop
+      n := n + 1;
+      candidate := base || '-' || n;
+    end loop;
+
+    update public.albums set slug = candidate where id = row_record.id;
+  end loop;
+
+  for row_record in
+    select id, coalesce(nullif(public.slugify(name), ''), 'artist') as base
+      from public.artists
+     order by created_at, mbid
+  loop
+    base := row_record.base;
+    candidate := base;
+    n := 1;
+
+    while exists (select 1 from public.artists where slug = candidate) loop
+      n := n + 1;
+      candidate := base || '-' || n;
+    end loop;
+
+    update public.artists set slug = candidate where id = row_record.id;
+  end loop;
+end;
+$$;
 
 alter table public.albums alter column slug set not null;
 alter table public.artists alter column slug set not null;
