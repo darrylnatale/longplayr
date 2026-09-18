@@ -60,10 +60,22 @@ comment on function public.slugify is
 -- The columns
 -- ---------------------------------------------------------------------------
 --
--- Eight hex characters of the MBID. At this catalogue's size a collision is
--- around a one-in-ten-thousand event, and the unique index below means it would
--- surface as a clean ingest failure rather than as a wrong page being served.
--- Widening the suffix later is a one-line change to this expression.
+-- Ten hex characters of the MD5 of the MBID — a hash of the whole identifier,
+-- never a prefix of it.
+--
+-- **The first version of this migration took `left(replace(mbid::text,'-',''), 8)`
+-- and CI killed it in under a minute.** A prefix is only as well distributed as
+-- its input, and identifiers are very often structured rather than random: the
+-- search suite's fixtures are all `0b0e4f1e-5555-4000-8000-…`, so every one of
+-- them shared a prefix and two albums titled *Blonde* collided on the first
+-- insert. Real MusicBrainz identifiers are random v4 UUIDs and would rarely have
+-- shown this — which is exactly why it was worth catching: the design was
+-- relying on the input happening to be random.
+--
+-- Hashing the whole value removes that dependence. Ten hex characters is about
+-- 1.1e12 of space, so a collision stays negligible at any size this catalogue
+-- will reach, and the unique index below means one would surface as a clean
+-- ingest failure rather than as a wrong page being served.
 --
 -- `nullif(..., '')` with a literal fallback covers the non-Latin case: the slug
 -- becomes `album-8f4c2b1a` rather than `-8f4c2b1a`.
@@ -72,7 +84,7 @@ alter table public.albums
   add column slug text
   generated always as (
     coalesce(nullif(public.slugify(title), ''), 'album')
-      || '-' || left(replace(mbid::text, '-', ''), 8)
+      || '-' || left(md5(mbid::text), 10)
   ) stored;
 
 -- NOT NULL because the expression cannot produce one: the coalesce guarantees a
@@ -85,7 +97,7 @@ alter table public.artists
   add column slug text
   generated always as (
     coalesce(nullif(public.slugify(name), ''), 'artist')
-      || '-' || left(replace(mbid::text, '-', ''), 8)
+      || '-' || left(md5(mbid::text), 10)
   ) stored;
 
 alter table public.artists alter column slug set not null;
