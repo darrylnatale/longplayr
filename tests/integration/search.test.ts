@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import type { Database } from '@/lib/supabase/database.types';
+import { ALBUM_SUMMARY_COLUMNS } from '@/services/catalogue/queries';
 
 /**
  * Search ranking.
@@ -386,10 +387,27 @@ describe('search_albums — credited artists', () => {
   });
 
   it('returns the shape the PostgREST embed returns, so one mapper serves both', async () => {
+    // **Compared against the embed itself, not against a literal.** The literal
+    // this replaced said `['id', 'mbid', 'name']`, which meant the test could
+    // only fail when the aggregate changed — including when it changed to match
+    // the embed, which is what happened when both gained `slug`. Reading the
+    // real column list makes it fail on divergence, which is what it is for.
     const [kidA] = await search('Kid A');
-    const [first] = kidA.artists as { position: number; artists: Record<string, unknown> }[];
+    const [fromRpc] = kidA.artists as { position: number; artists: Record<string, unknown> }[];
 
-    expect(Object.keys(first).sort()).toEqual(['artists', 'position']);
-    expect(Object.keys(first.artists).sort()).toEqual(['id', 'mbid', 'name']);
+    const { data: embedded, error } = await admin
+      .from('albums')
+      .select(ALBUM_SUMMARY_COLUMNS)
+      .eq('mbid', A(6))
+      .single();
+    if (error) throw error;
+
+    const [fromEmbed] = embedded.album_artists as unknown as {
+      position: number;
+      artists: Record<string, unknown>;
+    }[];
+
+    expect(Object.keys(fromRpc).sort()).toEqual(Object.keys(fromEmbed).sort());
+    expect(Object.keys(fromRpc.artists).sort()).toEqual(Object.keys(fromEmbed.artists).sort());
   });
 });

@@ -74,7 +74,16 @@ export type AlbumSummary = Pick<
  */
 export type AlbumSummaryWithArtists = AlbumSummary & { artists: CreditedArtist[] };
 
-const ALBUM_SUMMARY_COLUMNS =
+/**
+ * Exported so the parity between this embed and `search_albums`' own aggregate
+ * can be asserted against the real thing rather than against a literal.
+ *
+ * **Search is the one surface that cannot use this embed** — its columns are
+ * fixed by a SQL signature, so the function builds the same shape itself
+ * (`architecture.md` §16.8). `toCreditedArtists` serves both only while the two
+ * agree, and the integration suite now proves that by comparing them directly.
+ */
+export const ALBUM_SUMMARY_COLUMNS =
   'id, mbid, slug, title, display_credit, primary_type, artwork_status, first_release_date, first_release_date_precision, album_artists(position, artists(id, mbid, slug, name))';
 
 function toSummary(row: {
