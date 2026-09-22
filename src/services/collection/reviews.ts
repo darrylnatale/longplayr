@@ -150,10 +150,14 @@ export async function getAlbumReviews(albumId: string): Promise<AlbumReview[]> {
     // from the select text, and anything it cannot read statically collapses to
     // an error type.
     .select(
-      `id, body, created_at, updated_at, collection_entries!inner(album_id, rating, profiles!inner(id, handle, display_name, avatar_url))`,
+      `id, body, created_at, updated_at, collection_entries!inner(album_id, rating, profiles!inner(id, handle, display_name, avatar_url, status))`,
     )
     .eq('collection_entries.album_id', albumId)
     .eq('status', 'live')
+    // The review's own status was always filtered; its author's never was, so a
+    // suspended account's review stayed on every album page — handle, avatar
+    // and a link to a profile that 404s. `architecture.md` §16.9.
+    .eq('collection_entries.profiles.status', 'active')
     .order('created_at', { ascending: false });
 
   if (error) throw error;

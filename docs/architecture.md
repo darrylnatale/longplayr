@@ -1990,6 +1990,42 @@ Also excluded: RLS policies of any kind; `auth`, `storage` and other non-`public
 
 **That makes §16.5 load-bearing here rather than incidental.** Measured before the change, `search_albums` was executable by `anon`, `authenticated` and `service_role`, with `PUBLIC` revoked. A recreated function starts from Postgres's default of `EXECUTE` to `PUBLIC`, so the migration **revokes from `PUBLIC` and then names all three roles explicitly** — reproducing the measured end state rather than trusting the recreate to inherit it. **Signed-out search is a shipped feature and signed-in search is the common case**, so dropping either `anon` or `authenticated` would be a live outage rather than a tightening.
 
+### 16.9 Account status is a read-path rule, and every read path owes it **[DECIDED 2026-09-22]**
+
+**`profiles.status` and `content_status` have existed since Phase 0**, placed deliberately — `product-spec.md` §4 records _"content and users carry status fields from day one"_. What never existed is a **rule** saying who must consult them, so each call site decided for itself and three decided wrong.
+
+**Audited 2026-09-22, against the deployed schema.** Already correct: all five `/[handle]` routes `notFound()` on a non-active profile; `feed_activity` filters `actor.status = 'active'` in SQL; `search_artists` and the profile search filter active; follower and following counts filter on **both** sides of the edge with `!inner`; removed reviews and lists are hidden by RLS while remaining readable to their author.
+
+**Three gaps, every one reachable today by setting a status by hand:**
+
+| Where             | What survives a suspension                                                                                                                                   |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `getAlbumRating`  | **The rating still moves the album average.** Counted with no reference to who left it                                                                       |
+| `getAlbumReviews` | **The review stays on every album page**, with handle and avatar, linking to a profile that 404s. The review's _own_ status is filtered; its author's is not |
+| `listLikeCount`   | **The like still counts.** Every row for the list, unfiltered                                                                                                |
+
+**The inconsistency is the finding rather than the three defects.** The follow graph filters status; likes and ratings do not. Nothing stated a rule, so the question was answered independently each time — and the album average is the worst case, because brigading with a throwaway account is precisely the behaviour a ban exists to undo, and banning currently does not undo it.
+
+**The rule, stated so the next call site does not have to decide.** _A read that surfaces user-authored content, or a count derived from it, filters on the author's `status` as well as the content's._ The mechanism is the one the follow graph already uses: embed the profile with `!inner` and add `.eq('…status', 'active')`.
+
+**Service layer, not RLS, and the reason is a product question rather than a preference.** §5 puts authorisation in the service layer with RLS as defence in depth, which is the established shape here. **RLS is deliberately untouched**: a status filter there would also hide a suspended person's own collection, ratings and reviews **from themselves**, and whether a suspended account can still read its own data is undecided. Answering it silently through a policy change would be a scope violation, not an implementation detail.
+
+**`suspended` and `banned` hide content identically.** Every enforced surface already treats both as "not active", and the distinction between them concerns the account's **own** access — whether it can sign in and write — which belongs to the slice that builds the actions, not to this one.
+
+**A fourth gap was found at STEP G, after the rule was written down.** `getList` filtered the list's own status — RLS does that — but never its author's, so a **live list by a suspended author stayed publicly readable** while every one of that author's profile routes returned 404. It is fixed under the same rule, and its discovery is the argument for the rule existing: the audit that produced the first three was careful and still missed one.
+
+### 16.9a Notifications are deliberately not covered, and that is a question rather than an omission **[OPEN — raised 2026-09-22]**
+
+**`NOTIFICATION_SELECT` does not filter the actor's status.** A person who followed you or liked your review and has since been suspended still appears in your notifications, linking to a profile that 404s.
+
+**This is not obviously a defect, which is why it is not fixed here.** `product-spec.md` §425 makes the disappearance rule explicitly about the **feed**, and §16.3 holds notifications **disjoint** from it: a notification is a private record of something that happened _to you_, and removing it rewrites your own history rather than withdrawing someone's publication. The opposite case is just as arguable — a dead link and a hidden account are exactly what a suspension should stop surfacing.
+
+**It must be asked rather than inferred.** Whichever way it goes, this slice's claim is narrowed honestly: **every read path that publishes user content to other people** is enforced; the one directed, private surface is not, by decision deferred.
+
+**The deliverable is the enumerated test, not the three fixes.** The same shape as the account-deletion orphan test: create a user holding a rating, a review, a list and a like; suspend them; assert each surface stops showing it. **A surface added later fails that test until somebody has thought about it**, which is the only durable version of "every read path".
+
+---
+
 ## 17. Scalability — what breaks first, and when
 
 Honest ordering of what would need attention, rather than premature optimisation:

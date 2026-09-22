@@ -203,8 +203,15 @@ export async function getMyListLikes(listIds: string[]): Promise<Set<string>> {
  */
 export async function listLikeCount(listId: string): Promise<number> {
   const supabase = await createClient();
+  // Active likers only (`architecture.md` §16.9), matching the follow counts
+  // rather than the unfiltered count this replaced. `!inner` is what makes the
+  // status predicate exclude the row instead of nulling the join.
   return countRows(
-    supabase.from('list_likes').select('id', COUNT_ONLY).eq('list_id', listId),
+    supabase
+      .from('list_likes')
+      .select('id, person:profiles!inner(status)', COUNT_ONLY)
+      .eq('list_id', listId)
+      .eq('person.status', 'active'),
     'list_likes.count_by_list',
   );
 }

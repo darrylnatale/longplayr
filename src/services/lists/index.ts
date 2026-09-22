@@ -262,9 +262,14 @@ export async function getList(id: string): Promise<ListDetail | null> {
     .from('lists')
     .select(
       `id, title, description, is_ranked, status,
-       profiles!lists_user_id_fkey(id, handle, display_name)`,
+       profiles!lists_user_id_fkey!inner(id, handle, display_name, status)`,
     )
     .eq('id', id)
+    // **The author's status, which no filter here used to consult.** A removed
+    // list was already hidden by RLS, but a *live* list by a suspended author
+    // stayed publicly readable — while every one of that author's own profile
+    // routes returned 404. `architecture.md` §16.9.
+    .eq('profiles.status', 'active')
     .maybeSingle();
 
   if (error) throw error;
@@ -276,7 +281,12 @@ export async function getList(id: string): Promise<ListDetail | null> {
     description: string | null;
     is_ranked: boolean;
     status: 'live' | 'removed';
-    profiles: { id: string; handle: string; display_name: string | null } | null;
+    profiles: {
+      id: string;
+      handle: string;
+      display_name: string | null;
+      status: Database['public']['Enums']['user_status'];
+    } | null;
   };
 
   if (!row.profiles) return null;

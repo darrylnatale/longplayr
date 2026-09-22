@@ -36,14 +36,23 @@ export function toOneDecimal(value: number): number {
   return Math.round((value + Number.EPSILON * Math.abs(value)) * 10) / 10;
 }
 
-/** Average and count for one album. */
+/**
+ * Average and count for one album.
+ *
+ * **Only active accounts are counted** (`architecture.md` §16.9). A suspended
+ * or banned rating used to keep moving the average, which made a ban fail to
+ * undo the one behaviour it most exists to undo: rating with a throwaway
+ * account. The embed is `!inner`, so a row whose author does not match is
+ * dropped from the result rather than returned with a null join.
+ */
 export async function getAlbumRating(albumId: string): Promise<RatingSummary> {
   const supabase = await createClient();
 
   const { data, error } = await supabase
     .from('collection_entries')
-    .select('rating')
+    .select('rating, person:profiles!inner(status)')
     .eq('album_id', albumId)
+    .eq('person.status', 'active')
     .not('rating', 'is', null);
 
   if (error) throw error;
