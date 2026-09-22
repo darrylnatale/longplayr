@@ -14,9 +14,9 @@
 
 **The verification gate moved, and `CLAUDE.md` now carries it. [APPLIED 2026-09-15]** Work happens on a branch and reaches `main` only through a green CI run; STEP F runs `npm run verify` plus targeted suites; **the migration gate moved from STEP I to STEP J**, so the order is **CI green → migration applied → merge**. The decision is `architecture.md` §12; the process is `CLAUDE.md`. **The two no longer disagree.** (§68, §69)
 
-**Verified 2026-09-18 against the repository, the remote and CI.** `main` is at **`173f17f`**, the merge of PR #24; `origin/main` identical. **Nothing is open.** **32 migrations, 0 unapplied** — `20260918120000_reserve_deleted_handles` (§87) and `20260918170000_readable_url_slugs` (§88) were each applied to the deployed database at STEP J, between a green run and the merge, and confirmed afterwards. **§87's post-merge run `35365720989` came back `completed/success`, so that gate is cleared and §87 is fully verified.** §88's post-merge run on `49999a3` had not been read when this was written (F-051: a pull-request run tests the base as it was when it started, so the post-merge run is not redundant).
+**Verified 2026-09-18 against the repository, the remote, CI and production.** `main` is at **`000adf1`**, the merge of PR #25; `origin/main` identical. **Nothing is open.** **34 migrations, 0 unapplied** — `20260918120000_reserve_deleted_handles` (§87) and `20260918170000_readable_url_slugs` (§88) were each applied to the deployed database at STEP J, between a green run and the merge, and confirmed afterwards. **§87's post-merge run `35365720989` came back `completed/success`, so that gate is cleared and §87 is fully verified.** §88's post-merge run on `49999a3` had not been read when this was written (F-051: a pull-request run tests the base as it was when it started, so the post-merge run is not redundant).
 
-**Eighteen cycles merged between 2026-09-15 and 2026-09-18** — PRs #7 to #24, recorded as §72 to §89. **§74, §87, §88 and §89 carried a migration.** **§79, §87 and §88 failed CI and were reopened**; both were remediated and merged on a second run. **§80, §83 and §84 were confirmed on production** rather than merely merged.
+**Nineteen cycles merged between 2026-09-15 and 2026-09-18** — PRs #7 to #25, recorded as §72 to §90. **§74, §87, §88, §89 and §90 carried a migration.** **§79, §87, §88 and §90 failed CI and were reopened**; both were remediated and merged on a second run. **§80, §83 and §84 were confirmed on production** rather than merely merged.
 
 > **⚠️ The phase plan has been under-weighted, and the maintainer pointed it out on 2026-09-18.** Every cycle from §72 to §86 was selected from `docs/product-feedback.md`. **`CLAUDE.md` STEP A asks for _the current project state **and** any triaged product feedback_**, and the first half has gone effectively unconsulted for three days.
 >
@@ -29,6 +29,32 @@
 **Four feedback entries were filed on 2026-09-16 at the maintainer's request** — **F-041** (filtering, sorting and exclusion), **F-042** (filtering a grid by collection state), **F-043** (follow back from notifications) and **F-044** (the test environment fails more often than the code does). **F-041 surfaced that longplayr holds no genre data at all**, deliberately excluded at ingest, so that filter is an ingest, schema and backfill change rather than a UI one.
 
 **A decision session on 2026-09-16 answered eight open product questions** and promoted five entries to decided-and-unbuilt — readable URLs, browse-everything, the cover-art prompt (now built, §78), discography refresh, and Recently added's two rules. **It also opened F-040**, a collision between the new upstream-contribution principle and the read-only-catalogue non-negotiable. The records are in `product-spec.md` §6 and §8.9, `design-reference.md` §11.11, and `architecture.md` §18. Three cycles closed and merged today — PR #7 (`5479041`), PR #8 (`8544330`) and **PR #9 (`4c0a0f7`, CI #112, 132 end-to-end, zero flaky)**. The first two carried no migration; **§74 did**, and STEP J gated for it, applying `20260915160000` to the deployed database between a green CI run and the merge. **Post-merge run #111 on `8544330` came back `completed/success`**, so the tree before this cycle is independently green. **The double-CI cost of the branch model is now observed on five consecutive cycles** and remains recorded rather than decided.
+
+> ## ✅ §90 — Albums and artists are routed by slug, and identifiers stop resolving — **[GATE CLEARED: CI `35386697371` `completed/success` on `bf4be2d`, 134 end-to-end, zero flaky. CONFIRMED ON PRODUCTION.]**
+>
+> **`/albums/a-moon-shaped-pool`, and `/albums/0b0e4f1e-…` now returns 404** — the clean break `product-spec.md` §6 chose, taken while there were no real links to strand. §88 and §89 laid the data; this is the switch.
+>
+> **`src/lib/paths.ts` is the durable part.** The path was spelled inline in about a dozen components and pages, which is why this change cost what it did. The helpers **take the object rather than the slug**, so a caller holding a pre-slug summary fails to compile instead of building a path from whatever string was nearest. App layer rather than `src/services/`, per `CLAUDE.md`: a native client needs the slug — which is why the slug is catalogue data — and has no use for a web path.
+>
+> **Two call sites deliberately still read the album's own MBID**, and the distinction is load-bearing: the artist page enqueues `discover_curated_artist` and reads expansion state, both keyed on MusicBrainz identity. **Nothing joins on a slug and nothing queues on one.**
+>
+> **Two migrations, both because a database function was withholding a column a link now needs.** `search_albums` aggregates credited artists itself rather than through an embed, so its `jsonb` gained the artist slug — `create or replace` sufficed, the signature being unchanged. `feed_activity` returns the columns a feed item renders and held only the MBID, so it was **dropped and recreated**, with the privileges the drop removed restored explicitly.
+>
+> ### ⚠️ Three red CI runs, and the most serious defect was found by neither CI nor a test
+>
+> **Run `35383692942` — a parity test too weak to say what it meant.** `search.test.ts` holds the invariant that `search_albums`' hand-built aggregate matches the PostgREST embed, which is the only reason `toCreditedArtists` serves both (§16.8). It asserted that against a **hardcoded literal**, so it could only fail when the aggregate changed — **including when it changed to match the embed**, which is exactly what happened. The invariant never broke. It now reads `ALBUM_SUMMARY_COLUMNS` — exported for this — and compares the two key sets directly, so it fails on **divergence** rather than on change.
+>
+> **Run `35384521913` — one line the sweep's pattern could not reach.** `artist-sort.spec.ts` navigated `` `/artists/${RADIOHEAD}${query}` ``; the rewrite required the template to end at the closing brace or continue with a literal `?`, and this did neither. 133 of 134 passed, and it **failed identically on all three attempts**, which is what distinguished it from a flake.
+>
+> **The defect that mattered most was failing nothing at all.** Ten calls in the album actions revalidated **`/albums/[mbid]`**, a route path that stopped existing when the directory was renamed. `revalidatePath` does not raise on an unrecognised path, so every one had silently become a **no-op** — rating, liking, favouriting, reviewing, relistening and Want to Listen would each have left the album page serving a stale cache. **No test asserts on it and no typecheck can see inside a string.** It was found by grepping for the literal after CI pointed at the first miss.
+>
+> **The general lesson, recorded because it will recur:** a mechanical rename is precisely where **string-typed references rot silently**, and the instrument that finds them is a grep for the old literal — not the suite.
+>
+> ### 📄 Confirmed on production rather than merely merged
+>
+> `/albums/all` returns **200** and emits slug hrefs (`/albums/a-moon-shaped-pool`); an album page emits `/artists/radiohead`; search results emit slug links; and **the identifier form returns 404** on the deployed site.
+>
+> **One documentation inaccuracy found while checking.** `deployment.md` names **`longplayr-staging.vercel.app`**, which returns 404 on **every** path including `/`. The live deployment is **`longplayr.vercel.app`**. Recorded rather than corrected — whether staging still exists is the maintainer's to say.
 
 > ## ✅ §89 — A slug is just the title, and counts up only when it has to — **[GATE CLEARED: CI `35375489528` `completed/success` on `90ea7b3`, 134 end-to-end, zero flaky]**
 >

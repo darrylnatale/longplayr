@@ -489,7 +489,17 @@ Sequencing against `product-spec.md` §8.10 faults 1 and 2, and against the enri
 
 **Blocked by open decisions**
 
-- Report reason categories — **the only thing gating this phase**
+- Report reason categories — **gates reporting, and nothing else in the phase**
+
+**Slicing. [DECIDED 2026-09-22]** Phase 6 is entered through enforcement rather than through tooling, and the order is deliberate.
+
+| Slice                                    | Contents                                                                                                                                                   | Why it is first, or why it waits                                                                                                                                                                 |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **1 — Status enforced everywhere**       | The three audited gaps closed, the rule recorded in `architecture.md` §16.9, and an integration test enumerating every surface a suspended account touches | **A button that sets a status the product does not honour is worse than no button.** Setting status by hand is already possible; honouring it is not. Needs no product decision and no migration |
+| **2 — An admin, and the ability to act** | Admin identity, suspend and reinstate an account, remove and restore a review or list                                                                      | Needs slice 1, or it ships an action with no effect. `suspended` versus `banned` — what the account itself may still do — is settled here                                                        |
+| **3 — Reporting**                        | Report a review, list or account; the admin queue                                                                                                          | **The only slice the open decision gates.** A queue is a list until slice 2 exists                                                                                                               |
+
+**Blocking is unassigned and deliberately so.** It cuts interaction bidirectionally and is a different mechanism from status — it is about one user's view of another rather than about a global fact — so it does not belong in any of the three above without its own decision.
 
 **The schema groundwork is already laid, which is not what `CLAUDE.md` implies. [RECORDED 2026-09-18]** `profiles.status` exists as a `user_status` enum of `active | suspended | banned`, and `content_status` (`live | removed`) already sits on `reviews` and `lists` — placed there deliberately, per §4 of `product-spec.md`: _"Content and users carry status fields from day one."_ **No code reads any of them**, and reports, blocks, enforcement and admin routes genuinely do not exist. **"The columns exist and nothing enforces them" is a materially different starting point from "nothing exists"**, and whoever takes this phase should begin from the former.
 
