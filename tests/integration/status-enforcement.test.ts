@@ -197,9 +197,15 @@ beforeAll(async () => {
   if (ownListError) throw ownListError;
   subjectListId = ownList.id;
 
-  // The bystander follows the subject, so the subject appears in their feed and
-  // in their own following count.
+  // **Both directions, because the two assertions need opposite edges.** The
+  // follower count asks whether a suspended account stops counting as somebody
+  // else's follower, so the subject must follow the bystander. The feed asks
+  // whether their activity leaves a follower's timeline, and `feed_activity`
+  // shows only people the *viewer* follows — so the bystander must follow the
+  // subject as well. A single edge satisfies one assertion and silently empties
+  // the other, which is exactly what it did.
   await admin.from('follows').insert({ follower_id: subject.id, followee_id: bystander.id });
+  await admin.from('follows').insert({ follower_id: bystander.id, followee_id: subject.id });
   await admin
     .from('activity')
     .insert({ actor_id: subject.id, type: 'rated', collection_entry_id: entry.id });
