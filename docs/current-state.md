@@ -14,9 +14,9 @@
 
 **The verification gate moved, and `CLAUDE.md` now carries it. [APPLIED 2026-09-15]** Work happens on a branch and reaches `main` only through a green CI run; STEP F runs `npm run verify` plus targeted suites; **the migration gate moved from STEP I to STEP J**, so the order is **CI green → migration applied → merge**. The decision is `architecture.md` §12; the process is `CLAUDE.md`. **The two no longer disagree.** (§68, §69)
 
-**Verified 2026-09-18 against the repository, the remote, CI and production.** `main` is at **`000adf1`**, the merge of PR #25; `origin/main` identical. **Nothing is open.** **34 migrations, 0 unapplied** — `20260918120000_reserve_deleted_handles` (§87) and `20260918170000_readable_url_slugs` (§88) were each applied to the deployed database at STEP J, between a green run and the merge, and confirmed afterwards. **§87's post-merge run `35365720989` came back `completed/success`, so that gate is cleared and §87 is fully verified.** §88's post-merge run on `49999a3` had not been read when this was written (F-051: a pull-request run tests the base as it was when it started, so the post-merge run is not redundant).
+**Verified 2026-09-22 against the repository, the remote, CI and production.** `main` is at **`0f30b2a`**, the merge of PR #26; `origin/main` identical. **Nothing is open.** **34 migrations, 0 unapplied** — §91 carried none — `20260918120000_reserve_deleted_handles` (§87) and `20260918170000_readable_url_slugs` (§88) were each applied to the deployed database at STEP J, between a green run and the merge, and confirmed afterwards. **§87's post-merge run `35365720989` came back `completed/success`, so that gate is cleared and §87 is fully verified.** §88's post-merge run on `49999a3` had not been read when this was written (F-051: a pull-request run tests the base as it was when it started, so the post-merge run is not redundant).
 
-**Nineteen cycles merged between 2026-09-15 and 2026-09-18** — PRs #7 to #25, recorded as §72 to §90. **§74, §87, §88, §89 and §90 carried a migration.** **§79, §87, §88 and §90 failed CI and were reopened**; both were remediated and merged on a second run. **§80, §83 and §84 were confirmed on production** rather than merely merged.
+**Twenty cycles merged between 2026-09-15 and 2026-09-22** — PRs #7 to #26, recorded as §72 to §91. **§74, §87, §88, §89 and §90 carried a migration; §91 carried none.** **§79, §87, §88, §90 and §91 failed CI and were reopened**; both were remediated and merged on a second run. **§80, §83 and §84 were confirmed on production** rather than merely merged.
 
 > **⚠️ The phase plan has been under-weighted, and the maintainer pointed it out on 2026-09-18.** Every cycle from §72 to §86 was selected from `docs/product-feedback.md`. **`CLAUDE.md` STEP A asks for _the current project state **and** any triaged product feedback_**, and the first half has gone effectively unconsulted for three days.
 >
@@ -29,6 +29,41 @@
 **Four feedback entries were filed on 2026-09-16 at the maintainer's request** — **F-041** (filtering, sorting and exclusion), **F-042** (filtering a grid by collection state), **F-043** (follow back from notifications) and **F-044** (the test environment fails more often than the code does). **F-041 surfaced that longplayr holds no genre data at all**, deliberately excluded at ingest, so that filter is an ingest, schema and backfill change rather than a UI one.
 
 **A decision session on 2026-09-16 answered eight open product questions** and promoted five entries to decided-and-unbuilt — readable URLs, browse-everything, the cover-art prompt (now built, §78), discography refresh, and Recently added's two rules. **It also opened F-040**, a collision between the new upstream-contribution principle and the read-only-catalogue non-negotiable. The records are in `product-spec.md` §6 and §8.9, `design-reference.md` §11.11, and `architecture.md` §18. Three cycles closed and merged today — PR #7 (`5479041`), PR #8 (`8544330`) and **PR #9 (`4c0a0f7`, CI #112, 132 end-to-end, zero flaky)**. The first two carried no migration; **§74 did**, and STEP J gated for it, applying `20260915160000` to the deployed database between a green CI run and the merge. **Post-merge run #111 on `8544330` came back `completed/success`**, so the tree before this cycle is independently green. **The double-CI cost of the branch model is now observed on five consecutive cycles** and remains recorded rather than decided.
+
+> ## ✅ §91 — A suspension now hides what the account published — **[GATE CLEARED: CI `35719778781` `completed/success` on `108fe83`, 15 status assertions, 134 end-to-end, zero flaky]**
+>
+> **Phase 6 slice 1, and it built no admin tooling on purpose.** A control that sets a status the product does not honour is worse than no control; setting status by hand was already possible, honouring it was not. `development-plan.md` now slices the phase **enforcement → actions → reporting**, and records that _report reason categories_ gates only the third.
+>
+> **Four gaps, every one reachable today without any tool.**
+>
+> | Where             | What survived a suspension                                                                                                                                      |
+> | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+> | `getAlbumRating`  | **The rating still moved the album average.** Rating with a throwaway account is the behaviour a ban most exists to undo, and banning did not undo it           |
+> | `getAlbumReviews` | **The review stayed on every album page** — handle, avatar, and a link to a profile returning 404. The review's own status was filtered; its author's never was |
+> | `listLikeCount`   | **The like still counted**, while the follow counts immediately beside it filtered correctly                                                                    |
+> | `getList`         | **A live list by a suspended author stayed publicly readable.** Found at **STEP G**, after the rule had been written and the other three fixed                  |
+>
+> **The inconsistency was the finding rather than the four defects.** `profiles.status` and `content_status` have existed since Phase 0 — `product-spec.md` §4 says _"content and users carry status fields from day one"_ — but **no rule ever said which reads must consult them**, so every call site answered alone and four answered wrong. The rule now lives in `architecture.md` §16.9.
+>
+> **The fourth gap is the argument for the rule existing.** The audit that produced the first three was deliberate and careful, and still missed one; it took an independent review pass, after the rule was written down, to catch a surface the audit had walked past.
+>
+> **Service layer rather than RLS, and the reason is a product question.** §5 puts authorisation in the service layer with RLS as defence in depth. **RLS was deliberately left untouched**: a status filter there would also hide a suspended person's own collection, ratings and reviews **from themselves**, and whether a suspended account may still read its own data is undecided. A policy change would have answered that silently.
+>
+> ### 🔎 An open question raised rather than resolved — §16.9a
+>
+> **Notifications do not filter the actor's status**, so someone who followed you and was later suspended still appears there, linking to a profile that 404s. **Deliberately not fixed.** `product-spec.md` §425 makes the disappearance rule explicitly about the **feed**, and §16.3 holds notifications **disjoint** from it: a notification is a private record of something that happened _to you_, and removing it rewrites your own history rather than withdrawing someone's publication. The opposite reading is equally arguable.
+>
+> **The slice's claim is therefore narrowed honestly**: every read path that **publishes user content to other people** is enforced; the one directed, private surface is not, by decision deferred. **It must be asked.**
+>
+> ### ⚠️ CI failed on the test's own fixture, for the second cycle running
+>
+> **Run `35719035934`: the feed returned `[]` for the bystander while the subject was active**, so both the active-state and reinstatement assertions had nothing to find. 37 of 38 files were green and **all four gap fixes passed**.
+>
+> **The fixture created one follow edge and the comment above it described the opposite one.** `feed_activity` shows activity by people the _viewer_ follows; the bystander followed nobody, so their feed was correctly empty throughout.
+>
+> **Two assertions needed opposite edges, which the fixture could not have satisfied with one.** The follower count asks whether a suspended account stops counting as _somebody else's_ follower — subject → bystander. The feed asks whether their activity leaves a follower's timeline — bystander → subject. **One edge satisfies one and silently empties the other.**
+>
+> **Same shape as §87's failure, and the same trade.** Enumerating surfaces explicitly means the fixture has to be right about every one of them, and a sampled test would have passed before this cycle too.
 
 > ## ✅ §90 — Albums and artists are routed by slug, and identifiers stop resolving — **[GATE CLEARED: CI `35386697371` `completed/success` on `bf4be2d`, 134 end-to-end, zero flaky. CONFIRMED ON PRODUCTION.]**
 >
