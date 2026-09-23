@@ -35,6 +35,14 @@ const admin: SupabaseClient<Database> = createClient<Database>(url, serviceKey, 
 
 const createdUserIds: string[] = [];
 const createdAlbumIds: string[] = [];
+/**
+ * Tracked for cleanup because **nothing else will remove it.**
+ * `catalogue_additions.user_id` is `on delete set null` by deliberate design
+ * (§87): the record of what entered the catalogue outlives the person who
+ * added it. So deleting the user leaves an anonymous row behind, and this
+ * suite has to take it away itself.
+ */
+const createdAdditionMbids: string[] = [];
 
 let owner = { id: '', handle: '' };
 let other = { id: '', handle: '' };
@@ -168,6 +176,9 @@ beforeAll(async () => {
 afterAll(async () => {
   for (const id of createdUserIds) {
     await admin.auth.admin.deleteUser(id).catch(() => undefined);
+  }
+  if (createdAdditionMbids.length) {
+    await admin.from('catalogue_additions').delete().in('album_mbid', createdAdditionMbids);
   }
   if (createdAlbumIds.length) await admin.from('albums').delete().in('id', createdAlbumIds);
 });

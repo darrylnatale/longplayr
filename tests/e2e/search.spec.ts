@@ -190,19 +190,28 @@ test('searching mutates nothing', async ({ page }) => {
     { auth: { autoRefreshToken: false, persistSession: false } },
   );
 
-  const before = await admin.from('albums').select('mbid', { count: 'exact', head: true });
+  const countAlbums = () => admin.from('albums').select('mbid', { count: 'exact', head: true });
+  const countAdditions = () =>
+    admin.from('catalogue_additions').select('id', { count: 'exact', head: true });
+
+  const before = await countAlbums();
+  const additionsBefore = await countAdditions();
 
   for (const q of [A_HELD_ALBUM, MATCHES_NOTHING, '   ', 'radiohead']) {
     await search(page, q);
   }
 
-  const after = await admin.from('albums').select('mbid', { count: 'exact', head: true });
+  const after = await countAlbums();
   expect(after.count).toBe(before.count);
 
-  const additions = await admin
-    .from('catalogue_additions')
-    .select('id', { count: 'exact', head: true });
-  expect(additions.count).toBe(0);
+  // **Measured as a change rather than as an absolute zero**, which is what
+  // this asserted before. `catalogue_additions.user_id` is `on delete set null`
+  // by design, so any suite that adds to the catalogue leaves an anonymous row
+  // that no cascade removes — and this test would then fail on somebody else's
+  // residue while reporting a search defect. The claim is that *searching* adds
+  // nothing, and a before-and-after says exactly that.
+  const additionsAfter = await countAdditions();
+  expect(additionsAfter.count).toBe(additionsBefore.count);
 
   expect(user.handle).toBeTruthy();
 });
