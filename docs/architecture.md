@@ -1477,6 +1477,24 @@ Per `docs/claude-course-analysis.md` §10, the course's own advice — don't put
 
 ---
 
+### 15.2 Export is the deletion enumeration, read instead of deleted **[DECIDED 2026-09-23]**
+
+**§87 already did the expensive part.** Account deletion required enumerating every table that holds user data, and that list is written down and tested. **Export is the same list read rather than removed**, which is why it was taken while the enumeration was four days old rather than rediscovered later.
+
+**One JSON file, fetched from an authenticated route and served as a download.** JSON over CSV because portability means _another service_ reading it: a collection carrying nested lists, items and reviews cannot be flattened without either losing the structure or shipping several files.
+
+**Generated synchronously, and the ceiling is recorded rather than assumed away.** At thirty entries this is nothing. Somewhere in the low thousands it becomes a job and an email; nothing here pretends otherwise.
+
+**Removed reviews and removed lists are included, and that is the decision most worth stating.** Moderation hides your writing from other people; it does not stop it being yours, and RLS already lets you read your own. **An export that silently dropped them would be the product deciding what you are allowed a copy of.**
+
+**Two things are excluded, both because they are derived rather than authored.** Every `activity` row comes from an entry, review or relisten already in the file, and every notification comes from a follow or like already in it — so both duplicate rather than add. **The notification exclusion is deliberately not §16.9a's question**, which concerns what _other people_ see.
+
+**Follows are exported in both directions.** A follower is somebody else's action, but it is a fact _about_ the exporting user, and every handle involved is public by `product-spec.md` §4 regardless.
+
+**Albums carry MBID, title and credit and nothing more.** Enough to mean something in another service; not a copy of a catalogue that is MusicBrainz's rather than the user's.
+
+---
+
 ## 16. Data access patterns
 
 Confirmations of decisions made in `docs/data-model.md`, recorded here for architectural completeness:
