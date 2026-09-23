@@ -680,6 +680,7 @@ export type Database = {
           display_name: string | null
           handle: string
           id: string
+          is_admin: boolean
           status: Database["public"]["Enums"]["user_status"]
           updated_at: string
         }
@@ -690,6 +691,7 @@ export type Database = {
           display_name?: string | null
           handle: string
           id: string
+          is_admin?: boolean
           status?: Database["public"]["Enums"]["user_status"]
           updated_at?: string
         }
@@ -700,6 +702,7 @@ export type Database = {
           display_name?: string | null
           handle?: string
           id?: string
+          is_admin?: boolean
           status?: Database["public"]["Enums"]["user_status"]
           updated_at?: string
         }

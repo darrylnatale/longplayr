@@ -1430,6 +1430,26 @@ No custom metrics pipeline, no dashboards beyond what the platforms provide. Add
 - **Admin surface** gated by a role check and separated from user-facing routes.
 - **Database privileges are set by revoking, not only by granting. [DECIDED 2026-09-04]** Postgres and Supabase both hand out defaults that an explicit `grant` does not remove, so a migration naming its intended audience restricts nobody. Measured on 2026-09-04, before correction: `anon` held `TRUNCATE`, `TRIGGER`, `REFERENCES` and `MAINTAIN` on all 20 `public` tables, and `PUBLIC` held `EXECUTE` on 9 of 10 project-authored functions. **Not a leak and not exploitable** — see `§16.5`, which holds the evidence, the per-function intent and the boundary.
 
+### 14.1 A moderated user could undo their own moderation **[FOUND AND CLOSED 2026-09-22]**
+
+**§91 made status _mean_ something on every read path. It did not make it stick.** Found at STEP B of the slice that fixes it, by reading the policies rather than by anything failing.
+
+**The hole.** `grant insert, update on public.profiles to authenticated` is **table-level**, so it covers every column, and `profiles_update_own` permits any update to your own row. A suspended account holding its own token could therefore send `PATCH /rest/v1/profiles?id=eq.<self>` with `{"status":"active"}` and succeed. **The same shape applied to content**: `reviews_write_own` and `lists_write_own` are `for all`, with table-level update grants, so an author could set a removed review or list back to `live`.
+
+**Not exploitable when found**, and that is recorded rather than used as comfort: four test profiles existed, nobody was suspended, nothing had been removed. **It was a hole waiting for the feature.**
+
+**The fix is column-level grants, which is §16.5's rule applied literally.** The table-level update grant is revoked and replaced by one naming the columns a user may actually change — `handle`, `display_name`, `bio`, `avatar_url` on their own profile; `body` on their own review; title, description and ranked-ness on their own list. **`status` and `is_admin` appear in no grant to `authenticated` at all**, so no user token can reach them whatever a policy says.
+
+**The lesson generalises past this defect.** RLS answers _which rows_; it never answers _which columns_. A policy that correctly scopes a row is routinely mistaken for one that scopes a field, and the two are unrelated — a `for all` policy over a table-level grant hands the author every column the table has, including the ones moderation depends on.
+
+### 14.2 The privilege model, and why it is a column rather than a secret **[DECIDED 2026-09-22]**
+
+**`profiles.is_admin`, a boolean defaulting false, settable only by SQL.** There is deliberately no path in the product to grant it: the first admin must be created by hand regardless, and a second way to become one is a second thing to attack.
+
+**`queue-view-auth.ts`'s precedent was considered and does not transfer.** That surface uses a shared secret in a query string and says why: _"longplayr has no operator role… a privilege model introduced for a temporary page would outlive the page."_ It accepts secrets-in-URLs — which reach browser history, referrers and proxy logs — **explicitly because it performs no mutation whatsoever**. Slice 2 suspends accounts and removes content, so that trade is unavailable.
+
+**Admin writes go through the service-role client rather than a user token**, so RLS is not their gate — the service layer is, per §5. This is stronger than an admin-shaped RLS policy would be: with no grant to `authenticated` on those columns, **there is no policy left to subvert**.
+
 Per `docs/claude-course-analysis.md` §10, the course's own advice — don't put unaudited authentication in front of real user data — is taken at its stated standard: **a security review before launch**, focused on auth flows, authorisation checks, and the admin surface.
 
 ---
