@@ -33,6 +33,28 @@ export default async function SettingsPage() {
       <SectionHeader>Settings</SectionHeader>
 
       <section className="mt-8 max-w-prose">
+        <h2 className="text-lg font-medium text-text">Export your data</h2>
+
+        <p className="mt-3 text-sm leading-relaxed text-text-muted">
+          Everything you have added, rated, written and listed, as a single file. Reviews and lists
+          that have been removed are included — they are still yours.
+        </p>
+
+        {/*
+         * A plain link rather than a button, because it is a navigation to a
+         * file. `download` is advisory; the route sets Content-Disposition,
+         * which is what actually decides.
+         */}
+        <a
+          href="/api/export"
+          download
+          className="mt-4 inline-block rounded-sm border border-border px-4 py-2 text-sm font-medium text-text transition-colors hover:border-accent"
+        >
+          Download my data
+        </a>
+      </section>
+
+      <section className="mt-12 max-w-prose">
         <h2 className="text-lg font-medium text-text">Delete your account</h2>
 
         {/*

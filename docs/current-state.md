@@ -14,9 +14,9 @@
 
 **The verification gate moved, and `CLAUDE.md` now carries it. [APPLIED 2026-09-15]** Work happens on a branch and reaches `main` only through a green CI run; STEP F runs `npm run verify` plus targeted suites; **the migration gate moved from STEP I to STEP J**, so the order is **CI green → migration applied → merge**. The decision is `architecture.md` §12; the process is `CLAUDE.md`. **The two no longer disagree.** (§68, §69)
 
-**Verified 2026-09-22 against the repository, the remote, CI and production.** `main` is at **`0f30b2a`**, the merge of PR #26; `origin/main` identical. **Nothing is open.** **34 migrations, 0 unapplied** — §91 carried none — `20260918120000_reserve_deleted_handles` (§87) and `20260918170000_readable_url_slugs` (§88) were each applied to the deployed database at STEP J, between a green run and the merge, and confirmed afterwards. **§87's post-merge run `35365720989` came back `completed/success`, so that gate is cleared and §87 is fully verified.** §88's post-merge run on `49999a3` had not been read when this was written (F-051: a pull-request run tests the base as it was when it started, so the post-merge run is not redundant).
+**Verified 2026-09-23 against the repository, the remote, CI and production.** `main` is at **`6f10abd`**, the merge of PR #27; `origin/main` identical. **Nothing is open.** **35 migrations, 0 unapplied** — §92's was applied at STEP J between a green run and the merge — `20260918120000_reserve_deleted_handles` (§87) and `20260918170000_readable_url_slugs` (§88) were each applied to the deployed database at STEP J, between a green run and the merge, and confirmed afterwards. **§87's post-merge run `35365720989` came back `completed/success`, so that gate is cleared and §87 is fully verified.** §88's post-merge run on `49999a3` had not been read when this was written (F-051: a pull-request run tests the base as it was when it started, so the post-merge run is not redundant).
 
-**Twenty cycles merged between 2026-09-15 and 2026-09-22** — PRs #7 to #26, recorded as §72 to §91. **§74, §87, §88, §89 and §90 carried a migration; §91 carried none.** **§79, §87, §88, §90 and §91 failed CI and were reopened**; both were remediated and merged on a second run. **§80, §83 and §84 were confirmed on production** rather than merely merged.
+**Twenty-one cycles merged between 2026-09-15 and 2026-09-23** — PRs #7 to #27, recorded as §72 to §92. **§74, §87, §88, §89, §90 and §92 carried a migration; §91 carried none.** **§79, §87, §88, §90 and §91 failed CI and were reopened; §92 passed first time**; both were remediated and merged on a second run. **§80, §83 and §84 were confirmed on production** rather than merely merged.
 
 > **⚠️ The phase plan has been under-weighted, and the maintainer pointed it out on 2026-09-18.** Every cycle from §72 to §86 was selected from `docs/product-feedback.md`. **`CLAUDE.md` STEP A asks for _the current project state **and** any triaged product feedback_**, and the first half has gone effectively unconsulted for three days.
 >
@@ -29,6 +29,42 @@
 **Four feedback entries were filed on 2026-09-16 at the maintainer's request** — **F-041** (filtering, sorting and exclusion), **F-042** (filtering a grid by collection state), **F-043** (follow back from notifications) and **F-044** (the test environment fails more often than the code does). **F-041 surfaced that longplayr holds no genre data at all**, deliberately excluded at ingest, so that filter is an ingest, schema and backfill change rather than a UI one.
 
 **A decision session on 2026-09-16 answered eight open product questions** and promoted five entries to decided-and-unbuilt — readable URLs, browse-everything, the cover-art prompt (now built, §78), discography refresh, and Recently added's two rules. **It also opened F-040**, a collision between the new upstream-contribution principle and the read-only-catalogue non-negotiable. The records are in `product-spec.md` §6 and §8.9, `design-reference.md` §11.11, and `architecture.md` §18. Three cycles closed and merged today — PR #7 (`5479041`), PR #8 (`8544330`) and **PR #9 (`4c0a0f7`, CI #112, 132 end-to-end, zero flaky)**. The first two carried no migration; **§74 did**, and STEP J gated for it, applying `20260915160000` to the deployed database between a green CI run and the merge. **Post-merge run #111 on `8544330` came back `completed/success`**, so the tree before this cycle is independently green. **The double-CI cost of the branch model is now observed on five consecutive cycles** and remains recorded rather than decided.
+
+> ## ✅ §92 — Moderation has an admin, and users can no longer moderate themselves — **[GATE CLEARED: CI `35844123814` `completed/success` on `c2eacaa`, 10 privilege assertions, 134 end-to-end, zero flaky]**
+>
+> **Phase 6 slice 2, and a security fix more than a feature.**
+>
+> ### ⚠️ §91's enforcement did not stick, and nothing was failing to say so
+>
+> **`profiles` granted `UPDATE` at table level** — every column — **and `profiles_update_own` permits any update to your own row.** A suspended account holding its own token could therefore `PATCH /rest/v1/profiles?id=eq.<self>` with `{"status":"active"}` and succeed. `reviews_write_own` and `lists_write_own` are `for all` over the same kind of grant, so **an author could restore their own removed review or list.**
+>
+> **Found at STEP B by reading the policies**, not by any test or any failure. **Not exploitable when found** — four test profiles, nobody suspended, nothing removed — and that is recorded rather than leaned on: it was a hole waiting for the feature that would have made it reachable.
+>
+> **RLS answers _which rows_; it never answers _which columns_.** That is the defect in one line, and why the fix is **column-level grants** rather than another policy. After `20260922120000`, `status` and `is_admin` appear in **no grant to `authenticated` at all** — so there is no policy left to subvert, which is a stronger position than an admin-shaped policy that has to be written correctly.
+>
+> ### 🔎 A near-miss that would have shipped, found by probing rather than by reasoning
+>
+> **Granting `body` alone on `reviews` broke reviewing outright** — not editing, _saving_. `saveReview` is a PostgREST **upsert**, which compiles to `INSERT … ON CONFLICT DO UPDATE SET …` over **every column in the payload**, and Postgres checks `UPDATE` privilege on that SET list **whether or not a conflict occurs**. The _first_ save of any review returned `42501 permission denied`.
+>
+> **Reasoning would have caught half of it.** The expectation was that an _edit_ might fail; that a first insert fails is the part only the running API said. `collection_entry_id` is granted alongside `body`, and `reviews_write_own`'s `with check` still confines an author to their own entries.
+>
+> **No existing test could have caught it, and that is the durable finding.** Every review suite uses the **service-role client, which bypasses grants entirely** — so column privileges are invisible to the whole integration suite as it stood. The new suite **signs in as a real user**, which is the only way a column grant is observable at all, and the upsert case is now a permanent guard.
+>
+> ### 📄 What shipped
+>
+> **`profiles.is_admin`**, settable only by SQL — **no path in the product grants it**, deliberately: the first admin must be made by hand whatever else exists, and a second route is a second thing to attack. `queue-view-auth.ts`'s shared-secret precedent was considered and rejected, since it accepts secrets-in-URLs _explicitly because that surface performs no mutation_.
+>
+> **`/admin`** — the accounts list, with suspend and reinstate. **`notFound()` for a signed-out visitor and a signed-in non-admin alike**, because a 403 confirms the route exists to exactly the people who should not know. **An admin cannot moderate themselves or another admin**, which is lockout protection rather than policy.
+>
+> **Removing and restoring a review or list is built in the service and has no surface**, deliberately — it wants the reports queue to hang off, which is slice 3.
+>
+> **An audit trail is deferred and recorded as a question.** With one possible admin it records one person's actions to themselves; it becomes real at two, and slice 3 is where it belongs.
+>
+> **Probed against live PostgREST with a real user JWT**: legitimate profile edit **204**, own status **403**, self-promotion **403**, review save **201**, review edit **200**, author setting own review status **403**. `/admin` **404** signed out, on production after the merge.
+>
+> ### ⚠️ One maintainer action outstanding
+>
+> **No admin exists.** `/admin` cannot open for anybody until `update public.profiles set is_admin = true where handle = '…';` is run against the deployed database by hand. That is the design, not an omission.
 
 > ## ✅ §91 — A suspension now hides what the account published — **[GATE CLEARED: CI `35719778781` `completed/success` on `108fe83`, 15 status assertions, 134 end-to-end, zero flaky]**
 >
