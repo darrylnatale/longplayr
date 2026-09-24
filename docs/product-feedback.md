@@ -444,7 +444,7 @@ The 50.1 reading coincided with a macOS Software Update at 37% CPU. The 12–20 
 **Still open, and all three are gated on things only the maintainer can do:**
 
 - **Google sign-in** — decided and unbuilt, blocked on a Google Cloud project with OAuth credentials (`deployment.md` §5), not on code.
-- **Verification email** — a deployment decision needing real SMTP. **A stated launch prerequisite** and still unscheduled.
+- ~~**Verification email** — a deployment decision needing real SMTP.~~ **[DONE 2026-09-24]** Resend on a verified subdomain, confirmation ON in production, auth email limit raised to 60/hour. `deployment.md` and `architecture.md` §6 carry the settings. **Google sign-in remains open**, and so does the question of other providers.
 - **Other providers** — recorded nowhere. Only Google is named.
 
 **Also deliberately not built:** a breach-list check, which is the genuinely effective addition length does not give. It means an external call on every signup and a privacy question even under k-anonymity, and is `[OPEN]` in `architecture.md` §6.
@@ -1415,6 +1415,19 @@ The product should eventually be **an app, not a PWA**. The stated reason is spe
 - **Native apps are deferred, with the reasoning already qualified.** §7 records _"Responsive web first. **Still deferred.** `architecture.md` §19 records the constraints that keep a second client from becoming expensive — **which is not a commitment to build one**."_ So the architecture has been kept deliberately client-agnostic — §19.3's plausible second client, and the domain-logic rule in `CLAUDE.md` that exists because of it — **without that ever amounting to a plan.**
 - **The distinction worth preserving: the stated goal is re-engagement, and "a native app" is one means to it.** Push is available to a PWA on current mobile platforms, and email is a third route — both excluded by the same `[DECIDED]` line rather than by any technical limit. **Whether the goal warrants reopening that line, and separately whether it warrants a second client, are two decisions and not one.** Neither is taken here.
 - **Nothing in this entry authorises platform work**, and it should not be read as reopening §7 or §16.3.
+
+### F-055 — a failed sign-in clears the email you just typed
+
+**2026-09-24 · signup, auth · NEW**
+
+Get your password wrong and **both fields empty**, so you retype your address as well as your password. On a phone that is a real annoyance at exactly the moment somebody is already mildly frustrated.
+
+**Context, not a resolution.**
+
+- **Found by a test rather than by using the product.** The password-reset end-to-end spec filled only the password on its second attempt and submitted an empty address; the cause was the form, not the test.
+- **`AuthForm` is uncontrolled and sets no `defaultValue`**, so the re-render after a rejected attempt empties every field. The fix is small — echo the submitted email back through the action state — and it is **deliberately not taken here**, being outside the boundary of the cycle that found it.
+- **The password must still clear**, which is the one part worth thinking about rather than copying: refilling a password field for somebody is a different decision from refilling an email, and browsers already own that behaviour through their own password managers.
+- **It applies to signup too**, where the cost is higher: signup has three fields and clearing all three after one mismatch is a worse loss than clearing two.
 
 ### Triaged, promoted or closed
 

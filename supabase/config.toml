@@ -168,7 +168,18 @@ site_url = "http://127.0.0.1:3000"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+# Emailed links return to these, and they must be listed or Supabase silently
+# falls back to site_url. Paths under site_url's own origin are already allowed,
+# so only the `localhost` forms need naming — the end-to-end suite runs there
+# (playwright.config.ts) while site_url is 127.0.0.1.
+#
+# Exact URLs, as the comment above says: globs are not honoured here, which cost
+# a debugging round to establish. Production keeps its own list in the dashboard.
+additional_redirect_urls = [
+  "https://127.0.0.1:3000",
+  "http://localhost:3000/auth/callback",
+  "http://localhost:3000/auth/callback/reset",
+]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
