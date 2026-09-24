@@ -110,7 +110,7 @@ test('a forgotten password can be reset from the emailed link', async ({ page })
   await page.goto(await latestLinkFor(user.email));
   await expect(page).toHaveURL('/reset-password', NAV);
 
-  await page.getByLabel('New password').fill(user.newPassword);
+  await page.getByLabel('New password', { exact: true }).fill(user.newPassword);
   await page.getByLabel('Confirm new password').fill(user.newPassword);
   await page.getByRole('button', { name: 'Set new password' }).click();
   await expect(page).toHaveURL('/', NAV);
@@ -144,8 +144,10 @@ test('a reset link cannot be used twice', async ({ page }) => {
   await page.goto(link);
   await expect(page).toHaveURL('/reset-password', NAV);
 
-  // A recovery code is single-use. Re-following it must land somewhere that
-  // tells the reader what to do, not on a form that cannot work.
+  // **A recovery code is single-use, and the rejection happens one hop earlier
+  // than expected.** Supabase's verify endpoint refuses the token itself and
+  // redirects to the Site URL with the reason in a *fragment* — which no server
+  // route can read. `LinkErrorRedirect` is what turns that into a sentence.
   await page.goto(link);
   await expect(page).toHaveURL(/\/login\?error=link_/, NAV);
   await expect(page.getByText(/expired or has already been used|could not be read/i)).toBeVisible();

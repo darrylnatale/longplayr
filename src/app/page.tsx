@@ -6,6 +6,8 @@ import { SectionHeader } from '@/components/SectionHeader';
 import { getRecentAlbums } from '@/services/catalogue/queries';
 import { getCurrentProfile, getCurrentUser } from '@/services/profiles';
 
+import { LinkErrorRedirect } from './(auth)/LinkErrorRedirect';
+
 /**
  * Home — the front door.
  *
@@ -83,6 +85,12 @@ export default async function HomePage() {
 
   return (
     <>
+      {/*
+       * Rejected email links land here, not on /auth/callback, and carry their
+       * reason in a fragment the server cannot read. See the component.
+       */}
+      <LinkErrorRedirect />
+
       <Container variant="content">
         {/*
          * Centred in the viewport only when there is nothing below it.
