@@ -1467,7 +1467,7 @@ No custom metrics pipeline, no dashboards beyond what the platforms provide. Add
 - **Auth is delegated** to Supabase — we hash nothing and mint no sessions.
 - **Authorisation in the service layer**, tested directly (§12).
 - **Secrets** in Vercel and Supabase environment configuration; never in the repository. The service-role database key is server-only and must never reach the client.
-- **Rate limits** on the abuse-prone write paths. Catalogue additions are capped at **30 per hour and 100 per day per user** — protecting both search quality and the shared MusicBrainz request budget. Reviews, follows and reports need ceilings too; their numbers are not yet set.
+- **Rate limits** on the abuse-prone write paths. Catalogue additions are capped at **30 per hour and 100 per day per user** — protecting both search quality and the shared MusicBrainz request budget. ~~Reviews, follows and reports need ceilings too; their numbers are not yet set.~~ **[PARTLY ADDRESSED 2026-09-24 — see §14.4.]** Follows and both kinds of like now carry ceilings, enforced in the database. **Reviews were deliberately narrowed out and reports do not exist yet.**
 - **Input validation** at every server boundary via a schema validator; review bodies sanitised on render.
 - **Admin surface** gated by a role check and separated from user-facing routes.
 - **Database privileges are set by revoking, not only by granting. [DECIDED 2026-09-04]** Postgres and Supabase both hand out defaults that an explicit `grant` does not remove, so a migration naming its intended audience restricts nobody. Measured on 2026-09-04, before correction: `anon` held `TRUNCATE`, `TRIGGER`, `REFERENCES` and `MAINTAIN` on all 20 `public` tables, and `PUBLIC` held `EXECUTE` on 9 of 10 project-authored functions. **Not a leak and not exploitable** — see `§16.5`, which holds the evidence, the per-function intent and the boundary.
@@ -1515,6 +1515,40 @@ No custom metrics pipeline, no dashboards beyond what the platforms provide. Add
 **Verified correct and recorded, so the next audit starts here:** `follows` and `want_to_listen` key on the owning column; `list_likes` and `review_likes` add an existence check on the subject; `relisten_events` checks through the parent; `notifications.read_at` was already a column grant; `profiles`, `reviews` and `lists` were narrowed by §14.1; and the catalogue tables are read-only to `anon` and `authenticated` with every write on `service_role`.
 
 **The durable output is `tests/integration/write-privileges.test.ts`**, which asserts from a **real user token** what may and may not be written, in both directions. **Every other integration suite uses the service-role client, which bypasses grants and RLS entirely** — so this entire surface was invisible to the test suite until now, and a migration that widens a grant will fail rather than pass quietly.
+
+### 14.4 Rate limits, and why these ones are in the database **[DECIDED 2026-09-24]**
+
+**Moderation reacts; nothing prevented.** §91 through §94 built enforcement, an admin, and a locked-down privilege surface — all of which act _after_ somebody has flooded the product. A signed-in account could follow and like without any ceiling at all, and **each of those actions generates a notification for somebody else**, which is the harm a ceiling actually bounds.
+
+#### The enforcement point is the decision, and §14.1 is why
+
+**The existing limiter is service-layer**: `remainingAllowance` counts `catalogue_additions` rows in a window. Copying it here was the obvious move and is **rejected**.
+
+**`follows`, `review_likes` and `list_likes` all grant `insert` to `authenticated`, and their policies permit an owner to insert freely.** A ceiling that lives only in the service layer is therefore bypassed by anybody posting straight to PostgREST with their own token — **the identical shape as §14.1's hole**, where a rule the application assumed was one the database did not hold.
+
+**So these are enforced by trigger.** Not because triggers are elegant: because a limit only the app respects is a product preference dressed as a control, and this project has already paid once to learn the difference.
+
+**The cost is a windowed count per insert**, on tables indexed by the actor column, for actions that are not hot paths. Negligible at this scale, and recorded here so it is revisited rather than assumed.
+
+**Catalogue additions are left in the service layer and not migrated.** That limiter also drives a _remaining allowance_ display, it guards a rate-limited upstream rather than other users' notifications, and **rewriting a working control to match a new convention is not what this cycle is for.** The inconsistency is deliberate and named.
+
+#### What is limited, and what is not
+
+| Action       | Per hour | Per day |
+| ------------ | -------- | ------- |
+| Follows      | 60       | 300     |
+| Review likes | 120      | 600     |
+| List likes   | 120      | 600     |
+
+**Chosen, not measured — the same standing as §6's twelve-character password minimum, and stated in the same words.** There is no usage data to tune against. They are set generously enough that no genuine user should meet them and tightly enough to bound a script. **Raising them when real usage says so is expected**, and is not a finding.
+
+**Reviews are deliberately out, and §14 above named them.** A review is **one per collection entry**, so writing many requires first collecting many albums; editing is an upsert that rewrites in place rather than inserting, so _reviews per hour_ is not countable the way the others are. **The narrowing is recorded rather than done quietly.**
+
+**Reports are out because they do not exist** — Phase 6 slice 3.
+
+#### What a user sees
+
+**A `Result` carrying `rate_limited`**, following the precedent `AddError` set, rather than an exception. The service layer maps the database's refusal onto that outcome so the control explains itself.
 
 Per `docs/claude-course-analysis.md` §10, the course's own advice — don't put unaudited authentication in front of real user data — is taken at its stated standard: **a security review before launch**, focused on auth flows, authorisation checks, and the admin surface.
 

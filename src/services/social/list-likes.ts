@@ -5,6 +5,7 @@ import { countRows, COUNT_ONLY } from '../count';
 import { getCurrentProfile } from '../profiles';
 import { recordListLiked } from './notifications';
 import { err, ok, type Result } from '../result';
+import { isRateLimited, RATE_LIMITED_MESSAGE } from '../rate-limit';
 
 /**
  * Likes on lists.
@@ -35,7 +36,7 @@ import { err, ok, type Result } from '../result';
 
 export type ListLike = Database['public']['Tables']['list_likes']['Row'];
 
-export type ListLikeError = 'onboarding_required' | 'self_like' | 'not_found';
+export type ListLikeError = 'onboarding_required' | 'self_like' | 'not_found' | 'rate_limited';
 
 /** Postgres unique-violation. Turns a double-submit into a clean outcome. */
 const UNIQUE_VIOLATION = '23505';
@@ -96,6 +97,11 @@ export async function likeList(listId: string): Promise<Result<ListLike, ListLik
     .single();
 
   if (error) {
+    // A ceiling, not a fault (`architecture.md` §14.4). Checked first because a
+    // rate limit and an existing like are different outcomes, and only one of
+    // them means the row is already there.
+    if (isRateLimited(error)) return err('rate_limited', RATE_LIMITED_MESSAGE);
+
     if (error.code === UNIQUE_VIOLATION) {
       const { data: existing } = await supabase
         .from('list_likes')

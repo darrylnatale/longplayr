@@ -14,9 +14,9 @@
 
 **The verification gate moved, and `CLAUDE.md` now carries it. [APPLIED 2026-09-15]** Work happens on a branch and reaches `main` only through a green CI run; STEP F runs `npm run verify` plus targeted suites; **the migration gate moved from STEP I to STEP J**, so the order is **CI green → migration applied → merge**. The decision is `architecture.md` §12; the process is `CLAUDE.md`. **The two no longer disagree.** (§68, §69)
 
-**Verified 2026-09-24 against the repository, the remote, CI and production.** `main` is at **`2c9a399`**, the merge of PR #29; `origin/main` identical. **Nothing is open.** **36 migrations, 0 unapplied** — §94's was applied at STEP J and the narrowed grants were confirmed on production afterwards — `20260918120000_reserve_deleted_handles` (§87) and `20260918170000_readable_url_slugs` (§88) were each applied to the deployed database at STEP J, between a green run and the merge, and confirmed afterwards. **§87's post-merge run `35365720989` came back `completed/success`, so that gate is cleared and §87 is fully verified.** §88's post-merge run on `49999a3` had not been read when this was written (F-051: a pull-request run tests the base as it was when it started, so the post-merge run is not redundant).
+**Verified 2026-09-24 against the repository, the remote, CI and production.** `main` is at **`43e746e`**, the merge of PR #30; `origin/main` identical. **Nothing is open.** **36 migrations, 0 unapplied** — §95 carried none — `20260918120000_reserve_deleted_handles` (§87) and `20260918170000_readable_url_slugs` (§88) were each applied to the deployed database at STEP J, between a green run and the merge, and confirmed afterwards. **§87's post-merge run `35365720989` came back `completed/success`, so that gate is cleared and §87 is fully verified.** §88's post-merge run on `49999a3` had not been read when this was written (F-051: a pull-request run tests the base as it was when it started, so the post-merge run is not redundant).
 
-**Twenty-three cycles merged between 2026-09-15 and 2026-09-24** — PRs #7 to #29, recorded as §72 to §94. **§74, §87, §88, §89, §90, §92 and §94 carried a migration; §91 and §93 carried none.** **§79, §87, §88, §90, §91 and §93 failed CI and were reopened; §92 and §94 passed first time**; both were remediated and merged on a second run. **§80, §83 and §84 were confirmed on production** rather than merely merged.
+**Twenty-four cycles merged between 2026-09-15 and 2026-09-24** — PRs #7 to #30, recorded as §72 to §95. **§74, §87, §88, §89, §90, §92 and §94 carried a migration; §91 and §93 carried none.** **§79, §87, §88, §90, §91 and §93 failed CI and were reopened; §92 and §94 passed first time**; both were remediated and merged on a second run. **§80, §83 and §84 were confirmed on production** rather than merely merged.
 
 > **⚠️ The phase plan has been under-weighted, and the maintainer pointed it out on 2026-09-18.** Every cycle from §72 to §86 was selected from `docs/product-feedback.md`. **`CLAUDE.md` STEP A asks for _the current project state **and** any triaged product feedback_**, and the first half has gone effectively unconsulted for three days.
 >
@@ -29,6 +29,42 @@
 **Four feedback entries were filed on 2026-09-16 at the maintainer's request** — **F-041** (filtering, sorting and exclusion), **F-042** (filtering a grid by collection state), **F-043** (follow back from notifications) and **F-044** (the test environment fails more often than the code does). **F-041 surfaced that longplayr holds no genre data at all**, deliberately excluded at ingest, so that filter is an ingest, schema and backfill change rather than a UI one.
 
 **A decision session on 2026-09-16 answered eight open product questions** and promoted five entries to decided-and-unbuilt — readable URLs, browse-everything, the cover-art prompt (now built, §78), discography refresh, and Recently added's two rules. **It also opened F-040**, a collision between the new upstream-contribution principle and the read-only-catalogue non-negotiable. The records are in `product-spec.md` §6 and §8.9, `design-reference.md` §11.11, and `architecture.md` §18. Three cycles closed and merged today — PR #7 (`5479041`), PR #8 (`8544330`) and **PR #9 (`4c0a0f7`, CI #112, 132 end-to-end, zero flaky)**. The first two carried no migration; **§74 did**, and STEP J gated for it, applying `20260915160000` to the deployed database between a green CI run and the merge. **Post-merge run #111 on `8544330` came back `completed/success`**, so the tree before this cycle is independently green. **The double-CI cost of the branch model is now observed on five consecutive cycles** and remains recorded rather than decided.
+
+> ## ✅ §95 — There is a way back into an account — **[GATE CLEARED: CI `36005726480` `completed/success` on `0774a5e`, 137 end-to-end, **zero flaky**. CONFIRMED ON PRODUCTION.]**
+>
+> **There was no password reset.** `src/services/auth/` held sign up, resend confirmation, sign in and sign out. `product-spec.md` §5 never listed it — **not deferred, unnoticed.**
+>
+> **The consequence was total**: forget your password and you could not sign in, could not delete your account (that needs a session), and could not export your data. **The collection was simply gone.** Unlike every other Phase 7 item this one is _certain_ rather than contingent.
+>
+> ### ⚠️ Confirmation, enabled the same day, was already half-working
+>
+> **No auth callback route existed anywhere.** With `@supabase/ssr` the client uses PKCE, so an emailed link returns a `code` that **must be exchanged server-side**. Nothing exchanged it — the account got confirmed at Supabase's verify endpoint, but the redirect landed on `/` carrying a `?code=` nobody consumed, leaving the user **signed out on the home page with no explanation.** For recovery the same gap is fatal rather than untidy, which is why the route belongs to this slice rather than being scope creep.
+>
+> ### 🔎 Two product findings, both from following a real link
+>
+> **Supabase appends its own `?code=` to `redirectTo`.** A query string there comes back as `/auth/callback&next=…` — an ampersand where the question mark belongs. **The first version took `?next=` and guarded it against open redirects**, with a tested guard, for a parameter that could never have survived the round trip. Moving the destination into the path **removed the attack surface rather than defending it**.
+>
+> **A rejected link never reaches the callback at all.** Supabase's verify endpoint refuses an expired or reused token itself and redirects to the **Site URL with the reason in a fragment** — `#error=access_denied&error_code=otp_expired` — and browsers strip everything after the `#` before sending. **So the most common failure case bypassed every server-side guard**, leaving a reader on the home page with nothing. `LinkErrorRedirect` reads it on the client.
+>
+> **Neither was findable by inspection, unit test, or shell probe.** `curl` _shows_ the fragment, because it prints the `Location` header — which is precisely why it was misread as diagnostic output rather than as the thing a server never receives. **The end-to-end suite was the only place that difference was observable.**
+>
+> ### ⚠️ Five CI rounds, and three were this session's own test mistakes
+>
+> A substring label match; not refilling a field the form clears; and **asserting a redirect destination that was never checked** — `signIn` has always gone to `/`, and `/{handle}` was copied from the signup flow, which ends there only because claiming a handle redirects.
+>
+> **One cause throughout: asserting what was expected instead of reading what the code does.** The sign-in _error message_ in the same file was read from the source and held; the redirect beside it was assumed and did not. **The feature itself held on every run.**
+>
+> ### 📄 A green run that was not clean, and was not merged
+>
+> **Run `36002992296` passed with `1 flaky`** — the reset spec timing out at 30s and passing on retry. **Not merged.** The journey is genuinely long — nine navigations, two auth round trips, an email round trip — so `test.slow()` attaches the budget to the one test needing it. **A retry that hides a merely-slow test is how a genuinely broken one later gets ignored**, which is why `CLAUDE.md` asks for the flaky count at all. Re-run came back **137 passed, zero flaky**.
+>
+> ### 📄 Recorded rather than solved
+>
+> **A Google-authenticated account gets the same silent response**, because Supabase sends no recovery mail for an account with no password and distinguishing the case would leak which addresses use Google. Someone who signed up with Google and forgot will wait for mail that never arrives. **The fix is telling people on the login page which methods exist** — that belongs with Google sign-in.
+>
+> **A signed-in reader following a dead link is sent home in silence**, because the login page redirects signed-in visitors away before the message renders. Acceptable — they are signed in, which is what the link was for — and noted so it is understood rather than rediscovered.
+>
+> **F-055 filed**: a failed sign-in clears the email you just typed, because `AuthForm` is uncontrolled with no `defaultValue`. Found by the test rather than by using the product; signup is the worse case at three fields.
 
 > ## ✅ §94 — Every table's grants and policies swept against what actually writes them — **[GATE CLEARED: CI `35973137150` `completed/success` on `eb18dbc`, 9 privilege assertions, 134 end-to-end, zero flaky. CONFIRMED ON PRODUCTION.]**
 >
