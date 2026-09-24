@@ -55,13 +55,21 @@ has two jobs:
 
 ---
 
-## 2. Supabase — two projects
+## 2. Supabase — one project, and it is production **[CORRECTED 2026-09-24]**
 
-Create **two** projects at [supabase.com](https://supabase.com): `longplayr-staging`
-and `longplayr-production`. Separate projects, not separate schemas — the point
-is that a mistake on staging cannot reach real users.
+> ### ⚠️ This section described an environment that does not exist
+>
+> It previously read: _"Create **two** projects… `longplayr-staging` and `longplayr-production`. Separate projects, not separate schemas — the point is that **a mistake on staging cannot reach real users**."_
+>
+> **There is one project. It is named `longplayr-staging`, and it is production.** It holds the real data and serves `longplayr.vercel.app`. **The safety property that sentence claimed has never held**, because there is no second environment for a mistake to be caught in.
+>
+> **The name is a leftover and is the trap.** A reader — including a future session — would reasonably believe migrations land somewhere harmless first. They do not: `npx supabase db push --linked` writes to the live database directly.
+>
+> **What does the work a staging environment would.** Every migration is gated at **STEP J**: CI green on the exact commit, then the migration applied, then the merge. That ordering is in `CLAUDE.md` and is why a second environment has not been missed in practice.
+>
+> **Deliberately not fixed by creating the second project.** That is a second database to migrate, seed and keep in step, for a pre-launch product with five accounts — an ongoing cost against a safety net that would go unexercised. **Revisit when there are real users**, at which point the CI gate stops being sufficient on its own.
 
-For each, from Project Settings → API, collect:
+Values to collect from Project Settings → API:
 
 | Value              | Used as                                       |
 | ------------------ | --------------------------------------------- |
@@ -76,25 +84,48 @@ prefixed `NEXT_PUBLIC_` and never imported into a Client Component.
 
 ```bash
 npx supabase login
-npx supabase link --project-ref <staging-ref>
-npx supabase db push          # applies supabase/migrations in order
+npx supabase link --project-ref <project-ref>
+npx supabase db push --linked   # applies supabase/migrations in order
 ```
 
-Repeat for production. **Always push to staging first and check it**, which is
-the entire reason two environments exist.
+**This writes to the live database.** There is nowhere to try it first, which is
+why `CLAUDE.md`'s STEP J ordering is the control: **CI green on the exact commit,
+then apply the migration and confirm it, then merge.** Applying before CI has
+parsed the tree removes the only check there is.
+
+**`npm run db:pending` confirms afterwards**, and `--dry-run` shows what would be
+applied without applying it.
 
 ### Auth settings
 
-In each project, Authentication → URL Configuration:
+Authentication → URL Configuration, **set 2026-09-24**:
 
-- Site URL: the deployed URL for that environment
-- Redirect URLs: add the Vercel preview wildcard for staging
+- **Site URL:** `https://longplayr.vercel.app` — no trailing slash. Confirmation
+  and password-reset links are built from it, so a stale value here produces mail
+  whose links go nowhere, for people who cannot sign in until they follow them.
+- **Redirect URLs:** `https://longplayr.vercel.app/**`
 
-Decide deliberately whether to enable email confirmation. It is **off** locally
-so tests can run unattended. Production should almost certainly have it on —
-note that turning it on changes the sign-up flow, because there is no session
-until the user confirms, and `/onboarding` will bounce them back to sign in.
-That path needs a real "check your email" screen before launch.
+**This changes when `longplayr.com` is bought and pointed at Vercel.** Keep the
+Vercel URL in the redirect list across the switchover.
+
+### Email: Resend on a verified subdomain **[DONE 2026-09-24]**
+
+**Transactional mail goes through Resend**, sending from `noreply@longplayr.dev-guides.com`. The domain was added through Resend's Cloudflare integration, which writes the DKIM, SPF and MX records through the API rather than by hand — confirmed live on both Cloudflare's and Google's resolvers before use.
+
+**A subdomain rather than the root, deliberately.** It isolates sending reputation from `dev-guides.com`'s other uses, so a bounce problem here cannot affect them.
+
+**`longplayr.dev-guides.com` is a placeholder and is expected to change.** `longplayr.com` is unpurchased; the product already renders `longplayr.com/` as the handle prefix, so the real domain is a launch prerequisite. **Switching is a dashboard change** — verify the new domain in Resend, change the sender address in Supabase. No code, no migration, and no sending reputation is lost because there is none to carry.
+
+| Setting  | Value                                              |
+| -------- | -------------------------------------------------- |
+| Host     | `smtp.resend.com`, port `465`                      |
+| Username | `resend` (literal), password is the Resend API key |
+| Sender   | `noreply@longplayr.dev-guides.com`                 |
+| Region   | `eu-west-1` (Ireland)                              |
+
+**Email confirmation is ON in production, and OFF locally and in CI.** That split is deliberate and must stay: `supabase/config.toml` is version-controlled, so enabling it there would change the local stack **and CI together**, and roughly sixteen end-to-end specs sign up expecting an immediate session. **Production is configured in the dashboard only.** See `architecture.md` §6.
+
+**The auth email rate limit is raised to 60 per hour.** The built-in sender's cap is **2 per hour project-wide** — with confirmation on, the third person to sign up in any hour would have received nothing, and no resend could help because the bucket is empty for everyone. Custom SMTP is what makes that limit configurable, which is why it was a prerequisite for enabling confirmation rather than an improvement to it.
 
 ---
 

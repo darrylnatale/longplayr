@@ -135,7 +135,9 @@ A later Phase 3 slice owns both, together with the schema change that adds the e
 
 ### Core — in the MVP
 
-**Accounts** — sign up, sign in, sign out, delete account, export data. Email/password plus Google. Public profile with handle, display name, avatar, short bio.
+**Accounts** — sign up, sign in, sign out, **reset a forgotten password**, delete account, export data. Email/password plus Google. Public profile with handle, display name, avatar, short bio.
+
+**Password reset was never in this list until 2026-09-24**, and its absence was not a deferral — it was unnoticed. Someone who forgot their password could not sign in, could not delete their account, and could not export their data: **the collection was simply gone.** See `architecture.md` §6.1.
 
 **Catalogue** — albums (release groups) with title, artist credit, release year, type, tracklist, artwork, and available editions. Artists with name, and a discography of in-scope releases.
 

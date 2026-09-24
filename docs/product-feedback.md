@@ -444,7 +444,7 @@ The 50.1 reading coincided with a macOS Software Update at 37% CPU. The 12–20 
 **Still open, and all three are gated on things only the maintainer can do:**
 
 - **Google sign-in** — decided and unbuilt, blocked on a Google Cloud project with OAuth credentials (`deployment.md` §5), not on code.
-- **Verification email** — a deployment decision needing real SMTP. **A stated launch prerequisite** and still unscheduled.
+- ~~**Verification email** — a deployment decision needing real SMTP.~~ **[DONE 2026-09-24]** Resend on a verified subdomain, confirmation ON in production, auth email limit raised to 60/hour. `deployment.md` and `architecture.md` §6 carry the settings. **Google sign-in remains open**, and so does the question of other providers.
 - **Other providers** — recorded nowhere. Only Google is named.
 
 **Also deliberately not built:** a breach-list check, which is the genuinely effective addition length does not give. It means an external call on every signup and a privacy question even under k-anonymity, and is `[OPEN]` in `architecture.md` §6.

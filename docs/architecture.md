@@ -99,7 +99,7 @@ _Alternatives considered._ Neon offers per-branch databases, which is a genuinel
 
 _Why Supabase._ It supplies Postgres, authentication **and** object storage — three requirements from one vendor, in a project that also needs artwork hosting. Consolidation is the stated principle, and the alternative was four services wired together. The underlying database is standard Postgres, so **the data is portable even though the auth is not**.
 
-_Accepted tradeoff._ We give up Neon's per-PR database branching. §11 mitigates with a shared staging environment.
+_Accepted tradeoff._ We give up Neon's per-PR database branching. ~~§11 mitigates with a shared staging environment.~~ **[CORRECTED 2026-09-24 — that mitigation does not exist. See §11.1.]**
 
 **Row Level Security: not used as the primary authorisation mechanism.** **[INFERRED]** All access goes through the server-side service layer, which enforces authorisation in application code. RLS may be enabled as defence-in-depth, but a product where nearly everything is public gains little from it, and RLS misconfiguration is a well-known source of subtle data-exposure bugs. Authorisation logic should be readable and unit-testable.
 
@@ -129,7 +129,7 @@ _Risk, stated plainly._ **This is the most expensive decision in the project to 
 
 **Two things deliberately out of scope.**
 
-**An SMTP provider is not chosen.** That is a service decision with its own cost and deliverability characteristics, not a code decision, and it belongs to the maintainer.
+~~**An SMTP provider is not chosen.**~~ **[RESOLVED 2026-09-24 — Resend.]** Sending from `noreply@longplayr.dev-guides.com`, region `eu-west-1`, with the auth email limit raised to 60 per hour and **confirmation now ON in production**. The domain is a placeholder on an existing personal domain; `longplayr.com` is unpurchased and switching later is a dashboard change. `deployment.md` holds the settings. **The line above was right that it was the maintainer's decision, and it was theirs to make — this records the outcome, not a change of ownership.**
 
 ~~**There is no resend-verification path, and that is a real hole rather than an omission. [OPEN]**~~ **[RESOLVED 2026-09-15 — and one half of the reasoning was wrong.]** Without a resend, a user whose email never arrives is **permanently stuck**: they cannot sign in, and signing up again returns _"that email is already registered."_ That much held. **What did not hold was the claim that a resend "needs rate-limiting or it becomes a mail-bombing vector"** — Supabase already applies a 60-second per-address window to `/auth/v1/resend`, so the unbounded vector that sentence describes does not exist. **The warning against enabling confirmation in production stands, for a different and larger reason** — see below.
 
@@ -151,11 +151,41 @@ _Risk, stated plainly._ **This is the most expensive decision in the project to 
 
 **The response is identical whether or not the address has an account**, at a real cost to helpfulness. _"No account with that address"_ is the more useful sentence and **tells an attacker which addresses are registered.** longplayr is otherwise all-public — **but a handle is public and an email address is not**, which is why enumeration matters here despite that.
 
-#### The built-in email provider cannot support a launched product **[OPEN — larger than the resend question]**
+#### ~~The built-in email provider cannot support a launched product~~ **[CLOSED 2026-09-24 — custom SMTP configured]**
+
+**The analysis below stands and is preserved rather than deleted**, because it is the reasoning that made the SMTP choice a prerequisite rather than an optional improvement — and because it is what the 60-per-hour limit now in place exists to answer.
 
 **Two emails per hour is project-wide, not per user.** With confirmation enabled on the built-in provider, **the third person to sign up in any hour receives nothing** — and no resend can help them, because the bucket is empty for everyone.
 
 **So custom SMTP is a prerequisite for enabling confirmation at all**, not an improvement to it. `deployment.md` records verification email as a launch prerequisite; **this is the constraint that makes the SMTP choice part of it rather than adjacent to it.** No provider is chosen here.
+
+### 6.1 Password reset, and the callback route that never existed **[DECIDED 2026-09-24]**
+
+**There was no way back into an account.** `src/services/auth/` held sign up, resend confirmation, sign in and sign out — no recovery, no route, no link on the login form. `product-spec.md` §5 lists accounts as _"sign up, sign in, sign out, delete account, export data"_: **reset was never scoped rather than deferred.**
+
+**The consequence was total.** Someone who forgot their password could not sign in, could not delete their account — that needs a session — and could not export their data. **The account and its collection were simply gone.** For a product whose value is an accumulated collection, that is the worst available failure, and unlike every other Phase 7 item it is **certain** rather than contingent: some proportion of people forget passwords, always.
+
+#### ⚠️ The prerequisite was missing too, and it was already affecting confirmation
+
+**No auth callback route existed anywhere** — no `/auth/confirm`, no `exchangeCodeForSession`, no `verifyOtp`. `proxy.ts` only refreshes an existing session.
+
+**Confirmation was therefore already half-working**, from the moment it was enabled on 2026-09-24. Supabase's verify endpoint marks the account confirmed, so signing up is not broken — but the redirect lands on `/` **carrying a `?code=` nothing consumes**, so the user arrives signed-out on the home page with no explanation and has to find the sign-in form themselves.
+
+**For recovery the same gap is fatal rather than untidy.** A recovery link exists to establish a session so a new password can be set; with nothing exchanging the code there is no session, and **the flow cannot complete at all.**
+
+**So the callback route is part of this slice, and it is not scope creep** — it is the thing without which nothing else here functions. That it also repairs the confirmation dead-end is the correct outcome rather than a coincidence.
+
+#### The decisions
+
+**The reset form is reachable only with a recovery session.** No token in the URL and no separate state: Supabase's link is what grants access, and without a session the page redirects to login.
+
+**The password policy is shared, not copied.** The same schema signup uses — §6's twelve characters, no composition rules. **A second copy would drift**, and the sign-in/signup split recorded above is the same lesson: two schemas that should agree eventually do not.
+
+**The response to a reset request is identical whether or not the address exists.** The reasoning `resendConfirmation` already carries: _"no account with that address"_ is the more useful sentence **and tells an attacker which addresses are registered.** A handle is public; an email address is not.
+
+**A Google-authenticated account gets that same identical response**, and the cost is recorded rather than solved. Supabase sends no recovery mail for an account with no password, and **distinguishing the case would leak which addresses use Google.** Someone who signed up with Google and has forgotten that will wait for mail that never arrives. **The fix is telling people on the login page which methods exist**, which belongs with Google sign-in rather than here.
+
+**Rate limiting stays Supabase's**, for the reason recorded above: `/auth/v1/recover` carries its own per-address window, and duplicating it would mean **inventing an anonymous-keyed limiter this codebase does not have** to reproduce a control the vendor already applies.
 
 ### Password policy: length, and deliberately nothing else **[DECIDED 2026-09-15]**
 
@@ -975,6 +1005,18 @@ The distributions **materially overlap**, so no global threshold separates them.
 | Production  | Production Supabase     | Real users                                                          |
 
 _Alternatives considered._ Production-and-local-only (cheapest, but every migration meets real data for the first time in production); per-PR ephemeral databases (most rigorous, but self-built work on Supabase).
+
+### 11.1 The middle environment was never built **[CORRECTED 2026-09-24]**
+
+**There is one Supabase project. It is named `longplayr-staging`, it holds the real data, and it serves `longplayr.vercel.app`.** The table above describes three environments; two exist — local, and that one.
+
+**The decision above is preserved rather than rewritten**, per _Historical integrity_. It was made and it was not implemented, and the gap went unnoticed because the surviving project carries the word _staging_ in its name.
+
+**The sharp part is the line directly above this one.** _Production-and-local-only_ was rejected because _"every migration meets real data for the first time in production"_ — **and that is precisely what this project does.** The rejected alternative is the one in use, under a name that implies otherwise.
+
+**What actually carries the risk is `CLAUDE.md`'s STEP J ordering**: CI green on the exact commit, then the migration applied, then the merge. That is a real control and it has held — but it is **not** what §11 chose, and it does not rehearse a migration against realistic seeded data. **A migration whose failure mode depends on existing rows is still unrehearsed**, which is exactly the class §89's backfill fell into: CI applied it to an empty database and could not have caught it.
+
+**Deliberately not resolved by building the second project.** That is another database to migrate, seed and keep in step, for a pre-launch product with five accounts. **The trigger to revisit is real users**, at which point "the migration meets real data for the first time in production" stops being an acceptable sentence.
 
 _Why this._ The main thing environments buy is **rehearsing migrations before they touch real users**. A shared staging environment delivers that at low cost. Its known weakness — concurrent pull requests share one database and can interfere — is acceptable at this team size and revisitable later.
 

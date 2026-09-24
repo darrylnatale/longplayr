@@ -14,9 +14,9 @@
 
 **The verification gate moved, and `CLAUDE.md` now carries it. [APPLIED 2026-09-15]** Work happens on a branch and reaches `main` only through a green CI run; STEP F runs `npm run verify` plus targeted suites; **the migration gate moved from STEP I to STEP J**, so the order is **CI green → migration applied → merge**. The decision is `architecture.md` §12; the process is `CLAUDE.md`. **The two no longer disagree.** (§68, §69)
 
-**Verified 2026-09-23 against the repository, the remote, CI and production.** `main` is at **`2695773`**, the merge of PR #28; `origin/main` identical. **Nothing is open.** **35 migrations, 0 unapplied** — §93 carried none — `20260918120000_reserve_deleted_handles` (§87) and `20260918170000_readable_url_slugs` (§88) were each applied to the deployed database at STEP J, between a green run and the merge, and confirmed afterwards. **§87's post-merge run `35365720989` came back `completed/success`, so that gate is cleared and §87 is fully verified.** §88's post-merge run on `49999a3` had not been read when this was written (F-051: a pull-request run tests the base as it was when it started, so the post-merge run is not redundant).
+**Verified 2026-09-24 against the repository, the remote, CI and production.** `main` is at **`2c9a399`**, the merge of PR #29; `origin/main` identical. **Nothing is open.** **36 migrations, 0 unapplied** — §94's was applied at STEP J and the narrowed grants were confirmed on production afterwards — `20260918120000_reserve_deleted_handles` (§87) and `20260918170000_readable_url_slugs` (§88) were each applied to the deployed database at STEP J, between a green run and the merge, and confirmed afterwards. **§87's post-merge run `35365720989` came back `completed/success`, so that gate is cleared and §87 is fully verified.** §88's post-merge run on `49999a3` had not been read when this was written (F-051: a pull-request run tests the base as it was when it started, so the post-merge run is not redundant).
 
-**Twenty-two cycles merged between 2026-09-15 and 2026-09-23** — PRs #7 to #28, recorded as §72 to §93. **§74, §87, §88, §89, §90 and §92 carried a migration; §91 and §93 carried none.** **§79, §87, §88, §90, §91 and §93 failed CI and were reopened; §92 passed first time**; both were remediated and merged on a second run. **§80, §83 and §84 were confirmed on production** rather than merely merged.
+**Twenty-three cycles merged between 2026-09-15 and 2026-09-24** — PRs #7 to #29, recorded as §72 to §94. **§74, §87, §88, §89, §90, §92 and §94 carried a migration; §91 and §93 carried none.** **§79, §87, §88, §90, §91 and §93 failed CI and were reopened; §92 and §94 passed first time**; both were remediated and merged on a second run. **§80, §83 and §84 were confirmed on production** rather than merely merged.
 
 > **⚠️ The phase plan has been under-weighted, and the maintainer pointed it out on 2026-09-18.** Every cycle from §72 to §86 was selected from `docs/product-feedback.md`. **`CLAUDE.md` STEP A asks for _the current project state **and** any triaged product feedback_**, and the first half has gone effectively unconsulted for three days.
 >
@@ -29,6 +29,38 @@
 **Four feedback entries were filed on 2026-09-16 at the maintainer's request** — **F-041** (filtering, sorting and exclusion), **F-042** (filtering a grid by collection state), **F-043** (follow back from notifications) and **F-044** (the test environment fails more often than the code does). **F-041 surfaced that longplayr holds no genre data at all**, deliberately excluded at ingest, so that filter is an ingest, schema and backfill change rather than a UI one.
 
 **A decision session on 2026-09-16 answered eight open product questions** and promoted five entries to decided-and-unbuilt — readable URLs, browse-everything, the cover-art prompt (now built, §78), discography refresh, and Recently added's two rules. **It also opened F-040**, a collision between the new upstream-contribution principle and the read-only-catalogue non-negotiable. The records are in `product-spec.md` §6 and §8.9, `design-reference.md` §11.11, and `architecture.md` §18. Three cycles closed and merged today — PR #7 (`5479041`), PR #8 (`8544330`) and **PR #9 (`4c0a0f7`, CI #112, 132 end-to-end, zero flaky)**. The first two carried no migration; **§74 did**, and STEP J gated for it, applying `20260915160000` to the deployed database between a green CI run and the merge. **Post-merge run #111 on `8544330` came back `completed/success`**, so the tree before this cycle is independently green. **The double-CI cost of the branch model is now observed on five consecutive cycles** and remains recorded rather than decided.
+
+> ## ✅ §94 — Every table's grants and policies swept against what actually writes them — **[GATE CLEARED: CI `35973137150` `completed/success` on `eb18dbc`, 9 privilege assertions, 134 end-to-end, zero flaky. CONFIRMED ON PRODUCTION.]**
+>
+> **The deliberate audit §14.1 should have triggered.** That finding closed three tables after a suspended account was found able to reinstate itself; this compared **all twenty-two** against what the service layer actually writes.
+>
+> ### 🔎 The finding is not any single defect
+>
+> **The rule was already in this codebase, applied once, and never generalised.** `notifications` grants `UPDATE` on `read_at` alone, and `markNotificationRead` states the principle outright: _"RLS decides which rows; the grant decides which columns."_ **Nothing carried it to the other twenty-one tables.** §14.1 was therefore not a missing idea but an unapplied one — and so was everything below it.
+>
+> | Table                | Found                                                                                                                                                                                                                 | Closed by                                                              |
+> | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+> | `collection_entries` | **`relisten_count` was user-writable** — trigger-maintained arithmetic its own migration says no business rule reads. `added_at`, `listened_on` and `album_id` had no writer either                                   | `grant update (rating, liked, updated_at)`                             |
+> | `list_items`         | Table-level `UPDATE` where only `reorder_list_item` writes, and only `position`                                                                                                                                       | `grant update (position)`                                              |
+> | `favourite_albums`   | Table-level `UPDATE` with **no update path in the product at all** — reordering is unbuilt and open under F-001                                                                                                       | Grant withdrawn entirely                                               |
+> | `activity`           | **The actor was checked; the subject was not.** A `reviewed` event could name **somebody else's review**, and `feed_activity` joins the body in — another person's writing under your handle in your followers' feeds | `with check` requiring ownership of all four subject kinds             |
+> | `notifications`      | **The same gap.** `follows` is publicly readable, so any follow id could be named, delivering a fabricated _"X followed you"_ to an arbitrary recipient                                                               | `with check` requiring the referenced row to be the actor's own action |
+>
+> **The correct pattern for both policy gaps was already two tables away.** `relisten_events_write_own` checks ownership **through the parent entry** rather than trusting a column on the row being written. Both fixes are that, applied.
+>
+> **Nothing found was exploitable** — five accounts, no real traffic, RLS scoping rows correctly throughout. Each was a rule the application assumed and the database did not hold.
+>
+> ### ⚠️ The same near-regression, for the second cycle running
+>
+> **Narrowing `collection_entries` nearly broke adding an album you already hold.** `ensure_collection_entry` is `SECURITY INVOKER` and its `on conflict do update set updated_at = …` runs with the **caller's** privileges, so omitting that column would have returned `42501` — the identical interaction that nearly broke reviewing in §92. Harmless to grant, because the `before update` trigger overwrites whatever a caller sends. **Twice in two cycles, and now written down in both the migration and §14.3.**
+>
+> ### 📄 Evidence, and the gap it exposed in the suite
+>
+> **Probed with real user tokens rather than reasoned about**: own rating **204**, forged `relisten_count` **403**, backdated `added_at` **403**, favourite reorder **403**, re-adding a held album **200**, own activity event **201**, claiming another's review **403**, own follow notification **201**, fabricating from another's follow **403**.
+>
+> **Confirmed on production after the migration**: every writable table now carries a column list — `collection_entries` (liked, rating, updated_at), `list_items` (position), `lists` (description, is_ranked, title), `notifications` (read_at), `profiles` (avatar_url, bio, display_name, handle), `reviews` (body, collection_entry_id) — and **`favourite_albums` has no `UPDATE` grant at all**.
+>
+> **The durable output is `tests/integration/write-privileges.test.ts`.** **Every other integration suite uses the service-role client, which bypasses grants and RLS entirely** — so this whole surface was invisible to the test suite until now. A migration that widens a grant will fail rather than pass quietly.
 
 > ## ✅ §93 — Someone can take their data with them — **[GATE CLEARED: CI `35851684100` `completed/success` on `73f1978`, 9 completeness assertions, 134 end-to-end, zero flaky]**
 >

@@ -87,3 +87,80 @@ export async function signOutCurrentUser(): Promise<void> {
   const supabase = await createClient();
   await supabase.auth.signOut();
 }
+
+/**
+ * Starts a password reset.
+ *
+ * **Tells the caller nothing, on purpose**, and for exactly the reason
+ * `resendConfirmation` above does: *"no account with that address"* is the more
+ * useful sentence **and tells an attacker which addresses are registered.**
+ * A handle is public in this product; an email address is not.
+ *
+ * **A Google-authenticated account gets the same silence.** Supabase sends no
+ * recovery mail for an account with no password, and distinguishing the case
+ * would leak which addresses use Google. **The cost is real and recorded rather
+ * than solved** (`architecture.md` §6.1): somebody who signed up with Google and
+ * has forgotten that will wait for mail which never arrives.
+ *
+ * **Rate limiting is Supabase's.** `/auth/v1/recover` carries its own
+ * per-address window, and duplicating it would mean inventing an
+ * anonymous-keyed limiter this codebase does not have.
+ */
+export async function requestPasswordReset(email: string, redirectTo: string): Promise<void> {
+  const supabase = await createClient();
+
+  // Errors are swallowed for the same reason the outcome is: surfacing
+  // "too many requests" for one address and nothing for another leaks precisely
+  // what the identical response exists to hide.
+  await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+}
+
+export type SetPasswordError = 'no_recovery_session' | 'weak_password' | 'update_failed';
+
+/**
+ * Sets a new password for whoever holds the current session.
+ *
+ * **Requires a session and takes no identifier**, which is the whole security
+ * model: the recovery link is what establishes that session, and there is no
+ * other way to reach this. A token in the URL, or an email parameter, would be
+ * a second path to the same power.
+ */
+export async function setPassword(password: string): Promise<Result<null, SetPasswordError>> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return err('no_recovery_session', 'That reset link has expired. Request a new one.');
+  }
+
+  const { error } = await supabase.auth.updateUser({ password });
+
+  if (error) {
+    if (error.code === 'weak_password') return err('weak_password', error.message);
+    // Supabase refuses a password identical to the current one on some
+    // configurations. Reported as itself rather than as a generic failure.
+    return err('update_failed', error.message);
+  }
+
+  return ok(null);
+}
+
+/**
+ * Exchanges an emailed link's code for a session.
+ *
+ * **Here rather than in the route**, because `CLAUDE.md` holds that auth goes
+ * through this module and never directly to Supabase — auth being the most
+ * expensive thing in this project to migrate. The lint rule enforcing that
+ * caught the first attempt, which put this in the route handler.
+ *
+ * **Returns whether it worked and nothing else.** The two reasons a code fails
+ * — expired, already redeemed — call for the same action from the reader, so
+ * distinguishing them would add a branch nobody can use.
+ */
+export async function exchangeAuthCode(code: string): Promise<boolean> {
+  const supabase = await createClient();
+  const { error } = await supabase.auth.exchangeCodeForSession(code);
+  return !error;
+}

@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 /**
  * The password policy. `architecture.md` §6, *Password policy: length, and
  * deliberately nothing else*.
@@ -31,3 +33,33 @@ export const MIN_PASSWORD_LENGTH = 12;
 
 /** The hint shown under the signup field, derived so the two cannot drift. */
 export const PASSWORD_HINT = `At least ${MIN_PASSWORD_LENGTH} characters.`;
+
+/**
+ * The rule for **choosing** a password, shared by every surface that asks for
+ * one — signup today, reset since 2026-09-24.
+ *
+ * **Shared rather than copied, and §6 records why that matters here
+ * specifically.** Sign-in and signup once ran one schema between them, and the
+ * consequence was that raising the minimum would have locked out every existing
+ * account. The lesson was not *"never share"* — it was that **a rule for
+ * choosing a password is not a rule for presenting one you already have.**
+ * Signup and reset are both the former, so they share; sign-in is the latter,
+ * and does not.
+ *
+ * **Confirmation is part of the rule, not decoration.** A password typed once
+ * and mistyped is a lockout, which on a reset form is the failure the whole
+ * flow exists to repair.
+ */
+export const passwordChoiceSchema = z
+  .object({
+    password: z
+      .string()
+      .min(MIN_PASSWORD_LENGTH, `Passwords must be at least ${MIN_PASSWORD_LENGTH} characters.`),
+    confirmPassword: z.string(),
+  })
+  .refine((values) => values.password === values.confirmPassword, {
+    // Reported against the field the reader must change, not the first they
+    // typed.
+    path: ['confirmPassword'],
+    message: 'Passwords do not match.',
+  });

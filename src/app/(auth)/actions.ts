@@ -10,7 +10,7 @@ import {
   signOutCurrentUser,
   signUpWithPassword,
 } from '@/services/auth';
-import { MIN_PASSWORD_LENGTH } from '@/services/auth/password-policy';
+import { passwordChoiceSchema } from '@/services/auth/password-policy';
 import { signUpDestination } from '@/services/auth/signup-destination';
 
 export type AuthFormState = {
@@ -46,20 +46,16 @@ const signInSchema = z.object({
  * genuinely effective addition and is deliberately out of scope: it means an
  * external call on every signup and a privacy question. `architecture.md` §6.
  */
+/**
+ * Signup is an email plus the shared password-choice rule.
+ *
+ * **The choice rule lives in `password-policy.ts` and is shared with reset**,
+ * so the two cannot drift. The composition here is deliberate: signup needs an
+ * address as well, reset already knows who it is talking to.
+ */
 const signUpSchema = z
-  .object({
-    email: z.email('Enter a valid email address.'),
-    password: z
-      .string()
-      .min(MIN_PASSWORD_LENGTH, `Passwords must be at least ${MIN_PASSWORD_LENGTH} characters.`),
-    confirmPassword: z.string(),
-  })
-  .refine((values) => values.password === values.confirmPassword, {
-    // Reported against the field the reader must change, not against the first
-    // one they typed.
-    path: ['confirmPassword'],
-    message: 'Passwords do not match.',
-  });
+  .object({ email: z.email('Enter a valid email address.') })
+  .and(passwordChoiceSchema);
 
 function parseSignIn(formData: FormData) {
   return signInSchema.safeParse({

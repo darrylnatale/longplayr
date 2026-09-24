@@ -1,34 +1,58 @@
 import { describe, expect, it } from 'vitest';
 
-import { MIN_PASSWORD_LENGTH } from '@/services/auth/password-policy';
+import { MIN_PASSWORD_LENGTH, passwordChoiceSchema } from './password-policy';
 
 /**
- * The password policy. `architecture.md` §6.
+ * The rule for **choosing** a password, shared by signup and reset.
  *
- * **The case that matters most is the one asserting an absence**: no composition
- * rule. A long passphrase of only lowercase letters must be accepted, because
- * requiring a digit or a symbol pushes people towards predictable substitutions
- * while adding little entropy. If someone later adds such a rule believing the
- * gap accidental, this fails.
+ * **Shared rather than copied**, and `architecture.md` §6 records why that
+ * distinction is load-bearing here: sign-in once shared a schema with signup,
+ * and raising the minimum would have locked out every existing account. The
+ * lesson was not *never share* — it was that **a rule for choosing a password
+ * is not a rule for presenting one you already have.**
  */
-describe('the password policy', () => {
-  it('is length only, and twelve characters', () => {
-    expect(MIN_PASSWORD_LENGTH).toBe(12);
+
+const valid = 'a-perfectly-fine-password';
+
+describe('passwordChoiceSchema', () => {
+  it('accepts a long enough password typed twice', () => {
+    const result = passwordChoiceSchema.safeParse({
+      password: valid,
+      confirmPassword: valid,
+    });
+    expect(result.success).toBe(true);
   });
 
-  it('accepts a long passphrase with no digits, symbols or capitals', () => {
-    // The absence assertion. `correct horse battery staple` is the canonical
-    // example of a password such rules would reject and should not.
-    const passphrase = 'correct horse battery staple';
-    expect(passphrase.length).toBeGreaterThanOrEqual(MIN_PASSWORD_LENGTH);
-    expect(/[0-9]/.test(passphrase)).toBe(false);
-    expect(/[A-Z]/.test(passphrase)).toBe(false);
-    expect(/[^a-z ]/.test(passphrase)).toBe(false);
+  it('rejects a password below the minimum', () => {
+    const short = 'a'.repeat(MIN_PASSWORD_LENGTH - 1);
+    const result = passwordChoiceSchema.safeParse({
+      password: short,
+      confirmPassword: short,
+    });
+    expect(result.success).toBe(false);
   });
 
-  it('rejects a short password that would satisfy every composition rule', () => {
-    // `Pw1!` has a capital, a digit and a symbol, and is worthless. The inverse
-    // of the case above, and the reason length is the lever.
-    expect('Pw1!'.length).toBeLessThan(MIN_PASSWORD_LENGTH);
+  it('reports a mismatch against the confirmation field', () => {
+    // Against the field the reader must change, not the first they typed.
+    const result = passwordChoiceSchema.safeParse({
+      password: valid,
+      confirmPassword: `${valid}x`,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error!.issues[0].path).toEqual(['confirmPassword']);
+  });
+
+  it('applies no composition rule', () => {
+    // §6: requiring a digit or symbol pushes people towards predictable
+    // substitutions while adding little entropy. Length is the whole policy,
+    // and this asserts that rather than leaving it to be re-litigated.
+    const lettersOnly = 'abcdefghijklmnop';
+    expect(
+      passwordChoiceSchema.safeParse({
+        password: lettersOnly,
+        confirmPassword: lettersOnly,
+      }).success,
+    ).toBe(true);
   });
 });
