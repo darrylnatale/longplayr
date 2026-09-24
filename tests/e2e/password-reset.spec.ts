@@ -160,6 +160,18 @@ test('a reset link cannot be used twice', async ({ page }) => {
   await page.goto(link);
   await expect(page).toHaveURL('/reset-password', NAV);
 
+  // **The session the first visit created is cleared first, and that models the
+  // real case rather than working around a failure.** Somebody re-opening an
+  // old link days later has no session; keeping this one makes the login page
+  // redirect to `/` before the message renders, because it sends signed-in
+  // visitors away. The test was asserting against a state no real reader is in.
+  //
+  // **A signed-in reader following a dead link is therefore sent home in
+  // silence.** That is acceptable — they are signed in, which is what the link
+  // was for — and it is noted here so the absence of a message is understood
+  // rather than rediscovered.
+  await page.context().clearCookies();
+
   // **A recovery code is single-use, and the rejection happens one hop earlier
   // than expected.** Supabase's verify endpoint refuses the token itself and
   // redirects to the Site URL with the reason in a *fragment* — which no server
