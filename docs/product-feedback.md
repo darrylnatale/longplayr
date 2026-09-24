@@ -1416,6 +1416,19 @@ The product should eventually be **an app, not a PWA**. The stated reason is spe
 - **The distinction worth preserving: the stated goal is re-engagement, and "a native app" is one means to it.** Push is available to a PWA on current mobile platforms, and email is a third route — both excluded by the same `[DECIDED]` line rather than by any technical limit. **Whether the goal warrants reopening that line, and separately whether it warrants a second client, are two decisions and not one.** Neither is taken here.
 - **Nothing in this entry authorises platform work**, and it should not be read as reopening §7 or §16.3.
 
+### F-055 — a failed sign-in clears the email you just typed
+
+**2026-09-24 · signup, auth · NEW**
+
+Get your password wrong and **both fields empty**, so you retype your address as well as your password. On a phone that is a real annoyance at exactly the moment somebody is already mildly frustrated.
+
+**Context, not a resolution.**
+
+- **Found by a test rather than by using the product.** The password-reset end-to-end spec filled only the password on its second attempt and submitted an empty address; the cause was the form, not the test.
+- **`AuthForm` is uncontrolled and sets no `defaultValue`**, so the re-render after a rejected attempt empties every field. The fix is small — echo the submitted email back through the action state — and it is **deliberately not taken here**, being outside the boundary of the cycle that found it.
+- **The password must still clear**, which is the one part worth thinking about rather than copying: refilling a password field for somebody is a different decision from refilling an email, and browsers already own that behaviour through their own password managers.
+- **It applies to signup too**, where the cost is higher: signup has three fields and clearing all three after one mismatch is a worse loss than clearing two.
+
 ### Triaged, promoted or closed
 
 **Entries stay in place with their state and destination marked**, per §7's third constraint, so the path from observation to decision stays traceable. This is the index.

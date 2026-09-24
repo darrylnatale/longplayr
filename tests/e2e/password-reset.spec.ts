@@ -117,6 +117,7 @@ test('a forgotten password can be reset from the emailed link', async ({ page })
 
   // The real assertion: the new password works and the old one does not.
   await page.getByRole('button', { name: 'Sign out' }).first().click();
+
   await page.goto('/login');
   await page.getByLabel('Email').fill(user.email);
   await page.getByLabel('Password', { exact: true }).fill(user.password);
@@ -125,6 +126,12 @@ test('a forgotten password can be reset from the emailed link', async ({ page })
   // that matched nothing would make this assertion pass for the wrong reason.
   await expect(page.getByText('Those details did not match an account.')).toBeVisible(NAV);
 
+  // **Both fields are refilled, because a failed sign-in clears them.**
+  // `AuthForm` is uncontrolled with no `defaultValue`, so the re-render after a
+  // rejected attempt empties the form — including the email the reader just
+  // typed. Filling only the password submits an empty address and fails
+  // validation, which is what this test did on its first run.
+  await page.getByLabel('Email').fill(user.email);
   await page.getByLabel('Password', { exact: true }).fill(user.newPassword);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page).toHaveURL(`/${user.handle}`, NAV);
