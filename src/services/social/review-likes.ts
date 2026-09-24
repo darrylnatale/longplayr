@@ -4,6 +4,7 @@ import type { Database } from '@/lib/supabase/database.types';
 import { getCurrentProfile } from '../profiles';
 import { recordReviewLiked } from './notifications';
 import { err, ok, type Result } from '../result';
+import { isRateLimited, RATE_LIMITED_MESSAGE } from '../rate-limit';
 
 /**
  * Likes on reviews.
@@ -37,7 +38,7 @@ import { err, ok, type Result } from '../result';
 
 export type ReviewLike = Database['public']['Tables']['review_likes']['Row'];
 
-export type ReviewLikeError = 'onboarding_required' | 'self_like' | 'not_found';
+export type ReviewLikeError = 'onboarding_required' | 'self_like' | 'not_found' | 'rate_limited';
 
 /** Postgres unique-violation. Turns a double-submit into a clean outcome. */
 const UNIQUE_VIOLATION = '23505';
@@ -102,6 +103,11 @@ export async function likeReview(reviewId: string): Promise<Result<ReviewLike, R
     .single();
 
   if (error) {
+    // A ceiling, not a fault (`architecture.md` §14.4). Checked first because a
+    // rate limit and an existing like are different outcomes, and only one of
+    // them means the row is already there.
+    if (isRateLimited(error)) return err('rate_limited', RATE_LIMITED_MESSAGE);
+
     if (error.code === UNIQUE_VIOLATION) {
       const { data: existing } = await supabase
         .from('review_likes')

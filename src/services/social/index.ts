@@ -5,6 +5,7 @@ import { countRows, COUNT_ONLY } from '../count';
 import { getCurrentProfile } from '../profiles';
 import { err, ok, type Result } from '../result';
 import { recordFollowed } from './notifications';
+import { isRateLimited, RATE_LIMITED_MESSAGE } from '../rate-limit';
 
 /**
  * Social — the follow graph.
@@ -46,7 +47,7 @@ const FOREIGN_KEY_VIOLATION = '23503';
 /** PostgREST answers an offset past the end with an error, not an empty window. */
 const RANGE_NOT_SATISFIABLE = 'PGRST103';
 
-export type FollowError = 'onboarding_required' | 'self_follow' | 'not_found';
+export type FollowError = 'onboarding_required' | 'self_follow' | 'not_found' | 'rate_limited';
 
 /** A person as they appear in a follower or following list. */
 export type FollowUser = {
@@ -134,6 +135,11 @@ export async function followUser(followeeId: string): Promise<Result<Follow, Fol
     .single();
 
   if (error) {
+    // A ceiling, not a fault (`architecture.md` §14.4). Checked before the
+    // unique violation because they are different outcomes and only one of them
+    // means the follow already exists.
+    if (isRateLimited(error)) return err('rate_limited', RATE_LIMITED_MESSAGE);
+
     if (error.code === UNIQUE_VIOLATION) {
       const { data: existing } = await supabase
         .from('follows')
