@@ -45,7 +45,11 @@
 > | **Discography** — singles hidden by default; a filter, so §6 survives       | `product-spec.md` §8.9a       |
 > | **Catalogue source** — **a `CLAUDE.md` non-negotiable was amended**         | `CLAUDE.md`, §8.9a            |
 >
-> **Phase 6 has no open decision blocking any slice.** F-011 and F-040 are closed.
+> **Ten decisions in total**, the later four being **avatars** (§10.3a, build narrowly), **comments** (§10.8, deferred until reporting ships — a trigger, not an open end), **status posts** (§10.8, out of scope rather than deferred), and **push and a native client** (§7a, **both reopened**).
+>
+> **Phase 6 has no open decision blocking any slice**, and **F-011, F-040, F-052, F-053 and F-054 are closed.**
+>
+> **Two of these enlarge future work rather than describing it.** Avatars create the **first user-owned storage objects**, so the hard-delete cascade must grow — `architecture.md` §15.1 warns of it and §87's orphan test is where it gets proven. And reopening the native client turns **`CLAUDE.md`'s domain-logic rule from advice into an obligation**: the two drifts it already names become debt.
 >
 > **`docs/legal-obligations.md` is new** and discharges §10.4's blocking precondition _as researched, not as cleared_. **Its findings changed the plan**: DSA Art 16 makes reporting a legal obligation rather than product tooling, and **Art 17 — telling an author why their content was removed — was in no slice at all.** Three further obligations apply **today**: terms stating the moderation policy, and two points of contact.
 

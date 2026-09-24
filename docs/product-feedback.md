@@ -1403,7 +1403,11 @@ The all-albums page sorts by release year **most recent first**, and there is no
 
 ### F-052 — no way to set a profile picture, though the field exists and renders everywhere
 
-**2026-09-18 · profile · NEW**
+**2026-09-18 · profile · CLOSED — DECIDED 2026-09-24: BUILD IT, NARROWLY**
+
+Supabase Storage in its own bucket, strict server-side size and format limits, **EXIF stripped**, no cropping UI, the initial-based avatar stays the default, and moderation rides on the reporting slice rather than inventing its own. `product-spec.md` §10.3a. **Unbuilt and unscheduled.**
+
+**The consequence most likely to be forgotten**: it creates the **first user-owned storage objects**, so the hard-delete cascade must grow to take them. `architecture.md` §15.1 already warns about this, and §87's orphan test is where it gets proven.
 
 Being able to **upload a profile picture** — part of wanting the social side of the product to feel like somewhere people are present.
 
@@ -1415,7 +1419,13 @@ Being able to **upload a profile picture** — part of wanting the social side o
 
 ### F-053 — posting to the feed, and being able to respond to what is posted
 
-**2026-09-18 · social, feed · NEW**
+**2026-09-18 · social, feed · CLOSED — DECIDED 2026-09-24, DIFFERENTLY FOR EACH HALF**
+
+**Comments: deferred until reporting ships**, and the deferral now has a trigger rather than an open end — Phase 6 slice 3. §7's reasoning stands: adding the highest-liability content type before the mechanism to handle it exists is backwards. **A permanent no was offered and declined.**
+
+**Status posts: out of scope, and this is a no rather than a deferral.** Every feed event today derives from an action on an album; a free-text post is a microblog with its own rules. **The narrower version survives** — F-022's album recommendation is anchored to a catalogue row and remains open.
+
+**Messaging is untouched**, and its blocking precondition is now discharged as researched (`docs/legal-obligations.md`). `product-spec.md` §10.8.
 
 Beyond logging albums: **posting what you are listening to, or a recommendation, into the feed** — and crucially **something people can respond to and interact with**. Plus **messaging one another**.
 
@@ -1429,7 +1439,13 @@ Beyond logging albums: **posting what you are listening to, or a recommendation,
 
 ### F-054 — a native app, for push notifications specifically
 
-**2026-09-18 · platform · NEW**
+**2026-09-18 · platform · CLOSED — DECIDED 2026-09-24: BOTH REOPENED**
+
+**Push and the native client were both `[DECIDED]` against and both are reopened.** `product-spec.md` §7a. **Neither is scheduled, designed or assigned to a phase.**
+
+**The narrower option was offered and declined**, and that is recorded: a PWA can do push on current mobile platforms, so reopening push alone would have served the stated goal without a second client.
+
+**What it costs.** `architecture.md` §19.3's _a second client is plausible_ stops being a precaution and becomes a requirement — **`CLAUDE.md`'s domain-logic rule turns from advice into an obligation**, and the two drifts it already names become debt. Push additionally leaves the product, which §16.3's _directed, private, in-app only_ model does not cover: **consent is a legal question rather than a settings toggle**, per `docs/legal-obligations.md`. **Email stays decided against.**
 
 The product should eventually be **an app, not a PWA**. The stated reason is specific: **push notifications on a phone are what gets people coming back.**
 
@@ -1453,7 +1469,9 @@ Get your password wrong and **both fields empty**, so you retype your address as
 - **The password must still clear**, which is the one part worth thinking about rather than copying: refilling a password field for somebody is a different decision from refilling an email, and browsers already own that behaviour through their own password managers.
 - **It applies to signup too**, where the cost is higher: signup has three fields and clearing all three after one mismatch is a worse loss than clearing two.
 
-**A decision session on 2026-09-24, during the CI outage.** With GitHub Actions minutes exhausted until 1 October no cycle can reach STEP J, so the week is being spent on decisions and documentation, which need no CI. **Three answered so far**: report reason categories (`product-spec.md` §4.1), suspended actors in notifications (`architecture.md` §16.9a), and the moderation audit trail (`development-plan.md` Phase 6 slice 3). **Phase 6 now has no open decision blocking any slice.**
+**A decision session on 2026-09-24, during the CI outage.** With GitHub Actions minutes exhausted until 1 October no cycle can reach STEP J, so the week is being spent on decisions and documentation, which need no CI. **Ten answered.** Report reason categories (`product-spec.md` §4.1); suspended actors in notifications (`architecture.md` §16.9a); the moderation audit trail (Phase 6 slice 3); **singles, the discography filter and the catalogue source** (§8.9a — the last of which **amended a `CLAUDE.md` non-negotiable**); **avatars** (§10.3a); **comments and status posts** (§10.8); and **push and a native client, both reopened** (§7a).
+
+**Phase 6 has no open decision blocking any slice**, and **F-011, F-040, F-052, F-053 and F-054 are closed.** `docs/legal-obligations.md` was also written, discharging §10.4's precondition as researched.
 
 ### Triaged, promoted or closed
 

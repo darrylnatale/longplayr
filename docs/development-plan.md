@@ -583,7 +583,9 @@ Consistent with `docs/claude-code-playbook.md`:
 
 ## Deliberately not scheduled
 
-Comments, private accounts, track-level features, streaming integration, per-item list notes, genres and tags, year-in-review, and native apps. Each is deferred with reasoning in `docs/product-spec.md` §7. None should be added to a phase above without an explicit decision to change scope.
+Comments, private accounts, track-level features, streaming integration, per-item list notes, genres and tags, year-in-review, ~~and native apps~~. Each is deferred with reasoning in `docs/product-spec.md` §7. None should be added to a phase above without an explicit decision to change scope.
+
+**Native apps and push left this list on 2026-09-24 by explicit decision** — the mechanism this paragraph requires. **Both are reopened, neither is scheduled, and neither has a phase.** `product-spec.md` §7a records what reopening them costs, and the questions that must be asked first. **Comments remain on this list**, now with a trigger rather than an open end: revisit when Phase 6 slice 3 ships reporting.
 
 **Algorithmic recommendations** left this list by decision — see the next section.
 
