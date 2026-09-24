@@ -1450,6 +1450,30 @@ No custom metrics pipeline, no dashboards beyond what the platforms provide. Add
 
 **Admin writes go through the service-role client rather than a user token**, so RLS is not their gate — the service layer is, per §5. This is stronger than an admin-shaped RLS policy would be: with no grant to `authenticated` on those columns, **there is no policy left to subvert**.
 
+### 14.3 The grant and policy audit **[COMPLETED 2026-09-24]**
+
+**The deliberate sweep §14.1 should have triggered.** That finding closed three tables after a suspended account was found able to reinstate itself; this compared **every** table's grants and policies against what the service layer actually writes. Twenty-two tables.
+
+**The rule was already in this codebase, applied once and never generalised — and that is the finding.** `notifications` grants `UPDATE` on `read_at` alone, and `markNotificationRead` states the principle in as many words: _"RLS decides which rows; the grant decides which columns."_ Nothing carried it anywhere else. **Not a missing idea. An unapplied one.**
+
+**Nothing found was exploitable** — five accounts, no real traffic, RLS scoping rows correctly throughout. Each was a rule the application assumed and the database did not hold.
+
+| Table                | Found                                                                                                                                                                                                           | Closed by                                                              |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `collection_entries` | **`relisten_count` was user-writable** — a trigger-maintained counter its own migration calls _"nothing but arithmetic… no business rule reads it"_. `added_at`, `listened_on`, `album_id` had no writer either | `grant update (rating, liked, updated_at)`                             |
+| `list_items`         | Table-level `UPDATE` where only `reorder_list_item` writes, and only `position`                                                                                                                                 | `grant update (position)`                                              |
+| `favourite_albums`   | Table-level `UPDATE` with **no update path in the product at all** — reordering is unbuilt and open (F-001)                                                                                                     | Grant withdrawn entirely                                               |
+| `activity`           | **The actor was checked; the subject was not.** A user could post a `reviewed` event under their own handle naming **somebody else's review**, and `feed_activity` joins the body in                            | `with check` requiring ownership of all four subject kinds             |
+| `notifications`      | **Same gap.** `follows` is publicly readable, so any follow id could be named — delivering a fabricated _"X followed you"_ to an arbitrary recipient                                                            | `with check` requiring the referenced row to be the actor's own action |
+
+**The correct pattern for the two policy gaps was already two tables away.** `relisten_events_write_own` checks ownership **through the parent entry** rather than trusting a column on the row being written. Both fixes are that, applied.
+
+**`updated_at` is granted on `collection_entries`, and §14.1's trap is why.** `ensure_collection_entry` is `SECURITY INVOKER` and its `on conflict do update set updated_at = …` runs with the _caller's_ privileges — so narrowing without it would have made **adding an album you already hold** fail with `42501`. Harmless to grant: the `before update` trigger overwrites whatever a caller sends. **That is the second time this exact interaction has nearly shipped a regression.**
+
+**Verified correct and recorded, so the next audit starts here:** `follows` and `want_to_listen` key on the owning column; `list_likes` and `review_likes` add an existence check on the subject; `relisten_events` checks through the parent; `notifications.read_at` was already a column grant; `profiles`, `reviews` and `lists` were narrowed by §14.1; and the catalogue tables are read-only to `anon` and `authenticated` with every write on `service_role`.
+
+**The durable output is `tests/integration/write-privileges.test.ts`**, which asserts from a **real user token** what may and may not be written, in both directions. **Every other integration suite uses the service-role client, which bypasses grants and RLS entirely** — so this entire surface was invisible to the test suite until now, and a migration that widens a grant will fail rather than pass quietly.
+
 Per `docs/claude-course-analysis.md` §10, the course's own advice — don't put unaudited authentication in front of real user data — is taken at its stated standard: **a security review before launch**, focused on auth flows, authorisation checks, and the admin surface.
 
 ---

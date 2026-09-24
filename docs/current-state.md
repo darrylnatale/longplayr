@@ -14,9 +14,9 @@
 
 **The verification gate moved, and `CLAUDE.md` now carries it. [APPLIED 2026-09-15]** Work happens on a branch and reaches `main` only through a green CI run; STEP F runs `npm run verify` plus targeted suites; **the migration gate moved from STEP I to STEP J**, so the order is **CI green → migration applied → merge**. The decision is `architecture.md` §12; the process is `CLAUDE.md`. **The two no longer disagree.** (§68, §69)
 
-**Verified 2026-09-23 against the repository, the remote, CI and production.** `main` is at **`6f10abd`**, the merge of PR #27; `origin/main` identical. **Nothing is open.** **35 migrations, 0 unapplied** — §92's was applied at STEP J between a green run and the merge — `20260918120000_reserve_deleted_handles` (§87) and `20260918170000_readable_url_slugs` (§88) were each applied to the deployed database at STEP J, between a green run and the merge, and confirmed afterwards. **§87's post-merge run `35365720989` came back `completed/success`, so that gate is cleared and §87 is fully verified.** §88's post-merge run on `49999a3` had not been read when this was written (F-051: a pull-request run tests the base as it was when it started, so the post-merge run is not redundant).
+**Verified 2026-09-23 against the repository, the remote, CI and production.** `main` is at **`2695773`**, the merge of PR #28; `origin/main` identical. **Nothing is open.** **35 migrations, 0 unapplied** — §93 carried none — `20260918120000_reserve_deleted_handles` (§87) and `20260918170000_readable_url_slugs` (§88) were each applied to the deployed database at STEP J, between a green run and the merge, and confirmed afterwards. **§87's post-merge run `35365720989` came back `completed/success`, so that gate is cleared and §87 is fully verified.** §88's post-merge run on `49999a3` had not been read when this was written (F-051: a pull-request run tests the base as it was when it started, so the post-merge run is not redundant).
 
-**Twenty-one cycles merged between 2026-09-15 and 2026-09-23** — PRs #7 to #27, recorded as §72 to §92. **§74, §87, §88, §89, §90 and §92 carried a migration; §91 carried none.** **§79, §87, §88, §90 and §91 failed CI and were reopened; §92 passed first time**; both were remediated and merged on a second run. **§80, §83 and §84 were confirmed on production** rather than merely merged.
+**Twenty-two cycles merged between 2026-09-15 and 2026-09-23** — PRs #7 to #28, recorded as §72 to §93. **§74, §87, §88, §89, §90 and §92 carried a migration; §91 and §93 carried none.** **§79, §87, §88, §90, §91 and §93 failed CI and were reopened; §92 passed first time**; both were remediated and merged on a second run. **§80, §83 and §84 were confirmed on production** rather than merely merged.
 
 > **⚠️ The phase plan has been under-weighted, and the maintainer pointed it out on 2026-09-18.** Every cycle from §72 to §86 was selected from `docs/product-feedback.md`. **`CLAUDE.md` STEP A asks for _the current project state **and** any triaged product feedback_**, and the first half has gone effectively unconsulted for three days.
 >
@@ -29,6 +29,32 @@
 **Four feedback entries were filed on 2026-09-16 at the maintainer's request** — **F-041** (filtering, sorting and exclusion), **F-042** (filtering a grid by collection state), **F-043** (follow back from notifications) and **F-044** (the test environment fails more often than the code does). **F-041 surfaced that longplayr holds no genre data at all**, deliberately excluded at ingest, so that filter is an ingest, schema and backfill change rather than a UI one.
 
 **A decision session on 2026-09-16 answered eight open product questions** and promoted five entries to decided-and-unbuilt — readable URLs, browse-everything, the cover-art prompt (now built, §78), discography refresh, and Recently added's two rules. **It also opened F-040**, a collision between the new upstream-contribution principle and the read-only-catalogue non-negotiable. The records are in `product-spec.md` §6 and §8.9, `design-reference.md` §11.11, and `architecture.md` §18. Three cycles closed and merged today — PR #7 (`5479041`), PR #8 (`8544330`) and **PR #9 (`4c0a0f7`, CI #112, 132 end-to-end, zero flaky)**. The first two carried no migration; **§74 did**, and STEP J gated for it, applying `20260915160000` to the deployed database between a green CI run and the merge. **Post-merge run #111 on `8544330` came back `completed/success`**, so the tree before this cycle is independently green. **The double-CI cost of the branch model is now observed on five consecutive cycles** and remains recorded rather than decided.
+
+> ## ✅ §93 — Someone can take their data with them — **[GATE CLEARED: CI `35851684100` `completed/success` on `73f1978`, 9 completeness assertions, 134 end-to-end, zero flaky]**
+>
+> **Phase 7's other data-rights obligation**, and the half §87 left behind. `product-spec.md` §4 records deletion and export side by side.
+>
+> **It is the deletion enumeration read instead of deleted**, and that is most of why the cycle was cheap. §87 had to establish every table holding user data in order to prove nothing survived a hard delete; this walks the same list and keeps it. **Doing it four days later, while that enumeration was fresh, cost a fraction of rediscovering it.**
+>
+> **One JSON file from an authenticated route, served as a download.** JSON over CSV because portability means _another service_ reading it: nested lists, items and reviews cannot be flattened without losing structure or shipping several files. Generated synchronously, with the ceiling recorded — somewhere in the low thousands of entries it becomes a job and an email.
+>
+> **A removed review and a removed list are both included, and it is the decision most worth stating.** Moderation hides your writing from other people; it does not stop it being yours. **An export that silently dropped them would be the product deciding which of your own writing you may keep a copy of.** The reads therefore go through the service-role client, because the ordinary paths now filter by status under §16.9 — so §91 and §92's work is precisely what made this require care.
+>
+> **Two exclusions, named in the file itself rather than omitted quietly.** `activity` and `notifications` each derive from rows already present, so both duplicate rather than add. **The notification exclusion is deliberately not §16.9a's question**, which is about what other people see.
+>
+> ### 📄 Verified where a unit test cannot reach
+>
+> **Probed against the running app with a real session cookie**: **401** signed out; **200** signed in, carrying `content-disposition: attachment; filename="longplayr-<handle>-<date>.json"` and **`cache-control: no-store, private`** — the header that matters most here, since the response is per-user and holds everything they have written. The payload carried the rating as a **number**, the album's MBID, and **the removed review with its status intact**.
+>
+> ### ⚠️ CI caught a test-suite coupling, and both halves were real
+>
+> **Run `35849458091`: `search.spec.ts › searching mutates nothing` expected 0 `catalogue_additions` and found 1**, on all three attempts, in a spec this cycle never touched.
+>
+> **The export suite left the row, and no cascade was ever going to take it.** `catalogue_additions.user_id` is `on delete set null` **by deliberate design** — §87 established that the record of what entered the catalogue outlives the person who added it — so deleting the suite's users left an anonymous row that survived into a later end-to-end run. It is now deleted explicitly, being the one row in this product that cleanup cannot get for free.
+>
+> **The assertion was also claiming more than it meant, and that is the more useful half.** It asserted the **entire table** was empty, which couples a search test to every other suite's residue: any suite that adds to the catalogue breaks it, and the failure then **reports a search defect that does not exist**. It now measures before against after, which is exactly the claim — _searching_ adds nothing.
+>
+> **Three consecutive cycles have now had CI catch test-suite coupling rather than a product defect** — §91's single follow edge, §92's grant-versus-upsert interaction, and this. The enumerated tests these cycles keep adding are strict enough to catch real things, and strict enough to catch each other.
 
 > ## ✅ §92 — Moderation has an admin, and users can no longer moderate themselves — **[GATE CLEARED: CI `35844123814` `completed/success` on `c2eacaa`, 10 privilege assertions, 134 end-to-end, zero flaky]**
 >
