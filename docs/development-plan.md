@@ -489,15 +489,25 @@ Sequencing against `product-spec.md` §8.10 faults 1 and 2, and against the enri
 
 **Blocked by open decisions**
 
-- Report reason categories — **gates reporting, and nothing else in the phase**
+- ~~Report reason categories~~ **RESOLVED 2026-09-24 — five reasons, `product-spec.md` §4.1.** **Nothing in Phase 6 is blocked by an open decision any more.**
 
 **Slicing. [DECIDED 2026-09-22]** Phase 6 is entered through enforcement rather than through tooling, and the order is deliberate.
 
-| Slice                                    | Contents                                                                                                                                                                              | Why it is first, or why it waits                                                                                                                                                                 |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **1 — Status enforced everywhere**       | The three audited gaps closed, the rule recorded in `architecture.md` §16.9, and an integration test enumerating every surface a suspended account touches                            | **A button that sets a status the product does not honour is worse than no button.** Setting status by hand is already possible; honouring it is not. Needs no product decision and no migration |
-| **2 — An admin, and the ability to act** | Admin identity, suspend and reinstate an account, remove and restore a review or list — **and closing `architecture.md` §14.1**, which let a moderated user undo their own moderation | Needs slice 1, or it ships an action with no effect. **The privilege model is the product's first**, and §14.1 makes this slice a security fix as much as a feature                              |
-| **3 — Reporting**                        | Report a review, list or account; the admin queue                                                                                                                                     | **The only slice the open decision gates.** A queue is a list until slice 2 exists                                                                                                               |
+| Slice                                    | Contents                                                                                                                                                                              | Why it is first, or why it waits                                                                                                                                                                                           |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1 — Status enforced everywhere**       | The three audited gaps closed, the rule recorded in `architecture.md` §16.9, and an integration test enumerating every surface a suspended account touches                            | **A button that sets a status the product does not honour is worse than no button.** Setting status by hand is already possible; honouring it is not. Needs no product decision and no migration                           |
+| **2 — An admin, and the ability to act** | Admin identity, suspend and reinstate an account, remove and restore a review or list — **and closing `architecture.md` §14.1**, which let a moderated user undo their own moderation | Needs slice 1, or it ships an action with no effect. **The privilege model is the product's first**, and §14.1 makes this slice a security fix as much as a feature                                                        |
+| **3 — Reporting**                        | Report a review, list or account; the admin queue; the moderation audit trail; **and statements of reasons**                                                                          | ~~The only slice the open decision gates.~~ **Unblocked 2026-09-24.** A queue is a list until slice 2 exists, which it now is. **DSA Art 16 makes the reporting mechanism a legal obligation rather than product tooling** |
+
+> ### ⚠️ Two obligations this phase did not know it had **[ADDED 2026-09-24 from `docs/legal-obligations.md`]**
+>
+> **DSA Art 16 — notice-and-action — is a legal requirement, not safety tooling.** It applies to hosting services with **no micro-enterprise exclusion**, so the reporting mechanism slice 3 builds is owed regardless of size. It was ranked here as product work; that ranking was right by luck rather than by reason.
+>
+> **DSA Art 17 — statements of reasons — was in no slice at all.** When content is removed or restricted, the **author must be told why**, with specified detail. **§92 built the ability to remove content and nothing tells the author anything.** It joins slice 3, because a statement of reasons and a resolved report are the same moment seen from the two sides.
+>
+> **Neither is discharged by the enforcement §91 built**, which governs what _readers_ see. These are about what the _affected person_ is told.
+
+**The audit trail belongs to slice 3, decided 2026-09-24.** _Who suspended whom, and when_ — recorded alongside reporting because **a report and its resolution belong together**, and because an audit trail's value is retrospective: adding one later recovers nothing, and the actions most worth a record are the ones already taken. **This previously leaned toward deferring until a second admin existed; that reasoning was wrong** for exactly that reason, and is corrected rather than quietly dropped.
 
 **Blocking is unassigned and deliberately so.** It cuts interaction bidirectionally and is a different mechanism from status — it is about one user's view of another rather than about a global fact — so it does not belong in any of the three above without its own decision.
 
@@ -540,6 +550,12 @@ Sequencing against `product-spec.md` §8.10 faults 1 and 2, and against the enri
 **Blocked by open decisions**
 
 - ~~Handle reuse after deletion (`data-model.md` §9.5)~~ **RESOLVED 2026-09-18: reserved permanently.** Phase 7's account-deletion item is no longer blocked
+
+> ### 📄 Three obligations that are documents rather than engineering **[ADDED 2026-09-24 from `docs/legal-obligations.md`]**
+>
+> **Terms and conditions** stating the content-moderation policy in clear, plain language (**DSA Art 14**); a **point of contact for authorities** (**Art 11**); and a **point of contact for users** allowing direct, rapid electronic contact (**Art 12**). **Provider identification under § 5 DDG** may join them — whether a free, non-commercial project counts as `geschäftsmäßig` is flagged there as needing professional advice.
+>
+> **None exists.** They apply **today**, not at launch, and are **the cheapest obligations in this phase to discharge** — a page and some writing, against a security review and a performance pass.
 
 **Account deletion is much smaller than this feature list implies, measured 2026-09-18.** The cascade is already declared from `profiles` and from `auth.users`; averages are computed on read, so _"averages recompute with no manual step"_ is **already satisfied structurally**; the single `on delete set null` is deliberate and documented; and **no user-owned storage objects exist**. What is absent is the deletion path itself, a home for it, and the orphan test. **The rest of Phase 7 is untouched by that** — export, error tracking, ingestion health, uptime, rate limits, the security review and the performance pass are all unbuilt and unestimated.
 

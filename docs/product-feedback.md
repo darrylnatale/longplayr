@@ -300,7 +300,9 @@ Follows F-008. If contributing upstream is the answer, can it be mechanised — 
 
 ### F-011 — intent: singles and other out-of-scope release types, eventually
 
-**2026-08-30 · catalogue · NEW — PARTLY ANSWERED 2026-09-18, THE CONSEQUENTIAL HALF STILL OPEN**
+**2026-08-30 · catalogue · CLOSED — FULLY ANSWERED 2026-09-24**
+
+**All three open halves are decided** (`product-spec.md` §8.9a). **A single is a full catalogue release**, collectable and rated like any album. **The discography hides singles by default with a control to include them** — a filter rather than a grouping, so §6's _never grouped by type_ survives intact rather than being reversed. **And the Bandcamp half was answered by amending a non-negotiable**: `CLAUDE.md` no longer says _no user-authored metadata, ever_. **Decided, unscheduled, unbuilt** — and the first question is whether anything genuinely cannot go upstream at all. See F-040.
 
 **The maintainer said singles do enter the catalogue**, and then asked what the difference between a _catalogue release_ and a _discovery object_ actually is — **so the direction is settled and the form is not.** Recorded here rather than promoted, because the form is where every consequence lives.
 
@@ -1065,7 +1067,13 @@ MusicBrainz publishes its entire database as downloadable PostgreSQL dumps, upda
 
 ### F-040 — can longplayr ever hold what MusicBrainz will not?
 
-**2026-09-16 · catalogue, architecture · NEW**
+**2026-09-16 · catalogue, architecture · CLOSED — DECIDED 2026-09-24: YES, AND THE NON-NEGOTIABLE WAS AMENDED**
+
+**The rule was changed rather than worked around**, by the explicit mechanism that section requires. **Nothing is built and nothing is scheduled.**
+
+**What it costs, honestly.** `albums`, `artists` and `releases` all declare `mbid` **not null unique**; **Cover Art Archive is MBID-keyed with no fallback**, so a user-authored album has no artwork path; **ListenBrainz popularity is MBID-keyed** too. Four questions must be asked rather than inferred — who may author, what happens when the record later appears upstream, who corrects a wrong one, and what prevents duplicating an MBID row. `product-spec.md` §8.9a holds the record.
+
+**The first work is establishing the exception is needed at all** — MusicBrainz accepts bootlegs, demos, DJ mixes and self-released material.
 
 **Raised while deciding F-008**, and it is a question rather than an objection to that decision.
 
@@ -1153,6 +1161,22 @@ When someone follows you, the notification should let you **follow them back the
 **Two smaller ones.** `followAction` currently lives in `src/app/[handle]/actions.ts`, scoped to the profile route, so using it from notifications means moving it or importing across routes — a small structural choice worth making deliberately. And **the other two notification types have the same shape of question** — a liked review or list could plausibly offer an action too — so it is worth deciding whether this is _"notifications can carry actions"_ or _"the follow notification specifically gets a button"_.
 
 **Related:** **F-017** (notifications were unreachable on mobile — same surface, already delivered) · **F-003** (acting on something without leaving the page you are on — the same instinct applied to album tiles, and the entry that records §10.6's seven unanswered questions about it).
+
+### F-056 — CI jobs are failing before they start, and it blocks the whole workflow
+
+**2026-09-24 · development process, CI · NEW — URGENT-ADJACENT**
+
+**The post-merge run on `main` for §96 failed with zero steps executed and no logs retained.** Both jobs died within seconds of starting. **Re-run twice — `run_attempt: 3` — failing identically each time.**
+
+**Not a test failure, and `main` is not broken.** Established by tree hash: `e7fd345`, which CI passed **green and zero-flaky** twenty-five minutes earlier, and `4f660bc` on `main` have the **identical tree** `12e5794`. The branch also sat directly on `main`'s tip, so the merge introduced nothing. **`main` holds exactly what was verified.**
+
+**What it blocks is everything.** `CLAUDE.md`'s STEP J requires _a completed successful run on the exact pushed SHA_ before a merge, and `architecture.md` §12 moved the full gate to CI on the reasoning that it runs on clean runners. **If runners will not start, the project has no gate at all** — and the local `verify:full` that used to be the fallback was deliberately retired.
+
+**The likeliest cause is exhausted GitHub Actions minutes on a private repository**, and it is **unconfirmed**: reading billing needs a `user` auth scope this session does not have and should not grant itself. The signature fits — a 15.8-minute run succeeding at 16:24, then instant failures from 16:49 — but **the evidence is circumstantial and is recorded as such.**
+
+**What the maintainer can check**: GitHub → Settings → Billing → Actions minutes. If it is quota, the options are paying for minutes, making the repository public (declined before, `CLAUDE.md`), or reducing CI cost — the end-to-end suite is ~15 minutes of the ~16.
+
+**Related**: F-044 records the test environment failing more often than the code; this is that class, at the infrastructure layer rather than the suite. F-045 records what moving every slow test to CI would cost if it bit — **this is that cost arriving.**
 
 ### F-044 — the test environment fails more often than the code does
 
@@ -1428,6 +1452,8 @@ Get your password wrong and **both fields empty**, so you retype your address as
 - **`AuthForm` is uncontrolled and sets no `defaultValue`**, so the re-render after a rejected attempt empties every field. The fix is small — echo the submitted email back through the action state — and it is **deliberately not taken here**, being outside the boundary of the cycle that found it.
 - **The password must still clear**, which is the one part worth thinking about rather than copying: refilling a password field for somebody is a different decision from refilling an email, and browsers already own that behaviour through their own password managers.
 - **It applies to signup too**, where the cost is higher: signup has three fields and clearing all three after one mismatch is a worse loss than clearing two.
+
+**A decision session on 2026-09-24, during the CI outage.** With GitHub Actions minutes exhausted until 1 October no cycle can reach STEP J, so the week is being spent on decisions and documentation, which need no CI. **Three answered so far**: report reason categories (`product-spec.md` §4.1), suspended actors in notifications (`architecture.md` §16.9a), and the moderation audit trail (`development-plan.md` Phase 6 slice 3). **Phase 6 now has no open decision blocking any slice.**
 
 ### Triaged, promoted or closed
 

@@ -115,8 +115,28 @@ A later Phase 3 slice owns both, together with the schema change that adds the e
 | Deletion      | **Hard delete.** Collection, ratings, reviews, lists, follows all removed; averages recompute. **The handle is reserved permanently** (§6 Settings) |
 | Export        | Users can export their data                                                                                                                         |
 | Blocking      | Cuts interaction (follow, like, feed, notifications) in both directions. **Does not hide content** — must be labelled truthfully in the UI          |
-| Reporting     | Users can report reviews, lists, and accounts                                                                                                       |
+| Reporting     | Users can report reviews, lists, and accounts. **Five reasons, §4.1** — one shared list across all three targets                                    |
 | Admin actions | Soft-delete content; suspend or ban accounts. Content and users carry status fields from day one                                                    |
+
+#### 4.1 Report reasons **[DECIDED 2026-09-24]**
+
+**Five, and the same five whatever is being reported.**
+
+| Reason                        | Covers                                                             |
+| ----------------------------- | ------------------------------------------------------------------ |
+| **Spam or advertising**       | Promotion, repetition, anything posted to be seen rather than read |
+| **Harassment or hate**        | Directed abuse, and hatred aimed at a group                        |
+| **Sexual or violent content** | Material inappropriate to the surface rather than to a person      |
+| **Illegal content**           | Kept separate deliberately — see below                             |
+| **Something else**            | With optional free text                                            |
+
+**`Illegal content` is separate because it is a different obligation, not a worse adjective.** Under the EU Digital Services Act a notice alleging illegality carries handling duties that a complaint about rudeness does not, and `product-spec.md` §10.4 already records DSA obligations as live for a small service in Germany. **Separating it lets the queue treat it differently rather than discovering the distinction under time pressure.** It invites some misuse — _"illegal because I disagree"_ — which is an acceptable trade at this scale and with one moderator.
+
+**One list across reviews, lists and accounts**, rather than a tailored set per target. A per-target list reads better and triples the thing that must stay consistent with the queue, the enum and the copy; the categories above apply to all three without strain.
+
+**Free text is optional and only on `Something else`.** `product-spec.md` §7 defers comments as _"the largest moderation liability in the product"_, and free text is a smaller version of that concern — **but a report is private to moderators rather than published**, so the liability is a fraction of a comment's. Without it, everything the list failed to anticipate becomes uncategorisable.
+
+**These are not a legal taxonomy** and should not be mistaken for one. They are the shape of a triage queue for a product with one moderator. **§10.4's legal research, still outstanding, is what would tell us whether they are sufficient.**
 
 ### Catalogue
 
@@ -706,6 +726,34 @@ Character set, length and reserved names are **unchanged and still provisional**
 
 ---
 
+#### 8.9a Singles, and what the catalogue may hold **[DECIDED 2026-09-24 — resolves F-011 and F-040]**
+
+**A single is a full catalogue release.** A row like any album: it appears in discographies and **can be collected, rated, reviewed and listed.** The alternatives — a findable-but-not-collectable _discovery object_, or representing only the unique recordings a single contains — were considered and rejected. The first invents a second kind of catalogue thing that every surface must then distinguish; the second needs track-level identity, which `CLAUDE.md` constrains with _tracks are never rated, reviewed, logged or listed_.
+
+**The cost is real and accepted**: _one entry per user per album, permanently_ now spans singles, so a collection can fill with two-minute releases. That is the price of a catalogue that is completion-oriented in depth.
+
+##### The discography: singles hidden by default, and §6 survives intact
+
+**§6's rule — one interleaved chronological run, never grouped by type — is not reversed.** It was settled when no artist held more than three releases, and §5 of `product-feedback.md` has flagged since August that admitting singles would make the conflict live: **an artist with forty singles buries their eight albums.**
+
+**The answer is a filter, not a grouping.** Singles are excluded from the discography by default, with a control to include them. **When everything is shown it is still one interleaved chronological run**, which is exactly what §6 decided. Nothing is grouped by type at any point.
+
+**This was chosen deliberately over reversing §6.** Grouping is what most music sites do and reads conventionally; §6 rejected it on purpose, and reversing a deliberate decision should itself be deliberate rather than a side effect of admitting singles.
+
+##### The catalogue may hold what MusicBrainz will not — decided, unscheduled, unbuilt
+
+**`CLAUDE.md`'s non-negotiable was amended on 2026-09-24**, removing _"no user-authored metadata, ever"_. The reason is concrete: **a musician who self-releases a single track should be findable even where no official release exists.**
+
+> **⚠️ Decided is not scheduled, and this is further from built than anything else in this document.**
+>
+> **The first question is not technical.** MusicBrainz accepts bootlegs, demos, DJ mixes and self-released material, so **most cases this exception was opened for are addressable upstream** — and §8.9 already decided contributing upstream is the strategy. **What genuinely cannot go upstream is unestablished.** Building an exception for a case that turns out not to exist is the expensive mistake available here, and establishing it is the first work rather than the last.
+>
+> **Three technical consequences are already visible.** `albums`, `artists` and `releases` all declare `mbid` **`not null unique`** — three tables and every relation through them. **Cover Art Archive is keyed by release-group MBID with no fallback source**, so a user-authored album has **no artwork path at all**. **ListenBrainz popularity is MBID-keyed**, so such a record can never carry a popularity signal.
+>
+> **And four questions must be asked rather than inferred**: who may author a record — any user, or an admin? What happens when the same record later appears in MusicBrainz? Who corrects a wrong one, given the catalogue has never needed an editing surface? What stops a user-authored row duplicating an MBID row that already exists? **None has an obvious default, and answering one silently would be a scope violation.**
+
+**`architecture.md` §19.1 is untouched and still holds.** Canonical identity stays MusicBrainz-shaped; a provider identifier is enrichment, never identity. **This exception concerns records MusicBrainz does not have — not a second source of truth for records it does.**
+
 **8.9 — Catalogue breadth, depth and popularity. [RESOLVED IN PRINCIPLE 2026-08-23 — raised 2026-08-21 as "curated seed versus external popularity"]**
 
 **The original title was wrong, and so was the question.** This was framed as a choice between a curated seed and an external popularity chart — one axis, two options. There are **three** separable things here, and conflating them is what made the section unanswerable:
@@ -1118,7 +1166,15 @@ The third point is the one that changes the plan's shape. The earlier reading �
 
 **Sequencing is unresolved.** The direction was given as "an intended Phase 2 feature", but `development-plan.md` Phase 2 is the **single-user core loop** — follows and the social graph do not exist until Phase 3, so there is nobody to message in Phase 2 as currently planned. The intent recorded is "from the beginning of the social product". **Ask which phase this actually lands in before scheduling it.** Do not resolve this by renumbering phases.
 
-#### Precondition — legal research, blocking
+#### ~~Precondition — legal research, blocking~~ **DISCHARGED AS RESEARCHED 2026-09-24 — see `docs/legal-obligations.md`**
+
+**The research exists and the brief below was met.** One question inside it remains open and needs a lawyer — **whether Art 16 notice-and-action reaches private messages, and how it is discharged without a moderator reading them.** So the precondition is discharged _as researched_, not _as cleared_, and the brief is preserved below rather than deleted.
+
+**What it found, in one line:** the minimum safety layer messaging needs is **Art 16 notice-and-action plus Art 17 statements of reasons** — which Phase 6 slice 3 is already scoped to build. **Messaging needs the moderation system the public product already owes, extended, rather than one of its own.**
+
+**And the larger finding was not about messaging at all.** Most of what applies, applies **today**: terms and conditions, two points of contact, notice-and-action, statements of reasons. **§92 built the ability to remove content and nothing tells the author why**, which Art 17 requires.
+
+#### The brief, preserved
 
 **Before any messaging code is written**, current legal requirements must be researched for a **small Germany/EU-based online service carrying user-generated content and private messaging**. This is a blocking precondition, not a recommendation.
 

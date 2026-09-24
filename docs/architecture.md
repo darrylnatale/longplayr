@@ -2152,13 +2152,19 @@ Also excluded: RLS policies of any kind; `auth`, `storage` and other non-`public
 
 **A fourth gap was found at STEP G, after the rule was written down.** `getList` filtered the list's own status — RLS does that — but never its author's, so a **live list by a suspended author stayed publicly readable** while every one of that author's profile routes returned 404. It is fixed under the same rule, and its discovery is the argument for the rule existing: the audit that produced the first three was careful and still missed one.
 
-### 16.9a Notifications are deliberately not covered, and that is a question rather than an omission **[OPEN — raised 2026-09-22]**
+### 16.9a Notifications keep a suspended actor, and stop linking to them **[RESOLVED 2026-09-24 — raised 2026-09-22]**
 
 **`NOTIFICATION_SELECT` does not filter the actor's status.** A person who followed you or liked your review and has since been suspended still appears in your notifications, linking to a profile that 404s.
 
 **This is not obviously a defect, which is why it is not fixed here.** `product-spec.md` §425 makes the disappearance rule explicitly about the **feed**, and §16.3 holds notifications **disjoint** from it: a notification is a private record of something that happened _to you_, and removing it rewrites your own history rather than withdrawing someone's publication. The opposite case is just as arguable — a dead link and a hidden account are exactly what a suspension should stop surfacing.
 
-**It must be asked rather than inferred.** Whichever way it goes, this slice's claim is narrowed honestly: **every read path that publishes user content to other people** is enforced; the one directed, private surface is not, by decision deferred.
+**Decided: the notification stays, and the actor stops being a link.**
+
+**The record is the point, and hiding it would destroy evidence.** A notification may be the only trace that an interaction happened — and if somebody was suspended _for_ harassing you through follows, removing their notifications erases your account of it at exactly the moment it matters. **Consistency with the feed was the argument for hiding, and it is the weaker one**: the feed publishes to other people, while a notification is your own private history.
+
+**So the actual defect was narrower than the question suggested.** Nothing was wrong with the notification existing; what was wrong was the **link to a profile that returns 404**. The handle renders as unavailable instead.
+
+**This closes §16.9's narrowing honestly rather than widening it.** Every read path that **publishes user content to other people** is enforced, and the one directed, private surface deliberately is not — **because it is a record rather than a publication.**
 
 **The deliverable is the enumerated test, not the three fixes.** The same shape as the account-deletion orphan test: create a user holding a rating, a review, a list and a like; suspend them; assert each surface stops showing it. **A surface added later fails that test until somebody has thought about it**, which is the only durable version of "every read path".
 

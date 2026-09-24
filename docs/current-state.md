@@ -14,21 +14,94 @@
 
 **The verification gate moved, and `CLAUDE.md` now carries it. [APPLIED 2026-09-15]** Work happens on a branch and reaches `main` only through a green CI run; STEP F runs `npm run verify` plus targeted suites; **the migration gate moved from STEP I to STEP J**, so the order is **CI green → migration applied → merge**. The decision is `architecture.md` §12; the process is `CLAUDE.md`. **The two no longer disagree.** (§68, §69)
 
-**Verified 2026-09-24 against the repository, the remote, CI and production.** `main` is at **`43e746e`**, the merge of PR #30; `origin/main` identical. **Nothing is open.** **36 migrations, 0 unapplied** — §95 carried none — `20260918120000_reserve_deleted_handles` (§87) and `20260918170000_readable_url_slugs` (§88) were each applied to the deployed database at STEP J, between a green run and the merge, and confirmed afterwards. **§87's post-merge run `35365720989` came back `completed/success`, so that gate is cleared and §87 is fully verified.** §88's post-merge run on `49999a3` had not been read when this was written (F-051: a pull-request run tests the base as it was when it started, so the post-merge run is not redundant).
+**Verified 2026-09-24 against the repository, the remote, CI and production.** `main` is at **`4f660bc`**, the merge of PR #31; `origin/main` identical. **37 migrations, 0 unapplied** — §96's was applied at STEP J and its triggers confirmed live on production.
 
-**Twenty-four cycles merged between 2026-09-15 and 2026-09-24** — PRs #7 to #30, recorded as §72 to §95. **§74, §87, §88, §89, §90, §92 and §94 carried a migration; §91 and §93 carried none.** **§79, §87, §88, §90, §91 and §93 failed CI and were reopened; §92 and §94 passed first time**; both were remediated and merged on a second run. **§80, §83 and §84 were confirmed on production** rather than merely merged.
+> # 🛑 CI IS DEAD UNTIL 1 OCTOBER — READ THIS FIRST
+>
+> **GitHub Actions minutes are exhausted.** 2,000 of 2,000 on the free plan for a private repository, confirmed by the maintainer on 2026-09-24. **They refresh on 1 October and the maintainer has decided to wait rather than pay.**
+>
+> **No cycle can reach STEP J.** That step requires _a completed successful run on the exact pushed SHA_ before a merge, and `architecture.md` §12 deliberately retired the local `verify:full` fallback on the reasoning that CI runs on clean runners. **Runners will not start**, so there is no gate. Jobs fail within seconds with zero steps and no logs.
+>
+> **What is still available**: everything up to STEP I. Documentation and decisions need no CI at all. **Work may be built, verified with `npm run verify`, pushed to a branch and left unmerged** — `CLAUDE.md` permits a cycle closing with an unmerged branch provided the branch, SHA and CI state are recorded.
+>
+> **Do not merge without a green run**, and do not treat `npm run verify` as a substitute: it runs neither a database nor a browser.
+>
+> **Filed as F-056.** At **23 billed minutes per run** — 1 for the fast job, **22 for integration and end-to-end** — the budget is roughly 87 runs a month and 99+ were used. Related to **F-045**, which recorded what moving every slow test to CI would cost if it bit. **This is that cost arriving.**
 
-> **⚠️ The phase plan has been under-weighted, and the maintainer pointed it out on 2026-09-18.** Every cycle from §72 to §86 was selected from `docs/product-feedback.md`. **`CLAUDE.md` STEP A asks for _the current project state **and** any triaged product feedback_**, and the first half has gone effectively unconsulted for three days.
+> ### ⚠️ §96's post-merge run failed, and `main` is verified anyway
 >
-> **This matters because the two are not equivalent.** Feedback items improve things that exist. **Phase 7 contains obligations** — account deletion as a hard delete with a complete cascade is a `CLAUDE.md` non-negotiable, is unbuilt, and `CLAUDE.md` calls an orphaned row a privacy failure. **Phase 6 — reporting, blocking, suspension, and status enforced across every read path — is entirely unbuilt.** Neither has appeared in a STEP A ranking.
+> Run `36030000030` came back `failure` with **zero steps and no logs**, on three attempts. **`main` is verified by equivalence**: `e7fd345` — which CI passed **green, 137 end-to-end, zero flaky** — and `4f660bc` share the **identical tree hash `12e5794`**, and the branch sat directly on `main`'s tip. **Nothing untested reached `main`.**
+
+> ### 📄 A decision session on 2026-09-24, and the legal research
 >
-> **The next STEP A must rank the phase plan alongside the feedback backlog**, not after it.
+> **Six decisions taken while CI was down**, since decisions need no runners:
 >
-> **§87 is the first cycle to have done so, and it changed the answer.** Ranking the phase plan produced account deletion as the leading candidate — an unmet obligation rather than an improvement — which no feedback-only ranking had ever surfaced. **Phase 6 remains entirely unranked.**
+> | Decision                                                                    | Where                         |
+> | --------------------------------------------------------------------------- | ----------------------------- |
+> | **Report reasons** — five, with _illegal content_ separate for DSA purposes | `product-spec.md` §4.1        |
+> | **Suspended actors in notifications** — keep the record, drop the link      | `architecture.md` §16.9a      |
+> | **Moderation audit trail** — built with the reporting slice                 | `development-plan.md` Phase 6 |
+> | **Singles** — a full catalogue release, collectable                         | `product-spec.md` §8.9a       |
+> | **Discography** — singles hidden by default; a filter, so §6 survives       | `product-spec.md` §8.9a       |
+> | **Catalogue source** — **a `CLAUDE.md` non-negotiable was amended**         | `CLAUDE.md`, §8.9a            |
+>
+> **Phase 6 has no open decision blocking any slice.** F-011 and F-040 are closed.
+>
+> **`docs/legal-obligations.md` is new** and discharges §10.4's blocking precondition _as researched, not as cleared_. **Its findings changed the plan**: DSA Art 16 makes reporting a legal obligation rather than product tooling, and **Art 17 — telling an author why their content was removed — was in no slice at all.** Three further obligations apply **today**: terms stating the moderation policy, and two points of contact.
+
+> ### 📄 One branch is queued and unmerged
+>
+> **`moderation-policy`** (`98ab987`) adds `/moderation` — **DSA Art 14, which has no micro-enterprise exclusion.** `verify` green, render-probed at 200. **It cannot merge until minutes refresh.**
+>
+> **Its commit also carried the documentation for everything above.** That documentation has since been brought onto `main` directly, because docs need no CI and a stale `current-state.md` is the first thing a new session reads. **The branch should be reduced to the page alone before merging**, or its doc changes will conflict.
+>
+> **Open question on it**: the contact address `hello@longplayr.dev-guides.com` **does not exist yet** — Cloudflare Email Routing forwards it free.
+
+**Twenty-five cycles merged between 2026-09-15 and 2026-09-24** — PRs #7 to #31, recorded as §72 to §96. **§74, §87, §88, §89, §90, §92, §94 and §96 carried a migration.** **§79, §87, §88, §90, §91, §93 and §95 failed CI and were reopened; §92, §94 and §96 passed first time.** **§80, §83, §84, §90 and §94 were confirmed on production.**
+
+> **⚠️ The phase plan was under-weighted between §72 and §86, and is not any more. [RESOLVED from §87 onward]**
+>
+> Every cycle in that range was selected from `docs/product-feedback.md` while Phases 6 and 7 sat unbuilt. **Since §87 the ranking has drawn on both**, and §87, §91, §92, §93, §94 and §96 all came from the phase plan. **Preserved because the failure mode is easy to fall back into**, not because it is current.
 
 **Four feedback entries were filed on 2026-09-16 at the maintainer's request** — **F-041** (filtering, sorting and exclusion), **F-042** (filtering a grid by collection state), **F-043** (follow back from notifications) and **F-044** (the test environment fails more often than the code does). **F-041 surfaced that longplayr holds no genre data at all**, deliberately excluded at ingest, so that filter is an ingest, schema and backfill change rather than a UI one.
 
 **A decision session on 2026-09-16 answered eight open product questions** and promoted five entries to decided-and-unbuilt — readable URLs, browse-everything, the cover-art prompt (now built, §78), discography refresh, and Recently added's two rules. **It also opened F-040**, a collision between the new upstream-contribution principle and the read-only-catalogue non-negotiable. The records are in `product-spec.md` §6 and §8.9, `design-reference.md` §11.11, and `architecture.md` §18. Three cycles closed and merged today — PR #7 (`5479041`), PR #8 (`8544330`) and **PR #9 (`4c0a0f7`, CI #112, 132 end-to-end, zero flaky)**. The first two carried no migration; **§74 did**, and STEP J gated for it, applying `20260915160000` to the deployed database between a green CI run and the merge. **Post-merge run #111 on `8544330` came back `completed/success`**, so the tree before this cycle is independently green. **The double-CI cost of the branch model is now observed on five consecutive cycles** and remains recorded rather than decided.
+
+> ### ⚠️ §96's post-merge run failed, and `main` is verified anyway — **[ASSESSED 2026-09-24]**
+>
+> **Run `36030000030` on `4f660bc` came back `failure` with zero steps executed and no logs.** Both jobs died within seconds. **Re-run twice — `run_attempt: 3` — failing identically.** Not a test failure: nothing ran.
+>
+> **`main` is verified by equivalence, and that is established rather than assumed.** `e7fd345` — which CI passed **green, 137 end-to-end, zero flaky** — and `4f660bc` have the **identical tree hash `12e5794`**. The branch sat directly on `main`'s tip, so the merge introduced nothing for a post-merge run to test. **This is the case F-051 says the post-merge run exists for, and the case where it happens to be redundant: the base did not move.**
+>
+> **Filed as F-056, and it blocks the workflow rather than this cycle.** STEP J requires a completed successful run on the exact SHA before a merge, and `architecture.md` §12 retired the local `verify:full` fallback on the reasoning that CI runs on clean runners. **If runners will not start, there is no gate.** Likeliest cause is exhausted Actions minutes on a private repository — **unconfirmed**, since reading billing needs an auth scope this session does not have and should not grant itself.
+>
+> ## ✅ §96 — Ceilings on the writes that notify other people — **[GATE CLEARED ON THE BRANCH: CI `36027162590` `completed/success` on `e7fd345`, 137 end-to-end, **zero flaky**. POST-MERGE RUN FAILED FOR INFRASTRUCTURE REASONS — see above. TRIGGERS CONFIRMED LIVE ON PRODUCTION.]**
+>
+> **Moderation reacts; nothing prevented.** §91 to §94 built enforcement, an admin and a locked-down privilege surface — every one of which acts _after_ somebody has flooded the product. A signed-in account could follow and like **without any ceiling**, and each of those generates a notification for somebody else.
+>
+> ### 🔎 The enforcement point was the decision, and §14.1 decided it
+>
+> **The obvious move was to copy `remainingAllowance`**, which counts `catalogue_additions` in the service layer. **Rejected.** `follows`, `review_likes` and `list_likes` all grant `insert` to `authenticated` and let an owner insert freely, so a service-layer ceiling is **bypassed by anybody posting straight to PostgREST with their own token** — the identical shape as the hole §94 closed.
+>
+> **A limit only the application respects is a product preference dressed as a control.** So these are triggers. The cost is a windowed count per insert on tables indexed by the actor column, for actions that are not hot paths; both like tables gained a `(user_id, created_at)` index so the count is a range scan, which also makes the three consistent with `follows`.
+>
+> **This is the first cycle where a previous cycle's lesson changed the design before anything was built**, rather than being discovered again afterwards.
+>
+> ### 📄 What was narrowed, deliberately and out loud
+>
+> **Catalogue additions stay in the service layer and were not migrated to match.** That limiter drives a remaining-allowance display and guards a rate-limited upstream rather than other users' notifications. **Rewriting a working control to satisfy a new convention is not what a cycle is for** — the inconsistency is named rather than tidied.
+>
+> **Reviews are out, and `architecture.md` §14 named them.** One per collection entry, so writing many requires first collecting many albums; editing is an upsert that rewrites in place rather than inserting, so _reviews per hour_ is not countable the way the others are. **Reports are out because they do not exist** (Phase 6 slice 3).
+>
+> ### 📄 The numbers, and their standing
+>
+> **60 follows an hour / 300 a day; 120 likes an hour / 600 a day.** **Chosen, not measured** — the same standing as §6's twelve-character password minimum, recorded in the same words. Likes sit higher because liking is the cheaper, more frequent gesture and is spread across everything a person reads, while following the same person twice is impossible. **Raising them when real usage says so is expected and is not a finding.**
+>
+> ### 📄 Evidence
+>
+> **Probed with a real user token before any test was written**: exactly **60 follows accepted, the 61st refused** with `P0001` carrying `longplayr_rate_limited`. The integration suite asserts the **exact** ceiling rather than "some" — an off-by-one would be wrong in production with nothing to say so — plus that accepted rows survive the refusal, that the window is rolling rather than resetting at a clock boundary, and that **one account hitting a limit does not block another**, since a shared counter would be a worse failure than the one being fixed.
+>
+> **Confirmed on production after the migration**: all three triggers present on `follows`, `review_likes` and `list_likes`.
 
 > ## ✅ §95 — There is a way back into an account — **[GATE CLEARED: CI `36005726480` `completed/success` on `0774a5e`, 137 end-to-end, **zero flaky**. CONFIRMED ON PRODUCTION.]**
 >
