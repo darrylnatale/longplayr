@@ -87,6 +87,17 @@ test.afterAll(async () => {
 });
 
 test('a forgotten password can be reset from the emailed link', async ({ page }) => {
+  // **The longest journey in this suite, and the default 30s is genuinely too
+  // short for it.** Signup, handle claim, sign out, request, an email round
+  // trip through Mailpit, the link, the reset, sign out, a rejected sign-in and
+  // an accepted one — nine navigations and two auth round trips.
+  //
+  // **Recorded as a real duration rather than absorbed by a retry.** It went
+  // flaky on CI run `36002992296` — one attempt timing out at the sign-out,
+  // passing on retry — and a retry that hides a test which is merely slow is
+  // how a genuinely broken one later gets ignored.
+  test.slow();
+
   const user = uniqueUser();
   await signUp(page, user);
 
