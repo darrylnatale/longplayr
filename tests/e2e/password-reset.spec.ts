@@ -134,7 +134,16 @@ test('a forgotten password can be reset from the emailed link', async ({ page })
   await page.getByLabel('Email').fill(user.email);
   await page.getByLabel('Password', { exact: true }).fill(user.newPassword);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page).toHaveURL(`/${user.handle}`, NAV);
+
+  // **Signing in lands on `/`, not on the profile.** The earlier expectation
+  // here was `/${handle}`, copied from the signup flow — which ends at the
+  // profile only because claiming a handle redirects there. `signIn` has always
+  // gone to the home page.
+  //
+  // **The URL alone is a weak assertion**, since a rejected sign-in also leaves
+  // you on a page. The handle in the header is what proves a session exists.
+  await expect(page).toHaveURL('/', NAV);
+  await expect(page.getByRole('link', { name: user.handle }).first()).toBeVisible(NAV);
 });
 
 test('a reset link cannot be used twice', async ({ page }) => {
