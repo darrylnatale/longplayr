@@ -1176,6 +1176,27 @@ When someone follows you, the notification should let you **follow them back the
 
 **What the maintainer can check**: GitHub → Settings → Billing → Actions minutes. If it is quota, the options are paying for minutes, making the repository public (declined before, `CLAUDE.md`), or reducing CI cost — the end-to-end suite is ~15 minutes of the ~16.
 
+> ### ⚠️ The 1 October refresh does not solve this
+>
+> **Measured 2026-09-24.** A run costs **23 billed minutes** — 1 for _Format, lint, types, unit tests, build_, and **22 for _Integration and end-to-end_**. The free plan gives **2,000 a month**, so the budget is **about 87 runs**. **Between 1 and 24 September, 99+ ran.**
+>
+> **So the allowance will be exhausted again, on current habits, before the end of October.** Waiting for the refresh buys a working gate, not a fixed problem.
+
+**Four ways out, and they are not exclusive.**
+
+| Option                         | Cost                    | Note                                                                                                                                                                             |
+| ------------------------------ | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Make the repository public** | **Free, unlimited**     | Permanent fix. **But the documentation here is candid** — `current-state.md` and `architecture.md` record every defect and near-miss in the project, and that becomes public too |
+| **GitHub Pro**                 | **$4/month, 3,000 min** | ≈130 runs. At the observed rate of ~124/month **this is marginal**, not comfortable                                                                                              |
+| **Pay overage**                | $0.008/min              | ~$8/month for 3,000 total; ~$21 for 200 runs' worth                                                                                                                              |
+| **Cut the cost per run**       | Free, engineering       | **22 of 23 minutes is one job** — see below                                                                                                                                      |
+
+**The structural fix is the last one, and it is specific.** `ci.yml` triggers on `push: [main]` and on `pull_request`, and **`pull_request` fires on every push to an open PR.** That is why one branch cost six full runs on 2026-09-24: five of those were iterations on the same work. **Running the fast job on every push and the heavy job only on `main` — or on a PR marked ready — would make an iteration ~1 billed minute instead of 23.**
+
+**The trade is real and must be stated**: it moves the full gate later, which is the thing `architecture.md` §12 deliberately moved _earlier_ when it put the gate on a branch. **That decision should be revisited rather than quietly reversed.**
+
+**One habit is also worth naming, and it is the agent's rather than the maintainer's.** Of the six runs on that branch, **five failed on the agent's own test mistakes** — a substring label match, a field not refilled, a redirect destination never verified. **That is ~138 minutes, roughly 7% of a month's allowance, spent on avoidable errors.** A single changed end-to-end spec can be run locally in seconds; the suite cannot. **`CLAUDE.md` currently forbids both**, and whether the narrow case should be excepted is a maintainer decision that has not been taken.
+
 **Related**: F-044 records the test environment failing more often than the code; this is that class, at the infrastructure layer rather than the suite. F-045 records what moving every slow test to CI would cost if it bit — **this is that cost arriving.**
 
 ### F-044 — the test environment fails more often than the code does

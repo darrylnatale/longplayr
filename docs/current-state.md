@@ -28,6 +28,22 @@
 >
 > **Filed as F-056.** At **23 billed minutes per run** — 1 for the fast job, **22 for integration and end-to-end** — the budget is roughly 87 runs a month and 99+ were used. Related to **F-045**, which recorded what moving every slow test to CI would cost if it bit. **This is that cost arriving.**
 
+> # ▶️ WHEN CI RETURNS ON 1 OCTOBER — START HERE
+>
+> **Work is paused by decision, not blocked mid-task.** Nothing is half-finished, `main` is clean and verified, and the tree has no uncommitted changes. **Resume with STEP 00 as normal.**
+>
+> **First, in order:**
+>
+> 1. **Confirm minutes actually refreshed** — one run is enough. `gh run list --branch main --limit 1`.
+> 2. **Merge `moderation-policy`** (`ad29689`). One file, `verify` green, render-probed at 200. **It needs the contact address decided first** — it currently says `hello@longplayr.dev-guides.com`, which does not exist. Cloudflare Email Routing forwards it free.
+> 3. **Read F-056 before running many cycles.** The refresh restores the gate; **it does not fix the problem.** At 23 billed minutes a run the budget is ~87 a month and 99+ were used in September. **It will run out again in October on current habits.**
+>
+> **Then the strongest candidate is Phase 6 slice 3** — reporting, the admin queue, statements of reasons and the audit trail. It is **fully unblocked**, and `docs/legal-obligations.md` establishes that two of its parts are **legal obligations rather than product tooling**: DSA Art 16 notice-and-action, and Art 17 telling an author why their content was removed. **Nothing in the product currently tells an author anything.**
+>
+> **No product decision blocks anything.** Ten were taken on 24 September. What remains open is minor: F-001 favourites reordering, F-024 the seed-removal half, F-041 browse filters.
+>
+> **Two things need the maintainer and nobody else**: the contact address above, and a Google Cloud project with OAuth credentials if Google sign-in is wanted — the last item in F-016.
+
 > ### ⚠️ §96's post-merge run failed, and `main` is verified anyway
 >
 > Run `36030000030` came back `failure` with **zero steps and no logs**, on three attempts. **`main` is verified by equivalence**: `e7fd345` — which CI passed **green, 137 end-to-end, zero flaky** — and `4f660bc` share the **identical tree hash `12e5794`**, and the branch sat directly on `main`'s tip. **Nothing untested reached `main`.**
@@ -52,6 +68,21 @@
 > **Two of these enlarge future work rather than describing it.** Avatars create the **first user-owned storage objects**, so the hard-delete cascade must grow — `architecture.md` §15.1 warns of it and §87's orphan test is where it gets proven. And reopening the native client turns **`CLAUDE.md`'s domain-logic rule from advice into an obligation**: the two drifts it already names become debt.
 >
 > **`docs/legal-obligations.md` is new** and discharges §10.4's blocking precondition _as researched, not as cleared_. **Its findings changed the plan**: DSA Art 16 makes reporting a legal obligation rather than product tooling, and **Art 17 — telling an author why their content was removed — was in no slice at all.** Three further obligations apply **today**: terms stating the moderation policy, and two points of contact.
+
+> ### 📄 What the production database actually holds, measured 2026-09-24
+>
+> **Five accounts, and four of them are empty.**
+>
+> | Account                                              | Entries | Ratings | Reviews | Lists |
+> | ---------------------------------------------------- | ------- | ------- | ------- | ----- |
+> | `darryl`                                             | 30      | 2       | 1       | 2     |
+> | `darryl2`, `oguz`, `fb_1786909208`, `cov_1786972656` | 0       | 0       | 0       | 0     |
+>
+> **`darryl` is the only admin**, promoted by hand on 2026-09-24 — `is_admin` has no path in the product by design.
+>
+> **Two of those handles are machine-generated** and look like end-to-end or manual-test leftovers from mid-August. **They hold nothing**, so there is no cleanup value in suspending them — a claim made in conversation on 2026-09-24 that turned out to be wrong when measured, and is corrected here.
+>
+> **The two-rating figure is why Phase 5 slice 2 stays deferred.** `product-spec.md` §8.3 sets a five-rating chart-eligibility threshold per album, so _highest rated this week_ would produce an empty internal chart. **That number has not moved since 13 September.**
 
 > ### 📄 One branch is queued and unmerged
 >
