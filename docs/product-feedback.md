@@ -1638,7 +1638,9 @@ Get your password wrong and **both fields empty**, so you retype your address as
 
 ### F-057 — the documentation is written for the record, and read by an agent
 
-**2026-09-26 · development process, documentation · NEW — MAINTAINER-RAISED**
+**2026-09-26 · development process, documentation · PROMOTED — DECIDED 2026-09-26, IN FLIGHT**
+
+> **Promoted the same day it was filed.** The decision is `architecture.md` §20: `current-state.md` splits at §13, standing sections staying and cycle checkpoints moving to `docs/cycle-log.md`; the blockquote wrapper goes; every long document gains a table of contents. **Nothing is renumbered, rewritten or deleted** — §20.3. **The half of this entry about `CLAUDE.md`'s own length is deliberately not in that scope** and stays open; §20.5 records why, including that it was proposed by the agent that would benefit from it.
 
 **Raised by the maintainer**, who observes that this project is built by an agent under light human direction, that the documents have grown by continuous accretion, and who asks whether their structure and formatting are actually suited to being read by an agent. **Explicitly not a complaint about length** — long is fine if it is legible and navigable.
 
