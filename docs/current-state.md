@@ -16,7 +16,13 @@
 
 **The verification gate moved, and `CLAUDE.md` now carries it. [APPLIED 2026-09-15]** Work happens on a branch and reaches `main` only through a green CI run; STEP F runs `npm run verify` plus targeted suites; **the migration gate moved from STEP I to STEP J**, so the order is **CI green → migration applied → merge**. The decision is `architecture.md` §12; the process is `CLAUDE.md`. **The two no longer disagree.** (§68, §69)
 
-**Verified 2026-09-24 against the repository, the remote, CI and production.** `main` is at **`4f660bc`**, the merge of PR #31; `origin/main` identical. **37 migrations, 0 unapplied** — §96's was applied at STEP J and its triggers confirmed live on production.
+**Verified 2026-09-26 against the repository, the remote, CI and production.** `main` is at **`9e1bf40`**, `origin/main` identical, working tree clean. **37 migrations, 0 unapplied.** Production returns 200 on `/`, `/albums/all` and `/login`. **The last green CI run remains `e7fd345` on 2026-09-24**; every run since has failed on exhausted minutes, `9e1bf40`'s included (`36235116054`). **`main` has therefore not been CI-verified since `e7fd345`** — the five commits after it are documentation only, and each passed `npm run verify` locally. The previous line here read `4f660bc` and 2026-09-24.
+
+> ### 📄 This file was split on 2026-09-26, and is 85% smaller
+>
+> **It was 154,000 tokens** — larger than the context available to read it, so a session read the top and stopped and the rest was write-only. **Every cycle checkpoint now lives in [`docs/cycle-log.md`](./cycle-log.md)**; standing sections §1–§12 stay here. **Nothing was renumbered, rewritten or deleted**, proven by per-section token comparison: 96 sections in, 96 out, zero bodies changed. `architecture.md` §20 and §97 of the log.
+>
+> **§1–§12 below are ~21,000 tokens and have not been checked for staleness.** They were moved untouched by decision, and two stale claims were found elsewhere on the same day, so treat them with suspicion.
 
 > # 🛑 CI IS DEAD UNTIL 1 OCTOBER — READ THIS FIRST
 >
@@ -37,8 +43,9 @@
 > **First, in order:**
 >
 > 1. **Confirm minutes actually refreshed** — one run is enough. `gh run list --branch main --limit 1`.
-> 2. **Merge `moderation-policy`** (`ad29689`). One file, `verify` green, render-probed at 200. **It needs the contact address decided first** — it currently says `hello@longplayr.dev-guides.com`, which does not exist. Cloudflare Email Routing forwards it free.
-> 3. **Read F-056 before running many cycles.** The refresh restores the gate; **it does not fix the problem.** At 23 billed minutes a run the budget is ~87 a month and 99+ were used in September. **It will run out again in October on current habits.**
+> 2. **Merge PR #32, `ci-skip-docs-only`** (`e4f96b7`) **first.** It adds `paths-ignore` for `docs/**` and markdown, so documentation stops costing a 23-minute run — 14 of 40 recent commits were documentation only, and three of the four runs after the last green one were too. **It touches `ci.yml`, so it is not a documentation-only change and needs a real green run.** Merging it first makes every later documentation push free.
+> 3. **Merge `moderation-policy`** (`ad29689`). One file, `verify` green, render-probed at 200. **It needs the contact address decided first** — it currently says `hello@longplayr.dev-guides.com`, which does not exist. Cloudflare Email Routing forwards it free.
+> 4. **Read F-056 before running many cycles.** The refresh restores the gate; **it does not fix the problem.** At 23 billed minutes a run the budget is ~87 a month and 99+ were used in September. **It will run out again in October on current habits.**
 >
 > **Then the strongest candidate is Phase 6 slice 3** — reporting, the admin queue, statements of reasons and the audit trail. It is **fully unblocked**, and `docs/legal-obligations.md` establishes that two of its parts are **legal obligations rather than product tooling**: DSA Art 16 notice-and-action, and Art 17 telling an author why their content was removed. **Nothing in the product currently tells an author anything.**
 >

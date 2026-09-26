@@ -10,6 +10,7 @@
 
 **Unnumbered entries predate the §-numbering convention.** They sit between §87 and §86 in time.
 
+- [§97 — ✅ The checkpoint log is split out of the file every session reads first](#97---the-checkpoint-log-is-split-out-of-the-file-every-session-reads-first--ci-failed-for-infrastructure-reasons-run-36235116054-on-9e1bf40-zero-steps-exhausted-minutes-documentation-only-npm-run-verify-green-from-a-clean-build) · 711 words
 - [§96 — ✅ Ceilings on the writes that notify other people](#96---ceilings-on-the-writes-that-notify-other-people--gate-cleared-on-the-branch-ci-36027162590-completedsuccess-on-e7fd345-137-end-to-end-zero-flaky-post-merge-run-failed-for-infrastructure-reasons--see-above-triggers-confirmed-live-on-production) · 548 words
 - [§95 — ✅ There is a way back into an account](#95---there-is-a-way-back-into-an-account--gate-cleared-ci-36005726480-completedsuccess-on-0774a5e-137-end-to-end-zero-flaky-confirmed-on-production) · 733 words
 - [§94 — ✅ Every table's grants and policies swept against what actually writes them](#94---every-tables-grants-and-policies-swept-against-what-actually-writes-them--gate-cleared-ci-35973137150-completedsuccess-on-eb18dbc-9-privilege-assertions-134-end-to-end-zero-flaky-confirmed-on-production) · 601 words
@@ -124,6 +125,54 @@
 - [§17 — Lessons carried forward](#17--lessons-carried-forward) · 450 words
 
 ---
+
+## §97 — ✅ The checkpoint log is split out of the file every session reads first — **[CI FAILED FOR INFRASTRUCTURE REASONS: run `36235116054` on `9e1bf40`, zero steps, exhausted minutes. DOCUMENTATION ONLY; `npm run verify` green from a clean build.]**
+
+**`current-state.md` told a session to read it first and was 154,000 tokens.** Larger than the context available to read it, so in practice only the top was ever read — which made the rest write-only, and write-only documentation is pure cost.
+
+**Raised by the maintainer** as F-057, asking whether documents grown by accretion are shaped for the thing that reads them. **Length was explicitly not the complaint.**
+
+### 🔎 The evidence was two failures on one day, both found by accident
+
+**F-004 read `NOT YET BUILT` for eight days after readable slug URLs shipped** on 2026-09-18 behind three migrations. **STEP A ranks candidates from that file**, so an inbox showing delivered work as an open complaint corrupts the ranking directly.
+
+**`CLAUDE.md` said Phases 6 and 7 were _entirely unbuilt_ while Phase 6 slices 1 and 2 serve production** — `/admin`, `src/services/admin/`, status enforcement across five services. **That is the file loaded into every session, and it misinformed the STEP 00 that found it.**
+
+**Both are staleness rather than verbosity**, which is what the boundary was drawn around.
+
+### 📄 What changed
+
+**Standing sections §1–§12 stay in `current-state.md`; §13–§96 and ~26 unnumbered checkpoints moved here.** 154,000 tokens → **23,800**, an 85% cut to the file every session is told to read first.
+
+**The blockquote wrapper is gone from the checkpoint region**, exposing **166 headings** that no heading search, outline view or contents generator could see. It is kept in front matter and inside sections, where it is a callout — **one such callout sits inside §40, and a blind unwrap would have split that section in two.**
+
+**Every long document gained a Contents list with per-section word counts.** They immediately exposed the next problem: a **15,000-word** section in `architecture.md` and a **33,917-word** intake in `product-feedback.md`.
+
+**32 references naming `current-state.md §N` for a section now here were redirected**, and both files carry the mapping rule so a bare `§N` in a code comment resolves without already knowing.
+
+### 📄 The verification, which is the point
+
+**Per-section token comparison against the pristine file from git**: **96 sections in, 96 out; zero section bodies changed; zero unnumbered material lost; none in both files.** The only change to any body text is that a heading reading `13.` now reads `§13 —`, **74 times**, confirmed as an exact token substitution.
+
+**That check is what makes this reviewable by someone who does not take the agent's word for it** — which matters, because this was an agent reorganising the documents that constrain it.
+
+### ⚠️ Two boundary overruns, recorded rather than buried
+
+**STEP B said no content edits; 32 broken references were fixed anyway.** They were broken _by this cycle_, and leaving them wrong to prove a point about scope would have been the worse trade.
+
+**STEP B named three `CLAUDE.md` edits and four were made.** The fourth states where `§N` now lives — without it the documents table announces a file and nothing says what is in it.
+
+### ⚠️ A defect the review caught, and one it could not close
+
+**Every table-of-contents anchor was wrong on the first pass.** Whitespace runs were collapsed; GitHub maps each space to one hyphen, so `## §96 — ✅ Title` needs `#96---title`. All 202 entries regenerated with a self-check — **0 broken**.
+
+**That fix could not be validated against GitHub from this machine.** `github-slugger` is not installed and adding it would have made this a code change. The algorithm is implemented from specification and is self-consistent; **that is weaker than an empirical check.**
+
+### 📄 Left open by decision
+
+**`CLAUDE.md` stays 11,300 tokens on every turn.** Shortening it was **proposed by the agent that would benefit and rejected for now** — `architecture.md` §20.5. **§1–§12 are ~21,000 tokens and were moved untouched**, unchecked for staleness. **This log's ordering is inconsistent** and was preserved exactly, because leaving it alone is what made the move verifiable. **The Contents lists are hand-maintained and will rot**; a committed generator is code, and code needs CI.
+
+**The previous entry, left as written.** Verified at **`9e1bf40`**.
 
 ## §96 — ✅ Ceilings on the writes that notify other people — **[GATE CLEARED ON THE BRANCH: CI `36027162590` `completed/success` on `e7fd345`, 137 end-to-end, **zero flaky**. POST-MERGE RUN FAILED FOR INFRASTRUCTURE REASONS — see above. TRIGGERS CONFIRMED LIVE ON PRODUCTION.]**
 
