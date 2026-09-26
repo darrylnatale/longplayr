@@ -1632,6 +1632,41 @@ Get your password wrong and **both fields empty**, so you retype your address as
 
 **Fifteen are NEEDS A DECISION, and four of those are explicitly ask-don't-infer** (F-003, F-011, F-029, and F-024's item 7). **That is the pass's main finding**: the open backlog is gated far more by unanswered product questions than by engineering effort.
 
+### F-057 — the documentation is written for the record, and read by an agent
+
+**2026-09-26 · development process, documentation · NEW — MAINTAINER-RAISED**
+
+**Raised by the maintainer**, who observes that this project is built by an agent under light human direction, that the documents have grown by continuous accretion, and who asks whether their structure and formatting are actually suited to being read by an agent. **Explicitly not a complaint about length** — long is fine if it is legible and navigable.
+
+**Measured 2026-09-26.** The corpus is **269,567 words, roughly 360,000 tokens** across 16 files, which exceeds any single context window.
+
+| File                       | Words   | ~Tokens | Loaded            |
+| -------------------------- | ------- | ------- | ----------------- |
+| `CLAUDE.md`                | 8,467   | 11,300  | **every session** |
+| `docs/current-state.md`    | 115,533 | 154,000 | on demand         |
+| `docs/architecture.md`     | 44,312  | 59,100  | on demand         |
+| `docs/product-feedback.md` | 35,545  | 47,400  | on demand         |
+| `docs/product-spec.md`     | 28,477  | 38,000  | on demand         |
+| `docs/development-plan.md` | 8,989   | 12,000  | on demand         |
+| `docs/data-model.md`       | 9,259   | 12,300  | on demand         |
+| remaining nine             | 18,985  | 25,300  | on demand         |
+
+**Five observations, each measured rather than asserted.**
+
+**1. `current-state.md` is told to be read first and cannot be.** At **154,000 tokens** it is larger than the context available to read it, so in practice a session reads the top and nothing else — which makes the rest write-only, and write-only documentation is pure cost.
+
+**2. Its first 1,683 lines contain exactly one heading.** That is **33,516 words — around 45,000 tokens — of unnavigable prose** before the first `##`, most of it nested inside blockquotes. There is nothing for a `grep` for a heading to find and nothing for a targeted read to anchor on.
+
+**3. No document has a table of contents**, and section sizes defeat section-level reading anyway. The largest single `##` section is **11,415 words in `architecture.md`** and **33,111 in `product-feedback.md`**. Reading "just the relevant section" can still cost 15,000 tokens.
+
+**4. `CLAUDE.md` spends a meaningful share of every session on its own history.** It carries **15 amendment markers** and **6 passages describing what it used to say**. The distinction that matters is between **rationale**, which stops an agent helpfully reverting a decision and is load-bearing, and **history of the wording**, which serves the maintainer's audit trail and is paid for on every turn by every session.
+
+**5. The append-only checkpoint model is at war with the file's stated purpose.** `current-state.md` says it records _where we are right now_; it is structurally a chronological log of 86 numbered checkpoints. Both are useful. They are not the same document, and `CLAUDE.md`'s own current-state paragraph was **fifteen pull requests out of date** at one point, which is the same duplication failing.
+
+**What this entry does not do.** It proposes nothing and decides nothing — per this file's standing rules it is an observation. **A restructuring of the governing documents is a material change** and belongs to a deliberate cycle with the maintainer deciding the shape. The obvious hazard to weigh there: **the verbosity is partly deliberate and partly effective.** Dense rationale demonstrably stops an agent reverting hard-won decisions, and several passages exist because exactly that happened. **Cutting for brevity could cost more than it saves**, and any proposal should say which parts are load-bearing and why.
+
+---
+
 ---
 
 ## 6. Triage
