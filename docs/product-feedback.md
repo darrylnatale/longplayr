@@ -162,7 +162,9 @@ Flagged for triage as the clearest overlap with recorded direction in this file.
 
 ### F-004 — album and artist URLs should be slugs, not MBIDs
 
-**2026-08-30 · album page, artist page · PROMOTED — DECIDED 2026-09-16, NOT YET BUILT**
+**2026-08-30 · album page, artist page · CLOSED — DELIVERED 2026-09-18**
+
+> **Status corrected at STEP 00 on 2026-09-26.** This read _PROMOTED — NOT YET BUILT_ for eight days after it shipped. Both `/albums/[slug]` and `/artists/[slug]` are live, backed by `20260918190000_bare_slugs_with_counter.sql` and two follow-on migrations carrying the slug into search credits and the feed. The two collision defects the cycle hit are `current-state.md` §88 and §89. **An inbox showing delivered work as open corrupts STEP A's ranking**, which is why this is corrected rather than carried.
 
 **Readable slugs, and a clean switch: identifier URLs stop resolving.** The timing is the argument — four profiles and nothing meaningfully shared, so stranding links costs about as little as it ever will. **Three constraints go to its cycle**: slug collisions must resolve deterministically, an upstream rename changes a slug's source, and the MBID stays canonical identity — a slug is a label. Destination: `product-spec.md` §6.
 
@@ -196,7 +198,9 @@ Whether a catalogue-wide sort reuses the six decided collection sort modes or ne
 
 ### F-006 — sort an artist's discography by more than date
 
-**2026-08-30 · artist page · NEW**
+**2026-08-30 · artist page · TRIAGED 2026-09-26 — STILL OPEN, BUT THE MACHINERY NOW EXISTS**
+
+> **Re-triaged at STEP 00 on 2026-09-26.** The ask — sort by something other than date — is **unmet**: `DiscographySort` in `src/services/catalogue/queries.ts` offers `newest | oldest`, which is two directions of one field. **But a sort control, a URL parameter, a tested pure comparator and a rendering component all now exist on the artist page**, where none did when this was filed. The entry is unchanged in substance and materially cheaper to build.
 
 On an artist page the discography can only be read oldest-first or newest-first. It should be sortable by other metrics too — popularity, for example.
 
