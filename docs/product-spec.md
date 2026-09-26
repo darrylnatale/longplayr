@@ -6,6 +6,21 @@ Notation: **[DECIDED]** = explicitly chosen. **[INFERRED]** = follows necessaril
 
 ---
 
+## Contents
+
+- [1. What longplayr is](#1-what-longplayr-is) · 303 words
+- [2. Non-goals](#2-non-goals) · 123 words
+- [3. The core loop](#3-the-core-loop) · 199 words
+- [4. Decisions of record](#4-decisions-of-record) · 1,427 words
+- [5. Product areas](#5-product-areas) · 658 words
+- [6. Surface definitions](#6-surface-definitions) · 9,507 words
+- [7. Explicitly deferred](#7-explicitly-deferred) · 662 words
+- [8. Open decisions](#8-open-decisions) · 10,727 words
+- [9. Consistency check](#9-consistency-check) · 197 words
+- [10. Recorded product direction — decided, not implemented](#10-recorded-product-direction--decided-not-implemented) · 4,605 words
+
+---
+
 ## 1. What longplayr is
 
 longplayr is a place to keep a record of the albums you've listened to, say what you think of them, and see what the people you follow are listening to.

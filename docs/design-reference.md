@@ -6,6 +6,23 @@
 
 ---
 
+## Contents
+
+- [1. The framing that governs everything below](#1-the-framing-that-governs-everything-below) · 100 words
+- [2. What was analysed](#2-what-was-analysed) · 152 words
+- [3. Measured observations](#3-measured-observations) · 674 words
+- [4. Borrow](#4-borrow) · 245 words
+- [5. Adapt](#5-adapt) · 446 words
+- [6. Where we design from scratch](#6-where-we-design-from-scratch) · 307 words
+- [7. Avoid — including the exact palette](#7-avoid--including-the-exact-palette) · 152 words
+- [8. Visual identity direction](#8-visual-identity-direction) · 116 words
+- [9. Known gap](#9-known-gap) · 106 words
+- [10. Verification approach for implementation](#10-verification-approach-for-implementation) · 65 words
+- [11. Implementation decisions derived from the reference](#11-implementation-decisions-derived-from-the-reference) · 3,582 words
+- [12. Surfaces that recorded direction will reopen](#12-surfaces-that-recorded-direction-will-reopen) · 510 words
+
+---
+
 ## 1. The framing that governs everything below
 
 > **Letterboxd is a diary. longplayr is a collection.**
