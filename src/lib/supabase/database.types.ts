@@ -600,6 +600,77 @@ export type Database = {
           },
         ]
       }
+      moderation_actions: {
+        Row: {
+          acknowledged_at: string | null
+          actor_id: string
+          created_at: string
+          ground: string
+          id: string
+          kind: Database["public"]["Enums"]["moderation_action_kind"]
+          list_id: string | null
+          review_id: string | null
+          statement: string | null
+          subject_label: string
+          subject_user_id: string
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          actor_id: string
+          created_at?: string
+          ground: string
+          id?: string
+          kind: Database["public"]["Enums"]["moderation_action_kind"]
+          list_id?: string | null
+          review_id?: string | null
+          statement?: string | null
+          subject_label: string
+          subject_user_id: string
+        }
+        Update: {
+          acknowledged_at?: string | null
+          actor_id?: string
+          created_at?: string
+          ground?: string
+          id?: string
+          kind?: Database["public"]["Enums"]["moderation_action_kind"]
+          list_id?: string | null
+          review_id?: string | null
+          statement?: string | null
+          subject_label?: string
+          subject_user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "moderation_actions_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "moderation_actions_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "lists"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "moderation_actions_review_id_fkey"
+            columns: ["review_id"]
+            isOneToOne: false
+            referencedRelation: "reviews"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "moderation_actions_subject_user_id_fkey"
+            columns: ["subject_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notifications: {
         Row: {
           actor_id: string
@@ -1059,6 +1130,36 @@ export type Database = {
           type: Database["public"]["Enums"]["activity_type"]
         }[]
       }
+      moderate_account: {
+        Args: {
+          p_actor_id: string
+          p_ground: string
+          p_statement: string
+          p_status: Database["public"]["Enums"]["user_status"]
+          p_target_id: string
+        }
+        Returns: string
+      }
+      moderate_list: {
+        Args: {
+          p_actor_id: string
+          p_ground: string
+          p_list_id: string
+          p_statement: string
+          p_status: Database["public"]["Enums"]["content_status"]
+        }
+        Returns: string
+      }
+      moderate_review: {
+        Args: {
+          p_actor_id: string
+          p_ground: string
+          p_review_id: string
+          p_statement: string
+          p_status: Database["public"]["Enums"]["content_status"]
+        }
+        Returns: string
+      }
       refresh_popular_this_week: { Args: never; Returns: number }
       remove_list_item: {
         Args: { p_album_id: string; p_list_id: string }
@@ -1132,6 +1233,11 @@ export type Database = {
         | "fetch_tracklist"
         | "discover_curated_artist"
       job_status: "pending" | "running" | "succeeded" | "failed"
+      moderation_action_kind:
+        | "content_removed"
+        | "content_restored"
+        | "account_suspended"
+        | "account_reinstated"
       notification_type: "followed" | "review_liked" | "list_liked"
       tracklist_status: "pending" | "found" | "absent" | "failed"
       user_status: "active" | "suspended" | "banned"
@@ -1297,6 +1403,12 @@ export const Constants = {
         "discover_curated_artist",
       ],
       job_status: ["pending", "running", "succeeded", "failed"],
+      moderation_action_kind: [
+        "content_removed",
+        "content_restored",
+        "account_suspended",
+        "account_reinstated",
+      ],
       notification_type: ["followed", "review_liked", "list_liked"],
       tracklist_status: ["pending", "found", "absent", "failed"],
       user_status: ["active", "suspended", "banned"],

@@ -4,8 +4,10 @@ import Link from 'next/link';
 
 import { Container } from '@/components/Container';
 import { MobileTabBar } from '@/components/MobileTabBar';
+import { NoticeBanner } from '@/components/NoticeBanner';
 import { unreadBadgeLabel } from '@/components/NotificationItem';
 import { getCurrentProfile, getCurrentUser } from '@/services/profiles';
+import { unacknowledgedStatementCount } from '@/services/moderation';
 import { unreadNotificationCount } from '@/services/social/notifications';
 
 import { signOut } from './(auth)/actions';
@@ -172,12 +174,20 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
   // rather than happening and returning zero.
   const unread = profile ? await unreadNotificationCount() : 0;
 
+  // **A second, separate count, and not added to the first.** `unread` leads to
+  // `/notifications`; a statement of reasons leads to `/notices`, and
+  // `architecture.md` §16.10 keeps the two records apart because one is
+  // glanceable and the other is a retained legal notice. Signed-out visitors
+  // run neither query.
+  const notices = profile ? await unacknowledgedStatementCount() : 0;
+
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} ${newsreader.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col font-sans">
+        <NoticeBanner count={notices} />
         <SiteHeader unread={unread} />
         {/*
          * Width is no longer imposed here. Each page declares its own through

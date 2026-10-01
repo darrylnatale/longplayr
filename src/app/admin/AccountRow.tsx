@@ -19,6 +19,9 @@ import { moderateAccount } from './actions';
 const BUTTON =
   'rounded-sm border border-border px-3 py-1.5 text-xs font-medium text-text transition-colors hover:border-accent disabled:cursor-not-allowed disabled:opacity-50';
 
+const FIELD =
+  'mt-1 block w-full rounded-sm border border-border bg-surface px-2 py-1.5 text-sm text-text placeholder:text-text-muted focus:border-accent focus:outline-none';
+
 const DESTRUCTIVE =
   'rounded-sm border border-danger/50 bg-danger/10 px-3 py-1.5 text-xs font-medium text-danger-text transition-colors hover:bg-danger/20 disabled:cursor-not-allowed disabled:opacity-50';
 
@@ -54,13 +57,57 @@ export function AccountRow({ account }: { account: ModeratableAccount }) {
        * rather than a disabled one. The service refuses both regardless — this
        * only keeps the surface honest about what it offers.
        */}
-      {!account.isAdmin && (
-        <form action={formAction} className="flex items-center gap-2">
-          <input type="hidden" name="userId" value={account.id} />
-          <input type="hidden" name="status" value={active ? 'suspended' : 'active'} />
-          <Submit label={active ? 'Suspend' : 'Reinstate'} destructive={active} />
-        </form>
-      )}
+      {/*
+       * **Suspending now asks why, and reinstating still does not.** The person
+       * is told what this says — DSA Art 17, `architecture.md` §16.10 — so the
+       * field is required rather than optional, and the database refuses a
+       * restriction without it whatever this form sends.
+       *
+       * **The disclosure is the point, not decoration.** The earlier version was
+       * a bare button, which is right for a reversible action but wrong for one
+       * that writes a statement somebody reads. Reinstating keeps the bare
+       * button, because it owes nothing and undoes rather than does.
+       */}
+      {!account.isAdmin &&
+        (active ? (
+          <details className="w-full">
+            <summary className="cursor-pointer text-xs font-medium text-danger-text">
+              Suspend…
+            </summary>
+            <form action={formAction} className="mt-3 flex flex-col gap-2">
+              <input type="hidden" name="userId" value={account.id} />
+              <input type="hidden" name="status" value="suspended" />
+              <label className="text-xs text-text-muted">
+                Ground
+                <input
+                  name="ground"
+                  required
+                  placeholder="what rule this breaches"
+                  className={FIELD}
+                />
+              </label>
+              <label className="text-xs text-text-muted">
+                What they are told
+                <textarea
+                  name="statement"
+                  required
+                  rows={3}
+                  placeholder="They read this. Say what happened and why."
+                  className={FIELD}
+                />
+              </label>
+              <span>
+                <Submit label="Suspend" destructive />
+              </span>
+            </form>
+          </details>
+        ) : (
+          <form action={formAction} className="flex items-center gap-2">
+            <input type="hidden" name="userId" value={account.id} />
+            <input type="hidden" name="status" value="active" />
+            <Submit label="Reinstate" />
+          </form>
+        ))}
 
       {state.error && (
         <span role="alert" className="w-full text-xs text-danger-text">
