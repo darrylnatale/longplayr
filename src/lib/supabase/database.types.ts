@@ -609,6 +609,7 @@ export type Database = {
           id: string
           kind: Database["public"]["Enums"]["moderation_action_kind"]
           list_id: string | null
+          report_id: string | null
           review_id: string | null
           statement: string | null
           subject_label: string
@@ -622,6 +623,7 @@ export type Database = {
           id?: string
           kind: Database["public"]["Enums"]["moderation_action_kind"]
           list_id?: string | null
+          report_id?: string | null
           review_id?: string | null
           statement?: string | null
           subject_label: string
@@ -635,6 +637,7 @@ export type Database = {
           id?: string
           kind?: Database["public"]["Enums"]["moderation_action_kind"]
           list_id?: string | null
+          report_id?: string | null
           review_id?: string | null
           statement?: string | null
           subject_label?: string
@@ -653,6 +656,13 @@ export type Database = {
             columns: ["list_id"]
             isOneToOne: false
             referencedRelation: "lists"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "moderation_actions_report_id_fkey"
+            columns: ["report_id"]
+            isOneToOne: false
+            referencedRelation: "reports"
             referencedColumns: ["id"]
           },
           {
@@ -872,6 +882,74 @@ export type Database = {
             columns: ["collection_entry_id"]
             isOneToOne: false
             referencedRelation: "collection_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reports: {
+        Row: {
+          created_at: string
+          detail: string | null
+          id: string
+          list_id: string | null
+          reason: Database["public"]["Enums"]["report_reason"]
+          reporter_id: string
+          review_id: string | null
+          settled_at: string | null
+          state: Database["public"]["Enums"]["report_state"]
+          subject_user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          detail?: string | null
+          id?: string
+          list_id?: string | null
+          reason: Database["public"]["Enums"]["report_reason"]
+          reporter_id: string
+          review_id?: string | null
+          settled_at?: string | null
+          state?: Database["public"]["Enums"]["report_state"]
+          subject_user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          detail?: string | null
+          id?: string
+          list_id?: string | null
+          reason?: Database["public"]["Enums"]["report_reason"]
+          reporter_id?: string
+          review_id?: string | null
+          settled_at?: string | null
+          state?: Database["public"]["Enums"]["report_state"]
+          subject_user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reports_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "lists"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reports_reporter_id_fkey"
+            columns: ["reporter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reports_review_id_fkey"
+            columns: ["review_id"]
+            isOneToOne: false
+            referencedRelation: "reviews"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reports_subject_user_id_fkey"
+            columns: ["subject_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1239,6 +1317,13 @@ export type Database = {
         | "account_suspended"
         | "account_reinstated"
       notification_type: "followed" | "review_liked" | "list_liked"
+      report_reason:
+        | "spam"
+        | "harassment"
+        | "sexual_or_violent"
+        | "illegal"
+        | "other"
+      report_state: "open" | "resolved" | "dismissed"
       tracklist_status: "pending" | "found" | "absent" | "failed"
       user_status: "active" | "suspended" | "banned"
     }
@@ -1410,6 +1495,14 @@ export const Constants = {
         "account_reinstated",
       ],
       notification_type: ["followed", "review_liked", "list_liked"],
+      report_reason: [
+        "spam",
+        "harassment",
+        "sexual_or_violent",
+        "illegal",
+        "other",
+      ],
+      report_state: ["open", "resolved", "dismissed"],
       tracklist_status: ["pending", "found", "absent", "failed"],
       user_status: ["active", "suspended", "banned"],
     },
