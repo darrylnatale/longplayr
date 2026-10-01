@@ -2235,6 +2235,18 @@ Also excluded: RLS policies of any kind; `auth`, `storage` and other non-`public
 
 **It does not block the slice.** The cascade is the privacy-safe default, and retention can only ever be added by a later deliberate decision — the reverse would be a silent widening.
 
+### 16.10c-i The content foreign keys do not cascade, and that is the opposite of the `notifications` pattern **[DECIDED 2026-10-01, found at STEP D]**
+
+**§16.10c settles what happens when an account is deleted. It says nothing about the content**, and the obvious implementation would have been wrong.
+
+**`notifications` cascades its subject columns, deliberately** — _"the whole undo mechanism"_. Copying that here would make `review_id` cascade on delete, and **an author can hard-delete their own review**; `src/services/collection/reviews.ts` states that author deletion is a hard delete while `status = 'removed'` is a moderation state. **So the author deleting the content would destroy the statement explaining why it was removed** — the same failure §16.10 rejected, arriving through a different door.
+
+**Therefore: `on delete set null` on the content foreign keys, plus a short text snapshot of what was acted on.** The statement survives its subject and stays legible.
+
+**This is a deliberate departure from the pattern the rest of the schema uses**, and it is recorded as one so it is not later "corrected" into consistency. The reason is the same one that separated these tables in the first place: **cascade-as-undo is right for a notification and wrong for a retained record.**
+
+**It does not weaken §16.10c.** Account deletion still cascades completely, because that is a non-negotiable. This governs only the content, whose deletion is the author's ordinary act rather than an erasure request.
+
 ### 16.10d A status change and its statement are one database statement, because two client calls cannot be **[DECIDED 2026-10-01]**
 
 **Found at STEP D by reading `src/services/admin/index.ts`.** Every admin write there is a single `update` through the service-role client, and `supabase-js` has no multi-statement transaction.

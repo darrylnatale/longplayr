@@ -17,9 +17,23 @@ export async function moderateAccount(
   _prevState: ModerationFormState,
   formData: FormData,
 ): Promise<ModerationFormState> {
+  const status = String(formData.get('status') ?? '') as UserStatus;
+
+  /*
+   * **Reasons are only read for a restriction.** Reinstating owes no statement
+   * — `moderation_actions`' check constraint says so — and the service supplies
+   * its own wording for that case. Passing empty strings here would turn a
+   * valid reinstatement into a `statement_required` refusal.
+   */
   const result = await setAccountStatus(
     String(formData.get('userId') ?? ''),
-    String(formData.get('status') ?? '') as UserStatus,
+    status,
+    status === 'active'
+      ? undefined
+      : {
+          ground: String(formData.get('ground') ?? ''),
+          statement: String(formData.get('statement') ?? ''),
+        },
   );
 
   if (!result.ok) return { error: result.message };
