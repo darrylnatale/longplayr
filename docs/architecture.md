@@ -8,6 +8,33 @@ Notation: **[DECIDED]** = explicitly chosen. **[INFERRED]** = follows necessaril
 
 ---
 
+## Contents
+
+- [1. System shape](#1-system-shape) · 129 words
+- [2. Frontend](#2-frontend) · 240 words
+- [3. Backend](#3-backend) · 146 words
+- [4. Code organisation](#4-code-organisation) · 177 words
+- [5. Database](#5-database) · 182 words
+- [6. Authentication](#6-authentication) · 1,895 words
+- [7. Catalogue and ingestion](#7-catalogue-and-ingestion) · 11,415 words
+- [7a. Upstream payload capture](#7a-upstream-payload-capture) · 465 words
+- [8. Popularity](#8-popularity) · 1,134 words
+- [9. Caching](#9-caching) · 164 words
+- [10. Search](#10-search) · 3,017 words
+- [11. Environments and deployment](#11-environments-and-deployment) · 878 words
+- [12. Testing](#12-testing) · 7,191 words
+- [13. Observability](#13-observability) · 88 words
+- [14. Security](#14-security) · 1,773 words
+- [15. Privacy](#15-privacy) · 767 words
+- [16. Data access patterns](#16-data-access-patterns) · 10,982 words
+- [17. Scalability — what breaks first, and when](#17-scalability--what-breaks-first-and-when) · 266 words
+- [17a. A temporary operator surface for the ingestion queue **[DECIDED 2026-09-13]**](#17a-a-temporary-operator-surface-for-the-ingestion-queue-decided-2026-09-13) · 1,407 words
+- [18. Verification required before implementation](#18-verification-required-before-implementation) · 558 words
+- [19. Long-term architectural constraints](#19-long-term-architectural-constraints) · 1,350 words
+- [20. Documentation structure — written for the record, read by an agent **[DECIDED 2026-09-26]**](#20-documentation-structure--written-for-the-record-read-by-an-agent-decided-2026-09-26) · 1,024 words
+
+---
+
 ## 1. System shape
 
 ```
@@ -532,7 +559,7 @@ Also required: the deadline check precedes the claim, and moving it after must f
 
 **Decision: a third sweep, `enqueueFailedExpansions`, and the daily cron calls all three sweeps before it drains.**
 
-**What was broken.** A terminally failed `discover_curated_artist` job reads as `settled` through `attemptStateFor`, so the artist page shows **no status line** and nothing ever retries. **Radiohead spent three attempts inside 47 minutes against MusicBrainz load shedding** — `remaining=13/15`, so nowhere near our own rate — and was permanently capped at three albums while presenting a truncated discography as complete. **`current-state.md` §59 recorded permanent settlement as approved behaviour; that approval was withdrawn on 2026-09-12** (`product-feedback.md` F-034). A transient upstream error is not evidence that an artist has no discography, and it contradicts the completion-oriented depth principle in `CLAUDE.md` and `product-spec.md` §8.9.
+**What was broken.** A terminally failed `discover_curated_artist` job reads as `settled` through `attemptStateFor`, so the artist page shows **no status line** and nothing ever retries. **Radiohead spent three attempts inside 47 minutes against MusicBrainz load shedding** — `remaining=13/15`, so nowhere near our own rate — and was permanently capped at three albums while presenting a truncated discography as complete. **`cycle-log.md` §59 recorded permanent settlement as approved behaviour; that approval was withdrawn on 2026-09-12** (`product-feedback.md` F-034). A transient upstream error is not evidence that an artist has no discography, and it contradicts the completion-oriented depth principle in `CLAUDE.md` and `product-spec.md` §8.9.
 
 **The bound is a cooling-off period, and an attempt cap was ruled out rather than merely not chosen.** **Any hard cap reintroduces permanent exclusion** — a cap of nine simply postpones it by three cycles — which is the behaviour that was declared a defect. **Only a cooling-off period never permanently excludes.** A failed expansion becomes re-queueable **24 hours** after its last failure: it matches the cron's own cadence, so a transient outage is retried the next night rather than in a week, and the cost for a genuinely unfixable artist is **three MusicBrainz requests a night against a daily budget of 86,400.** There is deliberately **no ceiling on total attempts over time.**
 
@@ -629,7 +656,7 @@ The final state on success is identical, and the delete's predicate does not dep
 
 **A second effect, found after the decision and worth stating because it was not the reason for it.** `drainJobs` runs `reclaimStaleJobs` before it claims anything, and that reclaim **only fires when a drain starts**. With the artist page gated on `start`, a job killed mid-run and left `running` was recoverable only by another artist's first view or the daily cron. **Measured 2026-09-12: one `discover_curated_artist` row had been `running` and untouched for sixteen hours** — the 90-minute threshold had long passed and nothing had run a drain to apply it. Its artist's state reads `outstanding`, so under this decision a later view of that page recovers it. **So this change unsticks stranded rows as well as starved ones.**
 
-**What it does not fix, and that is now a defect rather than approved behaviour. [2026-09-12]** A terminally failed expansion reads as `settled`, so this decision deliberately excludes it — `expansion !== 'settled'` cannot reach it. **Radiohead exhausted three attempts inside 47 minutes against MusicBrainz load shedding and is permanently capped at three albums, with no status line to say so.** `current-state.md` §59 recorded permanent settlement as approved; **that approval is withdrawn — see `product-feedback.md` F-034.** The repair is assigned to the next cycle as a **sweep**, matching `enqueueMissingArtwork`, `enqueueMissingTracklists` and `enqueueMissingPayloads` — of which there is no expansion equivalent, which is exactly why artwork exhausted by a transient error is recoverable and an expansion is not. **A sweep rather than retry-on-view keeps the unauthenticated page-view trigger out of it and leaves the ratified once-per-artist guarantee intact.** `settled` therefore keeps a single meaning in this decision on purpose.
+**What it does not fix, and that is now a defect rather than approved behaviour. [2026-09-12]** A terminally failed expansion reads as `settled`, so this decision deliberately excludes it — `expansion !== 'settled'` cannot reach it. **Radiohead exhausted three attempts inside 47 minutes against MusicBrainz load shedding and is permanently capped at three albums, with no status line to say so.** `cycle-log.md` §59 recorded permanent settlement as approved; **that approval is withdrawn — see `product-feedback.md` F-034.** The repair is assigned to the next cycle as a **sweep**, matching `enqueueMissingArtwork`, `enqueueMissingTracklists` and `enqueueMissingPayloads` — of which there is no expansion equivalent, which is exactly why artwork exhausted by a transient error is recoverable and an expansion is not. **A sweep rather than retry-on-view keeps the unauthenticated page-view trigger out of it and leaves the ratified once-per-artist guarantee intact.** `settled` therefore keeps a single meaning in this decision on purpose.
 
 **A second candidate mechanism is unresolved and this does not address it.** Neither route sets `maxDuration`, so the `after()` drain runs under the platform default — already `[OPEN]` above. A large expansion pages at 100 release groups per request through the one-per-second limiter and then inserts sequentially; if that exceeds the ceiling the job is killed mid-run and left `running` until the 90-minute reclaim. **Whether that occurred was not established, and if it is the real cause this decision will not fix it** — which is itself the test.
 
@@ -1024,7 +1051,7 @@ _Why this._ The main thing environments buy is **rehearsing migrations before th
 
 ### 11.1 The pre-push migration check warns truthfully, and its reach has shrunk **[DECIDED 2026-09-15]**
 
-**`scripts/check-migrations-deployed.mjs` guards a failure that has happened twice** — code deployed ahead of its migration, which on 2026-09-04 took every profile page down for every visitor (`current-state.md` §42, §46). It refuses a push when the deployed database is behind.
+**`scripts/check-migrations-deployed.mjs` guards a failure that has happened twice** — code deployed ahead of its migration, which on 2026-09-04 took every profile page down for every visitor (`cycle-log.md` §42, §46). It refuses a push when the deployed database is behind.
 
 **Its stated premise stopped being true when work moved to a branch.** The check asserts _"Vercel deploys on push, so pushing is deploying"_. That holds for `main` and is **false for a branch**, which is now where all work happens — and the gate change of 2026-09-15 moved migration application from STEP I to **STEP J**, after a green CI run and before the merge.
 
@@ -1443,7 +1470,7 @@ A mechanical scan for `.click()` followed within three non-blank lines by `page.
 
 **The further argument is that the host is the maintainer's working machine.** Playwright makes it unusable while it runs, and they have raised it twice. A cost paid in their working day, for evidence CI produces anyway on a clean runner, is not a trade worth defending.
 
-**What is given up, and it is real.** A broken query, RLS policy or page is now found in roughly fifteen minutes by CI rather than two minutes locally, and finding it there **reopens the cycle**. That happened once — `current-state.md` §79 — and cost one extra CI run and a separate commit. **It will happen again, and that is the accepted price.**
+**What is given up, and it is real.** A broken query, RLS policy or page is now found in roughly fifteen minutes by CI rather than two minutes locally, and finding it there **reopens the cycle**. That happened once — `cycle-log.md` §79 — and cost one extra CI run and a separate commit. **It will happen again, and that is the accepted price.**
 
 **A render probe is the replacement, not nothing.** Starting the dev server and fetching the changed page with `curl` costs a fraction of a browser suite. **It has repeatedly produced better evidence than Playwright did**: §80's two defects — a 500 where a 404 belonged, and a sort control ordering by invisible data — were both found that way, and neither would have been caught by any assertion that existed. §76 and §78 were verified the same way.
 
@@ -1954,7 +1981,7 @@ Hard delete, per `CLAUDE.md`. Profile → lists → items cascade downward. **Al
 
 ### 16.6 List activity — creation only, and one feed **[DECIDED and IMPLEMENTED 2026-09-05]**
 
-**Shipped in `972b709` and deployed to staging.** The decision below was recorded before implementation and is unchanged by it; only this marker moved. **CI was still running when it was updated** — see `current-state.md` §52.
+**Shipped in `972b709` and deployed to staging.** The decision below was recorded before implementation and is unchanged by it; only this marker moved. **CI was still running when it was updated** — see `cycle-log.md` §52.
 
 **Phase 4 slice 3 emits a feed event when a list is created, and for nothing else.** The four other list mutations — editing title/description/ranked, adding an album, removing an album, reordering — write no activity.
 
@@ -2336,3 +2363,76 @@ What is new is the reason it matters. §4 justified it for testability; the poss
 **But the identifiers are no longer being discarded.** `inc=recordings` returns them, and §7a keeps the response verbatim, so a stored release payload carries `$.media[*].tracks[*].recording.id`. **Verified against staging on 2026-08-23.** Adding a `recording_mbid` column later is therefore a **local reshape of stored data**, not a re-fetch of the catalogue — provided the payload backfill has run. This remains an **open decision**, not a constraint (`data-model.md` §11.10); what changed is that deferring it is now cheap.
 
 **What this constraint does not do:** it does not make tracks social objects, does not reverse _"Not track-level"_, and does not decide how completion would ever be calculated.
+
+---
+
+## 20. Documentation structure — written for the record, read by an agent **[DECIDED 2026-09-26]**
+
+**Raised by the maintainer** (`product-feedback.md` F-057), who builds this project through an agent under light direction and asked whether the documents are shaped for the thing that reads them. **Length was explicitly not the complaint** — long is fine if it is navigable.
+
+### 20.1 What was measured
+
+**2026-09-26.** The corpus is **269,567 words, roughly 360,000 tokens, across 16 files** — more than fits in one context window.
+
+| File                       | ~Tokens | Read              |
+| -------------------------- | ------- | ----------------- |
+| `CLAUDE.md`                | 11,300  | **every session** |
+| `docs/current-state.md`    | 154,000 | on demand         |
+| `docs/architecture.md`     | 59,100  | on demand         |
+| `docs/product-feedback.md` | 47,400  | on demand         |
+| `docs/product-spec.md`     | 38,000  | on demand         |
+| the remaining eleven       | 50,400  | on demand         |
+
+**Three findings, each measured rather than asserted.**
+
+**`CLAUDE.md` tells a session to read `current-state.md` first, and it is too large to read.** So a session reads the top and stops, which makes the remainder write-only. Documentation written every cycle and never read is pure cost.
+
+**Its newest 1,683 lines hold 166 headings, every one of them nested inside a blockquote.** The region is fully structured and the structure is invisible to heading search, outline view and table-of-contents generation alike. **The first characterisation of this — "one heading" — was wrong and is corrected here rather than quietly restated**; the distinction matters because it makes the fix a formatting change rather than a rewrite. The blockquote was a copy-paste convenience for the maintainer and is **no longer wanted** (decided 2026-09-26).
+
+**No document has a table of contents**, and section sizes defeat section-level reading anyway: the largest single section is **11,415 words in this file** and **33,111 in `product-feedback.md`**.
+
+### 20.2 The evidence that it is harmful, not merely large
+
+**Two failures on one day, both found by accident and neither by a check.**
+
+**`product-feedback.md` F-004 read `NOT YET BUILT` for eight days after readable slug URLs shipped** on 2026-09-18 behind three migrations. STEP A ranks candidates from that file, so an inbox showing delivered work as an open complaint corrupts the ranking directly.
+
+**`CLAUDE.md` states that Phases 6 and 7 are _entirely unbuilt_, and Phase 6 slices 1 and 2 are in production** — `/admin`, `src/services/admin/`, status enforcement across five services, and `20260922120000_admin_and_column_privileges.sql`. **That is the file loaded into every session**, and it misinformed the STEP 00 that found it.
+
+**Neither is a drafting slip. Both are what accretion does**, and both are staleness rather than verbosity — which is what the boundary in §20.6 is drawn around.
+
+### 20.3 The decision
+
+**`docs/current-state.md` splits by kind at §13.** Standing sections **§1–§12** — current state, completed work, residual items, open decisions, recorded direction, technical state — stay. Cycle checkpoints **§13–§96** move to **`docs/cycle-log.md`**, append-only, newest first.
+
+**The line is not arbitrary.** It is where the document's own two numbering conventions already meet, and it keeps every standing section a code comment might sensibly cite.
+
+**STEP K's behaviour changes with it.** `current-state.md` is **rewritten** each checkpoint to describe the present; the checkpoint is **appended** to `cycle-log.md`. The file's stated purpose — _where we are right now_ — and its append-only construction were in direct contradiction, and the purpose wins.
+
+**Nothing is renumbered, rewritten or deleted.** Section numbers stay byte-identical, bodies are untouched, and only heading _format_ is normalised to `## §N — Title` so one table of contents can cover the merged log. **Historical integrity forbids the alternative**, and a renumber would break 811 internal references, 78 external ones and 428 in source and migration comments.
+
+### 20.4 Bare `§N` resolves by a stated rule, and that is what keeps this cheap
+
+**Code, tests and migrations carry bare `§N` references to checkpoints** — §39, §46, §87, §91 and §94 appear in `src/services/export/index.ts`, `src/app/lists/[id]/page.tsx`, three integration suites and two migrations — **naming no file**.
+
+**Both documents therefore carry a header line**: _§1–§12 are in `current-state.md`; §13 onward in `docs/cycle-log.md`._ A bare `§94` then resolves deterministically, which is **more than it does today**, where it resolves only by already knowing.
+
+**This is the decision that keeps the change documentation-only**, and it was taken for that reason as much as for tidiness. Qualifying those references in place would edit ten code, test and migration files, pull in CI, and — with Actions minutes exhausted until 1 October — strand the work at STEP I.
+
+### 20.5 Considered and rejected
+
+**Renumbering into a clean sequence.** Rejected: breaks every reference above, and edits history that Historical integrity protects.
+
+**Deleting superseded checkpoints.** Rejected on the same rule. Every recommendation here is a move.
+
+**Shortening `CLAUDE.md` by removing its wording-archaeology** — the 15 amendment markers and 6 passages describing what it used to say. **Rejected for now, having been proposed by the agent that would benefit.** The payoff is roughly 3,000 tokens a session; it is the riskiest edit of the set, because sometimes the history _is_ the rationale and a bare rule loses the argument that protects it; and **both measured failures were staleness, not length**. Revisit with evidence once the split is in.
+
+**Splitting the oversized sections in this file and in `product-feedback.md`.** Deferred. Their table-of-contents entries will make the size visible, which is the right input to that decision.
+
+### 20.6 Boundary
+
+**In scope**: the `current-state.md` split; removal of the blockquote wrapper; heading-format normalisation in the log; a table of contents for every long document; and three specific `CLAUDE.md` edits — STEP K's definition, the documents table, and the stale Phase 6 claim.
+
+**Out of scope**: any content edit for accuracy or length, anywhere. **`current-state.md`'s standing sections almost certainly hold stale claims** — finding them is STEP K's standing job, not this cycle's, and conflating the two would make the move impossible to verify.
+
+**What this does not fix, stated rather than glossed.** The corpus is still ~360,000 tokens. **This makes it navigable, not smaller.** The one file that shrinks is the one every session is told to read first. `CLAUDE.md` remains 11,300 tokens on every turn, and F-057's question about it stays open.

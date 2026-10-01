@@ -8,6 +8,20 @@ Notation follows the rest of `docs/`: absolute dates, and **[OPEN]** / **[DECIDE
 
 ---
 
+## Contents
+
+- [1. Purpose](#1-purpose) · 92 words
+- [2. Where this sits in the document hierarchy](#2-where-this-sits-in-the-document-hierarchy) · 187 words
+- [3. Operating rules](#3-operating-rules) · 253 words
+- [4. How to write an entry](#4-how-to-write-an-entry) · 264 words
+- [5. Intake](#5-intake) · 33,917 words
+- [6. Triage](#6-triage) · 310 words
+- [7. Promotion — where an item goes when it leaves this file](#7-promotion--where-an-item-goes-when-it-leaves-this-file) · 251 words
+- [8. Relationship to the development cycle](#8-relationship-to-the-development-cycle) · 498 words
+- [9. Boundary with `docs/current-state.md`](#9-boundary-with-docscurrent-statemd) · 479 words
+
+---
+
 ## 1. Purpose
 
 Somewhere to dump a thought the moment it happens, without first working out what it means.
@@ -162,7 +176,9 @@ Flagged for triage as the clearest overlap with recorded direction in this file.
 
 ### F-004 — album and artist URLs should be slugs, not MBIDs
 
-**2026-08-30 · album page, artist page · PROMOTED — DECIDED 2026-09-16, NOT YET BUILT**
+**2026-08-30 · album page, artist page · CLOSED — DELIVERED 2026-09-18**
+
+> **Status corrected at STEP 00 on 2026-09-26.** This read _PROMOTED — NOT YET BUILT_ for eight days after it shipped. Both `/albums/[slug]` and `/artists/[slug]` are live, backed by `20260918190000_bare_slugs_with_counter.sql` and two follow-on migrations carrying the slug into search credits and the feed. The two collision defects the cycle hit are `cycle-log.md` §88 and §89. **An inbox showing delivered work as open corrupts STEP A's ranking**, which is why this is corrected rather than carried.
 
 **Readable slugs, and a clean switch: identifier URLs stop resolving.** The timing is the argument — four profiles and nothing meaningfully shared, so stranding links costs about as little as it ever will. **Three constraints go to its cycle**: slug collisions must resolve deterministically, an upstream rename changes a slug's source, and the MBID stays canonical identity — a slug is a label. Destination: `product-spec.md` §6.
 
@@ -176,7 +192,7 @@ For collisions, something like appending a year or a counter: `album-name-year-1
 
 **2026-08-30 · browse · CLOSED — DELIVERED 2026-09-16**
 
-**Shipped as `/albums/all`** (`7c88d9a`, PR #15, CI #124), and **confirmed on production**: 18 pages at 60 per page, four sorts, out-of-range correctly 404ing. **It filters nothing**, which is §8.9's rule that absence of an external signal must never gate discovery, finally expressed as a query. `current-state.md` §80.
+**Shipped as `/albums/all`** (`7c88d9a`, PR #15, CI #124), and **confirmed on production**: 18 pages at 60 per page, four sorts, out-of-range correctly 404ing. **It filters nothing**, which is §8.9's rule that absence of an external signal must never gate discovery, finally expressed as a query. `cycle-log.md` §80.
 
 **It immediately produced three follow-on entries** — F-046 (no page picker), F-047 (albums with no year) and F-048 (year sort runs one way) — which is what a surface being used looks like.
 
@@ -196,7 +212,9 @@ Whether a catalogue-wide sort reuses the six decided collection sort modes or ne
 
 ### F-006 — sort an artist's discography by more than date
 
-**2026-08-30 · artist page · NEW**
+**2026-08-30 · artist page · TRIAGED 2026-09-26 — STILL OPEN, BUT THE MACHINERY NOW EXISTS**
+
+> **Re-triaged at STEP 00 on 2026-09-26.** The ask — sort by something other than date — is **unmet**: `DiscographySort` in `src/services/catalogue/queries.ts` offers `newest | oldest`, which is two directions of one field. **But a sort control, a URL parameter, a tested pure comparator and a rendering component all now exist on the artist page**, where none did when this was filed. The entry is unchanged in substance and materially cheaper to build.
 
 On an artist page the discography can only be read oldest-first or newest-first. It should be sortable by other metrics too — popularity, for example.
 
@@ -213,7 +231,7 @@ One constraint worth having on record before a popularity sort is built: `popula
 
 **2026-08-30 · artist page · CLOSED — DELIVERED 2026-09-07**
 
-**Outcome: built as proposed.** On-demand expansion ships in `aba3a07` (CI #95) — opening an artist page enqueues a discography expansion once per artist, within the existing depth boundary. **Destination:** `product-spec.md` §8.9 and §6, `architecture.md` §7 _Progressive hydration_, `current-state.md` §59. Its own defects were filed separately as F-026, F-027, F-029, F-030 and F-034 rather than reopening this entry.
+**Outcome: built as proposed.** On-demand expansion ships in `aba3a07` (CI #95) — opening an artist page enqueues a discography expansion once per artist, within the existing depth boundary. **Destination:** `product-spec.md` §8.9 and §6, `architecture.md` §7 _Progressive hydration_, `cycle-log.md` §59. Its own defects were filed separately as F-026, F-027, F-029, F-030 and F-034 rather than reopening this entry.
 
 Artist pages read thin. Opening Joanna Newsom shows a single album, and that one appears to be a record I added myself through search rather than anything that arrived in the seed.
 
@@ -368,7 +386,7 @@ Why that distinction carries weight: `architecture.md` §7 chose Cover Art Archi
 
 **2026-08-30 · artwork, admin · CLOSED — DELIVERED 2026-09-16**
 
-**Shipped as a section on `/debug/queue`** (`current-state.md` §76). Two groups: albums Cover Art Archive holds nothing for, each deep-linked to the upload page, and albums whose fetch failed — shown but **deliberately not presented as a task**, since the sweep is already retrying them.
+**Shipped as a section on `/debug/queue`** (`cycle-log.md` §76). Two groups: albums Cover Art Archive holds nothing for, each deep-linked to the upload page, and albums whose fetch failed — shown but **deliberately not presented as a task**, since the sweep is already retrying them.
 
 longplayr already knows which albums lack art: `artwork_status = 'absent'`, **currently 45 rows, queryable today**. The manual path is presently _"notice a placeholder, go find the album on MusicBrainz, find the right release, upload"_.
 
@@ -389,7 +407,7 @@ The idea: **an internal view listing every uncovered album, each deep-linked str
 
 **2026-08-30 · artwork · CLOSED — DELIVERED 2026-09-16**
 
-**Shipped** (`5e41623`, PR #13, CI #119). An album page with no cover upstream offers a route to add one at Cover Art Archive, shown signed out as well as in. **The prompt alone would have been a dead end** — `absent` was never re-checked, so an uploaded cover would have been invisible forever — and `absent` now re-enters the artwork sweep behind a staleness window. `current-state.md` §78.
+**Shipped** (`5e41623`, PR #13, CI #119). An album page with no cover upstream offers a route to add one at Cover Art Archive, shown signed out as well as in. **The prompt alone would have been a dead end** — `absent` was never re-checked, so an uploaded cover would have been invisible forever — and `absent` now re-enters the artwork sweep behind a staleness window. `cycle-log.md` §78.
 
 **The prompt-and-route variant is approved, from the album page.** Where an album has no cover, the page offers a route to add one at Cover Art Archive; the existing `fetch_artwork` job collects it. **It costs no rules** — catalogue stays read-only, artwork stays single-sourced, nothing user-authored is stored here. It is the public half of the operator worklist shipped in `architecture.md` §17b. Destination: `product-spec.md` §8.9.
 
@@ -437,7 +455,7 @@ The 50.1 reading coincided with a macOS Software Update at 37% CPU. The 12–20 
 
 **2026-09-04 · signup, auth · TRIAGED — PARTLY ADDRESSED 2026-09-15, TWO ITEMS OPEN AND ONE NARROWED**
 
-**[Updated 2026-09-15, after the two cycles below shipped.]** The **verification email** item has since split, and only its code half is done. `current-state.md` §71 built the unconfirmed-signup destination and §72 added a resend, both merged. **What remains is not code**: the built-in email provider caps the whole project at **two emails per hour**, so confirmation cannot be enabled at all until custom SMTP is configured, and **no provider is chosen** (`architecture.md` §6). The other two items — **Google sign-in** and **other providers** — are unchanged and still open. The list below is left as written.
+**[Updated 2026-09-15, after the two cycles below shipped.]** The **verification email** item has since split, and only its code half is done. `cycle-log.md` §71 built the unconfirmed-signup destination and §72 added a resend, both merged. **What remains is not code**: the built-in email provider caps the whole project at **two emails per hour**, so confirmation cannot be enabled at all until custom SMTP is configured, and **no provider is chosen** (`architecture.md` §6). The other two items — **Google sign-in** and **other providers** — are unchanged and still open. The list below is left as written.
 
 **Two of the five items shipped**, on branch `signup-password-policy` (`31d8a42`, PR #5, **CI pending at the time of writing**). **The password is now typed twice**, and **a password policy exists**: a 12-character minimum, **no composition rules**, recorded in `architecture.md` §6 with the reasoning that requiring a digit or a symbol pushes people towards predictable substitutions while adding little entropy.
 
@@ -479,7 +497,7 @@ Whether this is one slice or several is a triage question: the confirm field is 
 
 **2026-09-05 · notifications, mobile navigation · CLOSED — DELIVERED 2026-09-05**
 
-**Outcome: fixed as the entry implied, without a fifth tab.** A `/notifications` link now sits on the personal surface at `src/app/[handle]/page.tsx:201`, shipped in `311bd70`. **Destination:** `architecture.md` §16.3, `current-state.md` §53.
+**Outcome: fixed as the entry implied, without a fifth tab.** A `/notifications` link now sits on the personal surface at `src/app/[handle]/page.tsx:201`, shipped in `311bd70`. **Destination:** `architecture.md` §16.3, `cycle-log.md` §53.
 
 There is no notifications link anywhere on the mobile version. Unclear whether that is intentional or planned for later — but if not, it needs addressing.
 
@@ -507,7 +525,7 @@ There is no notifications link anywhere on the mobile version. Unclear whether t
 
 **2026-09-05 · search, catalogue · TRIAGED — PARTLY ADDRESSED, STILL OPEN**
 
-**One of at least two mechanisms is repaired; the entry does not close.** `abb3adc` (CI #94) separated fetch depth from display limit — `UPSTREAM_FETCH_DEPTH = 25`, `UPSTREAM_RESULTS = 10` — so the panel no longer shows four candidates because a `limit * 2` pool was filtered twice. **Still open:** whether the panel gets a "show more", and §8.10's **artist-matching** half, which is blocked on verifying field-qualified syntax against the live API. **Which mechanism caused the failures observed in use is unestablished**, and cannot be established locally or in CI because the placeholder contact prevents the panel populating. **Destination of the part that shipped:** `product-spec.md` §8.10, `current-state.md` §58.
+**One of at least two mechanisms is repaired; the entry does not close.** `abb3adc` (CI #94) separated fetch depth from display limit — `UPSTREAM_FETCH_DEPTH = 25`, `UPSTREAM_RESULTS = 10` — so the panel no longer shows four candidates because a `limit * 2` pool was filtered twice. **Still open:** whether the panel gets a "show more", and §8.10's **artist-matching** half, which is blocked on verifying field-qualified syntax against the live API. **Which mechanism caused the failures observed in use is unestablished**, and cannot be established locally or in CI because the placeholder contact prevents the panel populating. **Destination of the part that shipped:** `product-spec.md` §8.10, `cycle-log.md` §58.
 
 When adding an album that longplayr does not already hold, the MusicBrainz panel returns only **four or five results**, and **there is no way to expand the search.** Tried several times; the record being looked for was not among them.
 
@@ -700,7 +718,7 @@ The whole batch of artists ingested **before** the curated tranche — the all-t
 
 **2026-09-07 · artist page, catalogue, ingestion · CLOSED — FIXED 2026-09-12**
 
-**Outcome: fixed, and the diagnosis in this entry was right on both counts.** `f34c0b4` (CI #97) makes an artist page drain on **every** view rather than only the first, so refreshing moves an outstanding expansion along — and it unsticks jobs stranded in `running`, since the stale reclaim only fires when a drain starts. **The amended starvation reading and the original retry reading were both real**; the retry half became F-034. **Destination:** `architecture.md` §7 _A later view drains too_, `current-state.md` §61. **Still not guaranteed:** the claim has no target filter, so a refresh serves the oldest waiting job rather than this artist's.
+**Outcome: fixed, and the diagnosis in this entry was right on both counts.** `f34c0b4` (CI #97) makes an artist page drain on **every** view rather than only the first, so refreshing moves an outstanding expansion along — and it unsticks jobs stranded in `running`, since the stale reclaim only fires when a drain starts. **The amended starvation reading and the original retry reading were both real**; the retry half became F-034. **Destination:** `architecture.md` §7 _A later view drains too_, `cycle-log.md` §61. **Still not guaranteed:** the claim has no target filter, so a refresh serves the oldest waiting job rather than this artist's.
 
 Opened Kate Bush on the deployed site after the on-demand depth cycle shipped. The page said the discography was being fetched, and several minutes later it still held two albums. **Nothing was wrong with the page and nothing was wrong with the request — the retry simply has nothing to run it.**
 
@@ -740,7 +758,7 @@ Radiohead was opened and sat on _"Fetching the rest of this discography from Mus
 
 **This entry's stated dependency was correct and was discharged in order.** It said the decision _"may depend on F-026"_ — and it did. F-026 shipped in `f34c0b4`, making _"look again in a moment"_ true and actionable; **the recovery sweep in `c5e5c85` then added a fourth state this entry never anticipated**, a sweep-re-queued expansion.
 
-**Destination:** `product-spec.md` §6, `architecture.md` §7, `current-state.md` §67. **`last_error` is deliberately never shown to a reader** and lives on the operator queue view instead.
+**Destination:** `product-spec.md` §6, `architecture.md` §7, `cycle-log.md` §67. **`last_error` is deliberately never shown to a reader** and lives on the operator queue view instead.
 
 The status line on an artist page reads _"Fetching the rest of this discography from MusicBrainz. Look again in a moment."_ It says that identically whether the work is running now, has failed once and is backing off, or has failed and is waiting up to 24 hours for the daily cron. **"In a moment" was not true in the observed case and there was no way to tell.**
 
@@ -748,7 +766,7 @@ The status line on an artist page reads _"Fetching the rest of this discography 
 
 - **The line is truthful about the fact and wrong about the timing.** An expansion genuinely is outstanding in all three states — the sentence's error is the implied horizon, not the claim.
 - **The distinguishing information exists and is not surfaced.** `ingestion_jobs` carries `attempts`, `run_after` and `last_error`; the page reads only whether a row exists and whether it is `pending`/`running`.
-- **It was recorded as a known limitation of a different kind, and this is sharper.** `current-state.md` §59 notes the line can momentarily claim work a swallowed enqueue never made — a one-render window. This is the opposite: work that really is queued, and stays queued far longer than the copy suggests.
+- **It was recorded as a known limitation of a different kind, and this is sharper.** `cycle-log.md` §59 notes the line can momentarily claim work a swallowed enqueue never made — a one-render window. This is the opposite: work that really is queued, and stays queued far longer than the copy suggests.
 - **`product-spec.md` §6 deliberately left the treatment provisional**, recording the line as _"the honest minimum, not a settled treatment"_ and worth revisiting once real use had been observed. **This is that observation.**
 - **Deciding this may depend on F-026.** If a failed attempt retried within minutes, the current copy would be roughly accurate and nothing else would be needed.
 
@@ -770,7 +788,7 @@ The status line on an artist page reads _"Fetching the rest of this discography 
 
 **2026-09-07 · artist page, catalogue · CLOSED — DELIVERED 2026-09-17**
 
-**Shipped** (`44b03ac`, PR #21, CI #136). A discography is re-checked when its last **successful** expansion is over thirty days old. **Only a success goes stale** — a failed artist stays the sweep's job, which is what stops a page view restarting the retry policy. `current-state.md` §86.
+**Shipped** (`44b03ac`, PR #21, CI #136). A discography is re-checked when its last **successful** expansion is over thirty days old. **Only a success goes stale** — a failed artist stays the sweep's job, which is what stops a page view restarting the retry policy. `cycle-log.md` §86.
 
 **A discography refreshes on view when it is stale.** Work follows attention. It repairs terminally failed artists as a side effect. **One hazard goes to its cycle and is written into the decision**: the once-per-artist rule exists to stop a page view restarting the retry policy, and a staleness window must not become that loop under another name — a refresh is scheduled against a **successful** expansion, a retry answers failure. Destination: `product-spec.md` §8.9.
 
@@ -781,7 +799,7 @@ Once an artist's discography has been expanded, it is never expanded again. A ne
 - **`product-spec.md` §8.9 decided it explicitly:** expansion is attempted _"once per artist"_ with _"no staleness rule and no revisit"_. That was the right scope for the slice; what it did not have was a real example of the cost.
 - **The queue was built to allow re-sync.** The partial unique index covers only `pending` and `running` **specifically so completed jobs do not block requeueing** — its own comment says _"a re-sync, say"_. The mechanism is anticipated; the policy is not decided.
 - **It interacts with the ratified attempt guarantee.** `product-spec.md` §8.9 `[RATIFIED 2026-09-07]` records the rule as _"once per artist for as long as its job record survives"_, resting on nothing deleting job rows. **A re-sync policy is the deliberate version of the thing that guarantee treats as an accident.**
-- **It also interacts with terminal failure.** An artist whose single attempt exhausted its retries is permanently unexpanded (`current-state.md` §59), and a refresh policy would repair that as a side effect.
+- **It also interacts with terminal failure.** An artist whose single attempt exhausted its retries is permanently unexpanded (`cycle-log.md` §59), and a refresh policy would repair that as a side effect.
 - **Undecided and not to be inferred:** what triggers a refresh — elapsed time, a view, an external signal — and whether it applies to every artist or only some. Catalogue **depth** and **completion** are separate questions already open in `product-spec.md` §10.7, and this is neither.
 
 ### F-030 — each successful expansion queues more work than a page view can drain
@@ -795,7 +813,7 @@ Once an artist's discography has been expanded, it is never expanded again. A ne
 **Still open:** whether cadence is sufficient at a larger catalogue, and `architecture.md` §7's `[OPEN]` note that per-job cost is necessary and nowhere near sufficient.
 
 **The contention half is fixed.** `2be9b3c` (CI #96) put bulk artwork in its own band below metered work, so covers can no longer outrank the discovery jobs that create them. Verified in production: four expansions succeeded while 54 artwork jobs waited.
-**The throughput half is not.** `f68e050` (CI #98) cut per-job cost ~30% by dropping an unserved size — about six covers a night, against 211 albums without one and a backlog that grew 54 → 174 → 207 in six days. **Cadence, capped at once a day by the hosting plan, is the binding ceiling and is recorded `[OPEN]`** in `architecture.md` §7. **Destination:** `architecture.md` §7 _Queue fairness_ and _Store only the sizes that are served_, `current-state.md` §60 and §62.
+**The throughput half is not.** `f68e050` (CI #98) cut per-job cost ~30% by dropping an unserved size — about six covers a night, against 211 albums without one and a backlog that grew 54 → 174 → 207 in six days. **Cadence, capped at once a day by the hosting plan, is the binding ceiling and is recorded `[OPEN]`** in `architecture.md` §7. **Destination:** `architecture.md` §7 _Queue fairness_ and _Store only the sizes that are served_, `cycle-log.md` §60 and §62.
 
 **The queue grows faster than it is drained, and it is successful expansions that grow it.** Measured on the deployed database after three artist pages were opened: **20 pending jobs — 18 `fetch_artwork` and 2 `discover_curated_artist`** — with the two discovery jobs at `attempts=0`, sitting behind six artwork jobs.
 
@@ -809,7 +827,7 @@ Once an artist's discography has been expanded, it is never expanded again. A ne
 - **Candidate directions, none of them decided here:** draining more than one job per view; separating artwork onto its own priority band or its own drain; ordering discovery ahead of artwork; or a schedule more frequent than the daily cron, which the Hobby plan caps (`current-state.md` §8).
 - **Whether the drain belongs on a page view at all is the larger question.** It was adopted because the cron is daily and "a later view" would otherwise mean tomorrow; that reasoning holds, and it is not the same as this being the right long-term shape.
 - **The cron drain has the same one-number-for-two-kinds problem, and its own source already says so.** `DEFAULT_BATCH_SIZE = 10` in `src/app/api/cron/drain-jobs/route.ts`, whose comment reads that the batch is sized for _"a rate-limited job at about a second each. That is right for `fetch_tracklist` and wrong for `fetch_artwork`, which does not touch the MusicBrainz limiter."_ **Raising that single number is not the fix**: MusicBrainz jobs cost roughly a second each against Vercel's 60-second function ceiling, so ~10 is genuinely near the limit for that kind, and a larger global batch would overrun the invocation — which is the stranding failure mode `current-state.md` §8 already records, where a killed drain abandons the rest of its claimed batch. **A per-kind batch size is what the comment implies and it is not decided**, neither the shape nor the numbers. For scale: artwork touches no limiter and Cover Art Archive imposes none, and an out-of-band run historically cleared **~300 artwork jobs in 52.9 minutes**. **Batch size and cadence are separate ceilings** — per-kind batching changes what one run can do and nothing about the run happening once a day.
-- **Related:** F-026 (the retry path), F-027 (the states are indistinguishable), F-028 (limiter scope), and `current-state.md` §59.
+- **Related:** F-026 (the retry path), F-027 (the states are indistinguishable), F-028 (limiter scope), and `cycle-log.md` §59.
 
 ### F-031 — an artwork job spends ten seconds on six serial round trips, and nothing forces them to be serial
 
@@ -900,15 +918,15 @@ Measured on the deployed database at 14:04 UTC. A new artist page was opened at 
 
 **Every part of the chain is now observed rather than argued**: the sweep queued it, the 24-hour cooling-off did not suppress it, the twelve-a-day cadence gave it a drain, and the stale reclaim caught it when one attempt was lost — `attempts = 2` is that reclaim, visible in the data.
 
-**The withdrawn approval stands withdrawn.** `current-state.md` §59's _"terminal failure permanently settles an artist, which is approved behaviour"_ remains marked `[APPROVAL WITHDRAWN]`.
+**The withdrawn approval stands withdrawn.** `cycle-log.md` §59's _"terminal failure permanently settles an artist, which is approved behaviour"_ remains marked `[APPROVAL WITHDRAWN]`.
 
-**Addressed, and deliberately not closed yet.** `c5e5c85` adds `enqueueFailedExpansions` and has the daily cron call all three sweeps; a failed expansion becomes re-queueable 24 hours after its last failure. **An attempt cap was ruled out rather than unchosen — any cap reintroduces the permanent exclusion this entry got ruled a defect for.** **Not closed because:** CI #99 has not completed, and the effect is only observable after a deployed cron run, on exactly one artist. **Destination:** `architecture.md` §7 _Recovery sweeps_, `current-state.md` §63.
+**Addressed, and deliberately not closed yet.** `c5e5c85` adds `enqueueFailedExpansions` and has the daily cron call all three sweeps; a failed expansion becomes re-queueable 24 hours after its last failure. **An attempt cap was ruled out rather than unchosen — any cap reintroduces the permanent exclusion this entry got ruled a defect for.** **Not closed because:** CI #99 has not completed, and the effect is only observable after a deployed cron run, on exactly one artist. **Destination:** `architecture.md` §7 _Recovery sweeps_, `cycle-log.md` §63.
 
 **Radiohead, measured on the deployed database 2026-09-12.** Discovery job `#1350`: `status = failed`, `attempts = 3` of 3, exhausted at 2026-09-07 14:07:16. **All three attempts failed with the same error** — `MusicBrainz returned 503 for /release-group — server busy (edge load shedding, not our rate)`. The artist holds **3 albums** and will hold 3 forever.
 
 **`attemptStateFor` reads any row that is not `pending` or `running` as `settled`**, so a terminally failed expansion is indistinguishable from a successful one. The artist page therefore shows **no status line at all** — it presents a truncated discography as complete — and **nothing will ever retry it**, including the later-view drain built in the cycle that found this.
 
-**The maintainer's ruling, 2026-09-12: this is a defect, not acceptable behaviour.** It was previously recorded as approved — `current-state.md` §59, _"Terminal failure permanently settles an artist, which is approved behaviour. Its only correction is deleting the job row."_ **That approval is withdrawn.**
+**The maintainer's ruling, 2026-09-12: this is a defect, not acceptable behaviour.** It was previously recorded as approved — `cycle-log.md` §59, _"Terminal failure permanently settles an artist, which is approved behaviour. Its only correction is deleting the job row."_ **That approval is withdrawn.**
 
 **What makes it a defect rather than a consequence.** The failure was transient and upstream — MusicBrainz's own load shedding, with our own rate budget nowhere near exhausted (`remaining=13/15`). **Three attempts inside one 47-minute window against a busy upstream is not evidence that an artist has no discography**, yet the outcome is identical to that conclusion and is permanent. It also silently contradicts the completion-oriented depth principle in `CLAUDE.md` and `product-spec.md` §8.9.
 
@@ -980,7 +998,7 @@ Docker was not running, so the local Supabase stack was down. The end-to-end sui
 
 **2026-09-15 · browse · DELIVERED 2026-09-16 — BUT ONE HALF OF ITS RULE IS NOW CONTESTED**
 
-**Shipped** (`5ae5270`, PR #14, CI #122). Both rules are live on Home and Browse. `current-state.md` §79.
+**Shipped** (`5ae5270`, PR #14, CI #122). Both rules are live on Home and Browse. `cycle-log.md` §79.
 
 **⚠️ F-049 is a reversal request against the collaboration half**, filed the same day with evidence the decision did not have in front of it: **one artist occupying four slots** because they are the first credit on only one of the four albums. **That defeats the visual-variety purpose the rule exists to serve**, and it is a STEP B question rather than a defect.
 
@@ -1146,7 +1164,7 @@ A way to see only albums I do **not** already have. A filter, or a toggle on a g
 
 **2026-09-16 · notifications, social · CLOSED — DELIVERED 2026-09-16**
 
-**Shipped** (`af8a8b5`, PR #16, CI #126). The control shows **live state** — _Following_ from somebody already followed — rather than the state when the notification arrived. **Only the follow notification carries an action.** `current-state.md` §81.
+**Shipped** (`af8a8b5`, PR #16, CI #126). The control shows **live state** — _Following_ from somebody already followed — rather than the state when the notification arrived. **Only the follow notification carries an action.** `cycle-log.md` §81.
 
 When someone follows you, the notification should let you **follow them back there and then**, rather than making you click through to their profile to do it.
 
@@ -1230,7 +1248,7 @@ When someone follows you, the notification should let you **follow them back the
 
 **2026-09-16 · browse · CLOSED — REVERSAL ACCEPTED AND DELIVERED 2026-09-16**
 
-**Shipped** (`460069a`, PR #17, CI #127). An album is now excluded when **any** credited artist has already appeared. **The cost the original decision named is accepted rather than answered**: a collaboration blocks its guests. **A middle reading was constructed during the decision and rejected**, and is asserted against by a test so it is not rediscovered as an obvious improvement. `current-state.md` §82.
+**Shipped** (`460069a`, PR #17, CI #127). An album is now excluded when **any** credited artist has already appeared. **The cost the original decision named is accepted rather than answered**: a collaboration blocks its guests. **A middle reading was constructed during the decision and rejected**, and is asserted against by a test so it is not rediscovered as an obvious improvement. `cycle-log.md` §82.
 
 **Changed my mind on a decision made during a cycle.** The rule as approved counts a collaboration against its **first credited artist only**. It should instead **look at every credited artist**: if an artist already appears anywhere in Recently added, show a different album.
 
@@ -1267,7 +1285,7 @@ Under the rule as approved all four survive, because Tame Impala is the first cr
 
 **Context, not a resolution.**
 
-- **The feedback loop on a real defect is now roughly fifteen minutes instead of two**, and a defect found there **reopens the cycle**. That has happened once — `current-state.md` §79 — and cost one extra CI run plus a separate commit. **Whether it stays that cheap at a higher rate is unknown**, and it is the number worth watching.
+- **The feedback loop on a real defect is now roughly fifteen minutes instead of two**, and a defect found there **reopens the cycle**. That has happened once — `cycle-log.md` §79 — and cost one extra CI run plus a separate commit. **Whether it stays that cheap at a higher rate is unknown**, and it is the number worth watching.
 - **The double-CI cost compounds it.** The branch model already runs CI twice per cycle — once on the pull request and once after the merge on an identical tree — which is **recorded as an open cost across several cycles and still undecided**. More reliance on CI makes that waste more expensive, not less.
 - **A render probe is the replacement and it is not nothing.** Starting the dev server and fetching the changed page costs a fraction of a browser suite, and **has produced better evidence than Playwright did more than once** — §80's two defects were both found that way, and neither would have been caught by any assertion that existed. **It still uses the machine**, just far less, and nobody has said where its limit is.
 - **The failure mode to watch for is a pull request that goes red twice.** One reopened cycle is cheap; a pattern of them would mean the local gate is now too thin, and the honest response would be to move something back rather than to push harder.
@@ -1294,7 +1312,7 @@ On the all-albums page you can go **next** or **previous**, but there is no way 
 
 **2026-09-16 · catalogue, ingestion · CLOSED — INSTRUMENTED 2026-09-17, ANSWER NOT YET READ**
 
-**The check shipped** (`dbbd887`, PR #20, CI #133): `/debug/queue` compares each undated album's stored payload against its column. **The entry closes; the question it asked is now answerable from the product** rather than by reasoning. **A third case the entry did not name is covered** — a payload holding a valid date the column lacks, which a parse-only check would have reported as upstream silence. `current-state.md` §85.
+**The check shipped** (`dbbd887`, PR #20, CI #133): `/debug/queue` compares each undated album's stored payload against its column. **The entry closes; the question it asked is now answerable from the product** rather than by reasoning. **A third case the entry did not name is covered** — a payload holding a valid date the column lacks, which a parse-only check would have reported as upstream silence. `cycle-log.md` §85.
 
 On the last page of the all-albums list there are albums carrying **no year at all** — for example `7d420176-a7df-4696-9eb6-5512fb3374f7`. **Is this a capture problem?**
 
@@ -1310,7 +1328,7 @@ On the last page of the all-albums list there are albums carrying **no year at a
 
 **2026-09-16 · browse · CLOSED — DELIVERED 2026-09-16**
 
-**Shipped** (`2a19751`, PR #18, CI #129), and **wider than asked**: all four catalogue sorts reverse, not just release year. Direction is a second press on the active sort. **The undated-albums rule was inherited rather than re-decided** — they stay last in both directions. `current-state.md` §83.
+**Shipped** (`2a19751`, PR #18, CI #129), and **wider than asked**: all four catalogue sorts reverse, not just release year. Direction is a second press on the active sort. **The undated-albums rule was inherited rather than re-decided** — they stay last in both directions. `cycle-log.md` §83.
 
 The all-albums page sorts by release year **most recent first**, and there is no way to reverse it.
 
@@ -1624,13 +1642,50 @@ Get your password wrong and **both fields empty**, so you retype your address as
 - **Failed end-to-end runs leave orphaned users and lists behind** — four remained locally after the §73 cycle. `current-state.md` §8 records that residue from an aborted run once produced a **deterministic failure that read as a flake**, so this plausibly contributes to the local instability that has cost several cycles. **Recommend filing.**
 - **`npx playwright test` bypasses `scripts/with-websocket.mjs`**, so under Node 20 every spec constructing an admin client dies in its hook with a missing-WebSocket error rather than anything resembling the real cause. `npm run test:e2e` is the supported path. **Recommend filing, and it is close kin to F-036** — both are the suite reporting an environment problem as a test failure.
 
-**A third was found and fixed inside a cycle rather than filed**: the `pre-push` hook instructing a branch push to apply migrations ahead of CI. Addressed in `current-state.md` §75; recorded here only so the pass is complete.
+**A third was found and fixed inside a cycle rather than filed**: the `pre-push` hook instructing a branch push to apply migrations ahead of CI. Addressed in `cycle-log.md` §75; recorded here only so the pass is complete.
 
 #### What this pass concludes
 
 **Three items are READY and need no decision from anyone**: **F-013**, **F-018's show-more half**, and **F-036** — plus the **[VERIFY]** row for Discogs split out of F-010.
 
 **Fifteen are NEEDS A DECISION, and four of those are explicitly ask-don't-infer** (F-003, F-011, F-029, and F-024's item 7). **That is the pass's main finding**: the open backlog is gated far more by unanswered product questions than by engineering effort.
+
+### F-057 — the documentation is written for the record, and read by an agent
+
+**2026-09-26 · development process, documentation · PROMOTED — DECIDED 2026-09-26, IN FLIGHT**
+
+> **Promoted the same day it was filed.** The decision is `architecture.md` §20: `current-state.md` splits at §13, standing sections staying and cycle checkpoints moving to `docs/cycle-log.md`; the blockquote wrapper goes; every long document gains a table of contents. **Nothing is renumbered, rewritten or deleted** — §20.3. **The half of this entry about `CLAUDE.md`'s own length is deliberately not in that scope** and stays open; §20.5 records why, including that it was proposed by the agent that would benefit from it.
+
+**Raised by the maintainer**, who observes that this project is built by an agent under light human direction, that the documents have grown by continuous accretion, and who asks whether their structure and formatting are actually suited to being read by an agent. **Explicitly not a complaint about length** — long is fine if it is legible and navigable.
+
+**Measured 2026-09-26.** The corpus is **269,567 words, roughly 360,000 tokens** across 16 files, which exceeds any single context window.
+
+| File                       | Words   | ~Tokens | Loaded            |
+| -------------------------- | ------- | ------- | ----------------- |
+| `CLAUDE.md`                | 8,467   | 11,300  | **every session** |
+| `docs/current-state.md`    | 115,533 | 154,000 | on demand         |
+| `docs/architecture.md`     | 44,312  | 59,100  | on demand         |
+| `docs/product-feedback.md` | 35,545  | 47,400  | on demand         |
+| `docs/product-spec.md`     | 28,477  | 38,000  | on demand         |
+| `docs/development-plan.md` | 8,989   | 12,000  | on demand         |
+| `docs/data-model.md`       | 9,259   | 12,300  | on demand         |
+| remaining nine             | 18,985  | 25,300  | on demand         |
+
+**Five observations, each measured rather than asserted.**
+
+**1. `current-state.md` is told to be read first and cannot be.** At **154,000 tokens** it is larger than the context available to read it, so in practice a session reads the top and nothing else — which makes the rest write-only, and write-only documentation is pure cost.
+
+**2. Its first 1,683 lines contain exactly one heading.** That is **33,516 words — around 45,000 tokens — of unnavigable prose** before the first `##`, most of it nested inside blockquotes. There is nothing for a `grep` for a heading to find and nothing for a targeted read to anchor on.
+
+**3. No document has a table of contents**, and section sizes defeat section-level reading anyway. The largest single `##` section is **11,415 words in `architecture.md`** and **33,111 in `product-feedback.md`**. Reading "just the relevant section" can still cost 15,000 tokens.
+
+**4. `CLAUDE.md` spends a meaningful share of every session on its own history.** It carries **15 amendment markers** and **6 passages describing what it used to say**. The distinction that matters is between **rationale**, which stops an agent helpfully reverting a decision and is load-bearing, and **history of the wording**, which serves the maintainer's audit trail and is paid for on every turn by every session.
+
+**5. The append-only checkpoint model is at war with the file's stated purpose.** `current-state.md` says it records _where we are right now_; it is structurally a chronological log of 86 numbered checkpoints. Both are useful. They are not the same document, and `CLAUDE.md`'s own current-state paragraph was **fifteen pull requests out of date** at one point, which is the same duplication failing.
+
+**What this entry does not do.** It proposes nothing and decides nothing — per this file's standing rules it is an observation. **A restructuring of the governing documents is a material change** and belongs to a deliberate cycle with the maintainer deciding the shape. The obvious hazard to weigh there: **the verbosity is partly deliberate and partly effective.** Dense rationale demonstrably stops an agent reverting hard-won decisions, and several passages exist because exactly that happened. **Cutting for brevity could cost more than it saves**, and any proposal should say which parts are load-bearing and why.
+
+---
 
 ---
 
