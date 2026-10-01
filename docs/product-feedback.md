@@ -1182,7 +1182,11 @@ When someone follows you, the notification should let you **follow them back the
 
 ### F-056 — CI jobs are failing before they start, and it blocks the whole workflow
 
-**2026-09-24 · development process, CI · NEW — URGENT-ADJACENT**
+**2026-09-24 · development process, CI · CLOSED — SYMPTOM GONE 2026-10-01, COST HALVED, BUDGET RISK STANDS**
+
+> **Reconciled at STEP 00 on 2026-10-01.** **The blocking symptom is gone**: minutes refreshed, and run `36925511766` reached a runner and passed green — 534 unit, 788 integration, 137 end-to-end, **attempt 1, zero flaky**. The cause was confirmed as exhausted minutes by the refresh itself, which is the evidence this entry said it lacked.
+> **The structural half is addressed, not solved.** PR #32 added `paths-ignore` for `docs/**` and markdown, so documentation-only pushes cost nothing — 14 of 40 recent commits, and three of the four runs after the last green one. `architecture.md` §20 and `CLAUDE.md`'s new `CI SKIPPED` state carry it.
+> **What is NOT fixed and is deliberately left open**: a code run still costs ~23 billed minutes, 22 of them the integration and end-to-end job, so the ceiling is still roughly 87 code runs a month. **September used 99+.** If that bites again the lever is the job's own cost, not the trigger — and **that reverses what `architecture.md` §12 deliberately moved to CI**, so it is a decision rather than a tweak. **Related: F-045.**
 
 **The post-merge run on `main` for §96 failed with zero steps executed and no logs retained.** Both jobs died within seconds of starting. **Re-run twice — `run_attempt: 3` — failing identically each time.**
 
@@ -1652,7 +1656,7 @@ Get your password wrong and **both fields empty**, so you retype your address as
 
 ### F-057 — the documentation is written for the record, and read by an agent
 
-**2026-09-26 · development process, documentation · PROMOTED — DECIDED 2026-09-26, IN FLIGHT**
+**2026-09-26 · development process, documentation · PARTLY DELIVERED 2026-09-26 — THE `CLAUDE.md` HALF IS OPEN BY DECISION**
 
 > **Promoted the same day it was filed.** The decision is `architecture.md` §20: `current-state.md` splits at §13, standing sections staying and cycle checkpoints moving to `docs/cycle-log.md`; the blockquote wrapper goes; every long document gains a table of contents. **Nothing is renumbered, rewritten or deleted** — §20.3. **The half of this entry about `CLAUDE.md`'s own length is deliberately not in that scope** and stays open; §20.5 records why, including that it was proposed by the agent that would benefit from it.
 
