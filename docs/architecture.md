@@ -2235,6 +2235,28 @@ Also excluded: RLS policies of any kind; `auth`, `storage` and other non-`public
 
 **It does not block the slice.** The cascade is the privacy-safe default, and retention can only ever be added by a later deliberate decision — the reverse would be a silent widening.
 
+### 16.10d A status change and its statement are one database statement, because two client calls cannot be **[DECIDED 2026-10-01]**
+
+**Found at STEP D by reading `src/services/admin/index.ts`.** Every admin write there is a single `update` through the service-role client, and `supabase-js` has no multi-statement transaction.
+
+**So writing the statement as a second call leaves a window in which the status changed and no statement exists — which is §92's defect in a new form**, and §92 is the thing this slice exists to repair. A guarantee that holds except when it doesn't is not the guarantee Art 17 requires.
+
+**The status change and the statement are therefore one `SECURITY DEFINER` function**, called by the service through `.rpc()`. Three existing migrations already use this shape.
+
+**This does not move domain logic out of the service layer.** `CLAUDE.md`'s test is whether a native client would need the rule to behave correctly — it would, and it still calls the service. **Atomicity is in the database because only the database can offer it**; the rule about when a statement is owed stays in `src/services/`.
+
+**Consequence worth naming before it is implemented.** `setAccountStatus` and `setContentStatus` are shipped, working, privilege-sensitive paths, and §94 found a near-regression in exactly this area **two cycles running**. Rewiring them is the riskiest part of slice 3a and is to be treated as such rather than as plumbing.
+
+### 16.10e The author's read is a column-grant problem, not an RLS problem **[DECIDED 2026-10-01]**
+
+**§16.10a says the acting administrator is never shown to the affected user.** That is a statement about columns, and RLS cannot make it.
+
+**If `authenticated` is granted `select` on `moderation_actions` with a row policy of _the subject is me_, the subject can read `actor_id`.** The policy was never wrong; it was answering a different question.
+
+**So `select` is granted on the safe columns only and on `actor_id` never** — plus the explicit `revoke` that §16.5 requires, on the table and on the function, because a grant naming its intended audience restricts nobody.
+
+**This is the §92 and §94 lesson applied before the defect rather than after it**: **RLS answers which rows, grants answer which columns.** Those two cycles each found a privilege hole of this exact shape, and the second found it in migrations that appeared to withhold what they granted. **A test asserting the subject cannot read `actor_id` is part of the slice**, because the only evidence that a revoke worked is a query that fails.
+
 ## 17. Scalability — what breaks first, and when
 
 Honest ordering of what would need attention, rather than premature optimisation:

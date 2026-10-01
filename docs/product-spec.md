@@ -155,6 +155,8 @@ A later Phase 3 slice owns both, together with the schema change that adds the e
 
 #### 4.2 What reporting does, and what the reported author sees **[DECIDED 2026-10-01]**
 
+**Delivered in two parts, and the second half of this section arrives first. [SPLIT 2026-10-01]** **The statement of reasons is Phase 6 slice 3a**, because content removal already ships and tells the author nothing. **In-product reporting is slice 3b**, because the address published on `/moderation` already provides the notice-and-action channel — `development-plan.md`. **So for a period, an author is told why their content was removed while the only way to report content is that address.** That is the intended state, not a gap.
+
 **Anyone with an account can report a review, a list or an account**, using the five reasons in §4.1. **Anyone without one uses the contact address published on `/moderation`** — that address is the notice-and-action channel for everyone outside the product, and `architecture.md` §16.10b records why it is what makes signed-in-only reporting lawful rather than a gap.
 
 **A report is not a verdict and nothing happens automatically.** It enters a queue. Content stays visible until an administrator acts.
