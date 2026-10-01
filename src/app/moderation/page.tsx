@@ -136,8 +136,19 @@ export default function ModerationPage() {
              * DSA Arts 11 and 12 require a point of contact for authorities and
              * for users, reachable by direct and rapid electronic means. One
              * address serves both at this size, which the articles permit.
+             *
+             * **It is a personal mailbox, deliberately and temporarily.** The
+             * intended address was `hello@longplayr.dev-guides.com`, and on
+             * 2026-10-01 that domain had no MX record and did not resolve —
+             * so mail to it bounced. **An address that bounces fails Art 11
+             * harder than an informal one does**, which is the whole reason
+             * this is a working mailbox rather than a tidy-looking one.
+             *
+             * Replace it when longplayr has its own domain. Note that the
+             * address is public and will be scraped; that was raised and
+             * accepted.
              */}
-            <span className="text-text">hello@longplayr.dev-guides.com</span>.
+            <span className="text-text">streetclasharchives@gmail.com</span>.
           </p>
           <p>
             This page describes how moderation works. It is not a full terms of service, and it is
