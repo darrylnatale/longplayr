@@ -16,6 +16,13 @@ import { signUpDestination } from '@/services/auth/signup-destination';
 export type AuthFormState = {
   error?: string;
   fieldErrors?: { email?: string; password?: string; confirmPassword?: string };
+  /**
+   * The address that was submitted, echoed back so a rejected attempt does not
+   * also lose it. **No password field is ever echoed** — `architecture.md`
+   * §6.2. React 19 resets an uncontrolled form once its action resolves, which
+   * is why this is needed at all rather than being free.
+   */
+  email?: string;
 };
 
 /**
@@ -87,14 +94,16 @@ export async function signUp(
   _prevState: AuthFormState,
   formData: FormData,
 ): Promise<AuthFormState> {
+  const submitted = String(formData.get('email') ?? '');
+
   const parsed = parseSignUp(formData);
   if (!parsed.success) {
-    return { fieldErrors: fieldErrorsFrom(parsed.error) };
+    return { fieldErrors: fieldErrorsFrom(parsed.error), email: submitted };
   }
 
   const result = await signUpWithPassword(parsed.data);
   if (!result.ok) {
-    return { error: result.message };
+    return { error: result.message, email: submitted };
   }
 
   revalidatePath('/', 'layout');
@@ -159,14 +168,16 @@ export async function signIn(
   _prevState: AuthFormState,
   formData: FormData,
 ): Promise<AuthFormState> {
+  const submitted = String(formData.get('email') ?? '');
+
   const parsed = parseSignIn(formData);
   if (!parsed.success) {
-    return { fieldErrors: fieldErrorsFrom(parsed.error) };
+    return { fieldErrors: fieldErrorsFrom(parsed.error), email: submitted };
   }
 
   const result = await signInWithPassword(parsed.data);
   if (!result.ok) {
-    return { error: result.message };
+    return { error: result.message, email: submitted };
   }
 
   revalidatePath('/', 'layout');

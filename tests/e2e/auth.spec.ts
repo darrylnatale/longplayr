@@ -261,3 +261,50 @@ test('at phone width a signed-out visitor sees no sign-out control', async ({ pa
   await expect(page.getByRole('heading', { name: user.handle })).toBeVisible();
   await expect(profileSignOut(page)).toHaveCount(0);
 });
+
+/**
+ * A rejected attempt keeps the address — `architecture.md` §6.2, F-055.
+ *
+ * **This can only be tested in a browser**, and that is the point rather than a
+ * convenience. The behaviour is a React 19 property: a form action resolving
+ * resets an uncontrolled form, and a changed `defaultValue` does not update an
+ * input that is already mounted. **Whether the fix works is a question about
+ * the runtime, not about the code**, so reading the source cannot answer it and
+ * neither can a unit test over the action.
+ *
+ * **The password assertions are the half that would be missed.** Preserving the
+ * address is the visible fix; never preserving a password is the decision, and
+ * a change that refilled both would satisfy the first assertion alone.
+ */
+test('a wrong password keeps the address and clears the password', async ({ page }) => {
+  const user = uniqueUser();
+
+  await page.goto('/login');
+  await page.getByLabel('Email').fill(user.email);
+  await page.getByLabel('Password', { exact: true }).fill('definitely-not-the-password');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+
+  // The rejection, so the assertions below are about a failed attempt rather
+  // than about a form that was never submitted.
+  await expect(page.getByRole('alert')).toBeVisible({ timeout: 15_000 });
+
+  await expect(page.getByLabel('Email')).toHaveValue(user.email);
+  await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
+});
+
+test('a mismatched signup keeps the address and clears both passwords', async ({ page }) => {
+  const user = uniqueUser();
+
+  await page.goto('/signup');
+  await page.getByLabel('Email').fill(user.email);
+  await page.getByLabel('Password', { exact: true }).fill('correct-horse-battery');
+  await page.getByLabel('Confirm password').fill('correct-horse-batteryy');
+  await page.getByRole('button', { name: 'Create account' }).click();
+
+  await expect(page.getByLabel('Email')).toHaveValue(user.email, { timeout: 15_000 });
+
+  // **Both cleared, because a mismatch means at least one is wrong.** Refilling
+  // either would hide which — §6.2.
+  await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('Confirm password')).toHaveValue('');
+});
