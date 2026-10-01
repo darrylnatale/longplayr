@@ -5,6 +5,7 @@ import { AlbumCover } from '@/components/AlbumCover';
 import { AlbumGrid } from '@/components/AlbumGrid';
 import { ArtistCredit } from '@/components/ArtistCredit';
 import { Container } from '@/components/Container';
+import { ReportControl } from '@/components/ReportControl';
 import { EditListForm } from '@/components/EditListForm';
 import { getList } from '@/services/lists';
 import { getMyListLikes, listLikeCount } from '@/services/social/list-likes';
@@ -101,6 +102,14 @@ export default async function ListPage({ params }: PageProps<'/lists/[id]'>) {
           </p>
         )}
       </header>
+
+      {/* The owner edits; everybody else may report. The two are mutually
+          exclusive by construction rather than by a second condition. */}
+      {!isOwner && viewer && (
+        <div className="mt-4">
+          <ReportControl kind="list" id={list.id} label="Report this list" />
+        </div>
+      )}
 
       {isOwner && (
         <div className="mt-6">

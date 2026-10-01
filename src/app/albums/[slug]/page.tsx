@@ -9,6 +9,7 @@ import { coverArtPromptUrl } from '@/services/catalogue/artwork-worklist';
 import { Container } from '@/components/Container';
 import { artistPath } from '@/lib/paths';
 import { ScoreBadge } from '@/components/ScoreBadge';
+import { ReportControl } from '@/components/ReportControl';
 import { ReviewLikeButton } from '@/components/ReviewLikeButton';
 import { SectionHeader } from '@/components/SectionHeader';
 import { getAlbumBySlug } from '@/services/catalogue/queries';
@@ -451,11 +452,19 @@ export default async function AlbumPage({ params }: PageProps<'/albums/[slug]'>)
                       visitor. No count in this slice, so a signed-out reader
                       sees the review exactly as before. */}
                   {viewer && (
-                    <ReviewLikeButton
-                      reviewId={review.id}
-                      liked={likedReviewIds.has(review.id)}
-                      toggleAction={toggleReviewLikeAction}
-                    />
+                    <div className="flex flex-wrap items-start gap-4">
+                      <ReviewLikeButton
+                        reviewId={review.id}
+                        liked={likedReviewIds.has(review.id)}
+                        toggleAction={toggleReviewLikeAction}
+                      />
+                      {/* Not on your own review: the author's remedy is to
+                          edit or delete it, and reporting yourself is refused
+                          by the schema anyway. */}
+                      {review.author.id !== viewer.id && (
+                        <ReportControl kind="review" id={review.id} />
+                      )}
+                    </div>
                   )}
                 </li>
               ))}

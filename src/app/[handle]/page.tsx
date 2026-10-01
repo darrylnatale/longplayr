@@ -8,6 +8,7 @@ import { CollectionGrid } from '@/components/CollectionGrid';
 import { Container } from '@/components/Container';
 import { FavouriteRow } from '@/components/FavouriteRow';
 import { FollowButton } from '@/components/FollowButton';
+import { ReportControl } from '@/components/ReportControl';
 import { ProfileStats } from '@/components/ProfileStats';
 import { SectionHeader } from '@/components/SectionHeader';
 import { COLLECTION_PREVIEW_LIMIT, listCollection } from '@/services/collection';
@@ -174,6 +175,15 @@ export default async function ProfilePage({ params }: PageProps<'/[handle]'>) {
             </div>
 
             {hasDistinctName && <p className="mt-1 text-sm text-text-muted">@{profile.handle}</p>}
+
+            {/* **Signed in, and not your own profile.** `canFollow` already
+                encodes both, so reusing it keeps the two controls appearing
+                under the same condition rather than drifting apart. */}
+            {canFollow && (
+              <div className="mt-2">
+                <ReportControl kind="account" id={profile.id} label="Report this account" />
+              </div>
+            )}
 
             <ProfileStats
               handle={profile.handle}

@@ -2261,6 +2261,24 @@ Also excluded: RLS policies of any kind; `auth`, `storage` and other non-`public
 
 **It does not weaken §16.10c.** Account deletion still cascades completely, because that is a non-negotiable. This governs only the content, whose deletion is the author's ordinary act rather than an erasure request.
 
+### 16.10f `reports` is insert-only, because the reporter is told nothing **[DECIDED 2026-10-02]**
+
+**`product-spec.md` §4.2 decided that a reporter never learns the outcome of their report** — it would reveal whether a specific account was acted on, and the person acted on is the one with the right to know.
+
+**So `authenticated` gets `insert` on named columns and `select` on nothing at all.** There is no read policy to write, because there is nothing anybody but an administrator may read. **That is tighter than a correct read policy and much harder to get subtly wrong**, which is the lesson of §92 and §94 applied by removing the surface rather than by guarding it.
+
+**One open report per person per target**, by partial unique index. A duplicate returns `23505`, which the service renders as _you have already reported this_ — **that leaks nothing, because the reporter already knows what they did.**
+
+**Free text only on `Something else`**, enforced by a check constraint rather than by the form. §4.1 made the product decision; this makes it a property of the data, the same way §16.10's statement requirement became a constraint rather than a convention.
+
+**Rate limited by the trigger §96 already built.** `enforce_rate_limit('reporter_id', …)` applies unchanged. The ceilings are **chosen, not measured** — the same standing as §96's, and stated in the same words: generous enough that no genuine reporter meets them, tight enough to bound a script. **Raising them when real usage says so is expected and is not a finding.**
+
+### 16.10g The queue is the module, not a policy **[DECIDED 2026-10-02]**
+
+**The admin queue reads through the service-role client**, like everything else in `src/services/admin/`. There is no admin-shaped RLS policy, and that is deliberate: after `20260922120000`, `status` and `is_admin` appear in no grant to `authenticated` at all, so **there is no policy left to subvert** — the module is the gate.
+
+**Resolving a report that results in a removal writes a moderation action**; dismissing one writes nothing but marks the report. `moderation_actions` gains a nullable `report_id`, nullable because **an administrator may act without a report** and the Art 17 statement is owed either way.
+
 ### 16.10d A status change and its statement are one database statement, because two client calls cannot be **[DECIDED 2026-10-01]**
 
 **Found at STEP D by reading `src/services/admin/index.ts`.** Every admin write there is a single `update` through the service-role client, and `supabase-js` has no multi-statement transaction.

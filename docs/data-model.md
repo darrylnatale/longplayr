@@ -555,6 +555,8 @@ The stored answer to a discovery chart, recomputed on a schedule rather than per
 
 **One target, not a polymorphic column.** One nullable foreign key per target type, the pattern `notifications` already uses, so the database enforces that the target exists and disappears with it.
 
+**Insert-only for its reporter, and readable by no one but an administrator.** `product-spec.md` §4.2 decided the reporter is never told the outcome, so there is nothing for them to read and no read policy to get wrong — `architecture.md` §16.10f. **One open report per person per target**, by partial unique index.
+
 **`illegal content` is a reason, not a separate entity.** `product-spec.md` §4.1 keeps it distinct in the list because it carries a different obligation — not because it needs different storage.
 
 ### 7a.2 `moderation_actions`
