@@ -153,6 +153,20 @@ A later Phase 3 slice owns both, together with the schema change that adds the e
 
 **These are not a legal taxonomy** and should not be mistaken for one. They are the shape of a triage queue for a product with one moderator. **§10.4's legal research, still outstanding, is what would tell us whether they are sufficient.**
 
+#### 4.2 What reporting does, and what the reported author sees **[DECIDED 2026-10-01]**
+
+**Anyone with an account can report a review, a list or an account**, using the five reasons in §4.1. **Anyone without one uses the contact address published on `/moderation`** — that address is the notice-and-action channel for everyone outside the product, and `architecture.md` §16.10b records why it is what makes signed-in-only reporting lawful rather than a gap.
+
+**A report is not a verdict and nothing happens automatically.** It enters a queue. Content stays visible until an administrator acts.
+
+**When an administrator removes content or suspends an account, the affected person is told why.** That is DSA Art 17 — a statement of reasons — and it is an obligation rather than a courtesy. It carries what was acted on, the ground for the decision, and how to dispute it, which is the same published address.
+
+**It never says which administrator acted.** `architecture.md` §16.10a: Art 17 does not require it, and in a product with one moderator it would expose a named individual to everyone they moderate.
+
+**A reporter is never told the outcome of their report.** Deliberate: it reveals whether a specific account was acted on, and the person acted on is the one with the right to know. The queue is not a conversation.
+
+**No appeals workflow, and the exclusion is researched rather than assumed.** Art 20 internal complaint-handling sits in DSA Section 3, and `docs/legal-obligations.md` establishes that Art 19 disapplies Section 3 for small and micro enterprises. **A dispute goes to the published address.**
+
 ### Catalogue
 
 | Decision        | Value                                                                                                                                                                                                                       |

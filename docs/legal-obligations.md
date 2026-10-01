@@ -116,6 +116,16 @@ So **none of these are legally required** of longplayr today:
 
 ---
 
+### Does a hard account delete have to destroy moderation records? **[RAISED 2026-10-01]**
+
+**`CLAUDE.md` requires account deletion to be a hard delete with a complete cascade**, on the stated ground that an orphaned row is a privacy failure. Phase 6 slice 3 therefore cascades `reports` and `moderation_actions` from `profiles` — `architecture.md` §16.10c.
+
+**The consequence, stated plainly: a moderated user who deletes their account destroys the record that they were moderated, including the Art 17 statement of reasons issued to them.** A reporter who deletes their account destroys their reports.
+
+**What needs advice.** Whether any retention duty — DSA, GDPR Art 17(3) exemptions, or German law — survives an erasure request, and if so what minimal record may be kept and for how long. **The product currently resolves this in favour of erasure**, which is the privacy-safe direction and the one that can be loosened later by decision rather than tightened by accident.
+
+**Not blocking.** The slice ships with the cascade.
+
 ## 6. What this changes about the plan
 
 **Messaging is no longer blocked by unknown obligations.** §10.4's precondition asked what the minimum safety layer is; **the answer is Art 16 notice-and-action plus Art 17 statements of reasons** — which Phase 6 slice 3 is already scoped to build. **One question remains open and needs a lawyer** (messages and Art 16), so the precondition is _discharged as researched, not as cleared_.

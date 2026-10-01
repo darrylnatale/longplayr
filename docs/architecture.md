@@ -2197,6 +2197,44 @@ Also excluded: RLS policies of any kind; `auth`, `storage` and other non-`public
 
 ---
 
+### 16.10 A statement of reasons is not a notification, and the existing table's own comment says why **[DECIDED 2026-10-01]**
+
+**DSA Art 17 requires that when content is removed or restricted, the author is told why**, with specified detail. `docs/legal-obligations.md` establishes this applies today with no micro-enterprise exclusion. **§92 built the ability to remove content and nothing tells the author anything** — this section decides where that record lives.
+
+**Not in `notifications`, for three reasons, the first of which is decisive.**
+
+**The cascade is that table's undo mechanism.** `20260903120000_create_notifications.sql` states it outright: _"Both cascade, which is the whole undo mechanism: unfollowing or unliking destroys the source row and the notification goes with it. There is no second delete anywhere in the service."_ **For a legal record that is backwards.** Restoring content must not erase the explanation of why it was removed, and under that design it would.
+
+**`actor_id` is `not null references profiles (id)`.** A statement of reasons has no actor in that sense — the acting party is an administrator, and **§16.10a below decides that identity is recorded and never shown.**
+
+**Art 17 requires structured content** — the facts relied on, the legal or contractual ground, the redress available. A `notification_type` enum plus one nullable foreign key per type cannot carry it, and widening that table to do so would put a retained legal record inside a read-and-forget surface.
+
+### 16.10a Two tables, and the statement is a column on the action **[DECIDED 2026-10-01]**
+
+**`reports` and `moderation_actions`. The statement of reasons lives on the action, not beside it.**
+
+`development-plan.md` already holds that a report's resolution and a statement of reasons are **the same moment seen from the two sides.** Giving them separate rows permits one to exist without the other, **which is exactly the defect being repaired**: removal shipped without notification. One row, and the obligation cannot be half-met.
+
+**The acting administrator is recorded and is never shown to the affected user.** Art 17 does not require naming the individual moderator. In a product with one admin, showing it would expose the maintainer personally to everyone they moderate.
+
+### 16.10b Reporting is signed-in only, and the published address is what makes that lawful **[DECIDED 2026-10-01]**
+
+**Art 16 requires a mechanism allowing _any individual or entity_ to notify** — it does not presuppose an account. The in-product form requires one.
+
+**What satisfies Art 16 for everyone else is the contact address published on `/moderation`.** That page is the notice-and-action channel for signed-out visitors, non-users and authorities; the form is the convenient path for account holders.
+
+**This is a dependency, not an aside. If that address is ever removed from that page, this decision breaks and Art 16 is unmet.** Any change to `/moderation`'s contact section has to be read against this section.
+
+### 16.10c Both tables cascade from `profiles`, and that may be wrong for a reason only a lawyer can settle **[DECIDED 2026-10-01, with a flagged conflict]**
+
+**`CLAUDE.md` is explicit: _"Account deletion is a hard delete with a complete cascade. An orphaned row is a privacy failure."_**
+
+**So both tables cascade.** A reporter deleting their account destroys their reports; a moderated user deleting theirs destroys the record of their moderation, **including the statement of reasons issued to them.**
+
+**That is decided this way because the non-negotiable is explicit and overriding it silently is not available.** But it is recorded as a conflict rather than as a clean answer: **a record-retention expectation may pull the other way**, and that is a question for professional advice. Filed in `legal-obligations.md` §5 alongside the question already there.
+
+**It does not block the slice.** The cascade is the privacy-safe default, and retention can only ever be added by a later deliberate decision — the reverse would be a silent widening.
+
 ## 17. Scalability — what breaks first, and when
 
 Honest ordering of what would need attention, rather than premature optimisation:

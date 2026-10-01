@@ -15,6 +15,7 @@ Notation: **[DECIDED]** = explicitly chosen. **[INFERRED]** = follows necessaril
 - [5. Lists and interactions](#5-lists-and-interactions) · 1,662 words
 - [6. Artwork](#6-artwork) · 221 words
 - [7. Derived and operational entities](#7-derived-and-operational-entities) · 1,031 words
+- [7a. Moderation entities **[DECIDED 2026-10-01]**](#7a-moderation-entities-decided-2026-10-01) · 314 words
 - [8. Cross-cutting behaviour](#8-cross-cutting-behaviour) · 195 words
 - [9. Open questions](#9-open-questions) · 486 words
 - [10. Entities implied by recorded product direction](#10-entities-implied-by-recorded-product-direction) · 1,009 words
@@ -543,6 +544,32 @@ The stored answer to a discovery chart, recomputed on a schedule rather than per
 **The chart is not capped at 20 and may hold more. [DECIDED 2026-09-05]** §8.3's 20 is a **floor** the external fill completes the chart to, never a ceiling: a chart with more than 20 qualifying internal albums stays that long, because internal results must not be truncated merely because they exceed the floor. **A row count is therefore unbounded by the product rule**, which a schema author should know before choosing keys or indexes. Whether the chart is materialised deeper than any consumer reads, and how the floor is applied at read time, **remain implementation concerns** and are unchanged by this entry.
 
 ---
+
+## 7a. Moderation entities **[DECIDED 2026-10-01]**
+
+**Two entities, and the pairing is the point.** `architecture.md` §16.10a.
+
+### 7a.1 `reports`
+
+**A notice that someone believes something breaches the policy.** It names the reporter, exactly one target — a review, a list or an account — one of the five reasons in `product-spec.md` §4.1, optional free text only on _Something else_, and whether it has been resolved or dismissed.
+
+**One target, not a polymorphic column.** One nullable foreign key per target type, the pattern `notifications` already uses, so the database enforces that the target exists and disappears with it.
+
+**`illegal content` is a reason, not a separate entity.** `product-spec.md` §4.1 keeps it distinct in the list because it carries a different obligation — not because it needs different storage.
+
+### 7a.2 `moderation_actions`
+
+**What an administrator did, and the statement of reasons for it, in one row.** The acting administrator, the subject, what was done — removed, restored, suspended, reinstated — the ground, and the text the affected person reads.
+
+**The statement is a column, not a sibling row.** A report's resolution and a statement of reasons are the same moment seen from two sides, and separate rows allow one without the other — the defect §92 shipped.
+
+**Optionally linked to the report that prompted it.** An administrator may act without a report, so the link is nullable.
+
+### 7a.3 Both cascade from `profiles`, and that is a flagged conflict
+
+**A complete cascade is a `CLAUDE.md` non-negotiable**, so deleting an account destroys its reports and its moderation record — **including the statement of reasons issued to it.** Decided in favour of erasure deliberately; `architecture.md` §16.10c and `legal-obligations.md` §5 carry the open question, which needs a lawyer.
+
+**No status column is added to anything.** `profiles.status` and `content_status` on `reviews` and `lists` already exist and are already enforced; this slice records _why_ a status changed, never _what_ it is.
 
 ## 8. Cross-cutting behaviour
 
