@@ -10,6 +10,7 @@
 
 **Unnumbered entries predate the §-numbering convention.** They sit between §87 and §86 in time.
 
+- [§98 — ✅ People are told why their content was removed](#98---people-are-told-why-their-content-was-removed--gate-cleared-ci-36935834052-completedsuccess-on-92e3e98-attempt-1-140-end-to-end-zero-flaky-migration-applied-and-confirmed-deployed-and-probed) · 645 words
 - [§97 — ✅ The checkpoint log is split out of the file every session reads first](#97---the-checkpoint-log-is-split-out-of-the-file-every-session-reads-first--ci-failed-for-infrastructure-reasons-run-36235116054-on-9e1bf40-zero-steps-exhausted-minutes-documentation-only-npm-run-verify-green-from-a-clean-build) · 711 words
 - [§96 — ✅ Ceilings on the writes that notify other people](#96---ceilings-on-the-writes-that-notify-other-people--gate-cleared-on-the-branch-ci-36027162590-completedsuccess-on-e7fd345-137-end-to-end-zero-flaky-post-merge-run-failed-for-infrastructure-reasons--see-above-triggers-confirmed-live-on-production) · 548 words
 - [§95 — ✅ There is a way back into an account](#95---there-is-a-way-back-into-an-account--gate-cleared-ci-36005726480-completedsuccess-on-0774a5e-137-end-to-end-zero-flaky-confirmed-on-production) · 733 words
@@ -125,6 +126,50 @@
 - [§17 — Lessons carried forward](#17--lessons-carried-forward) · 450 words
 
 ---
+
+## §98 — ✅ People are told why their content was removed — **[GATE CLEARED: CI `36935834052` `completed/success` on `92e3e98`, attempt 1, 140 end-to-end, **zero flaky**. MIGRATION APPLIED AND CONFIRMED. DEPLOYED AND PROBED.]**
+
+**Phase 6 slice 3a.** §92 built content removal and account suspension. **Nothing told the affected author anything**, so DSA Art 17 was unmet in shipped code rather than in theory.
+
+### 📄 What shipped
+
+`moderation_actions`, its own table, with the Art 17 statement as a **column on the action** rather than a sibling row — a report's resolution and its statement are the same moment seen from two sides, and separate rows let one exist without the other. Three `SECURITY DEFINER` functions that change status and write the statement **in one database statement**. A `/notices` page, and a banner rendered from the root layout. `architecture.md` §16.10 to §16.10e.
+
+### 🔎 Three defects found by executing the migration, not by reading it
+
+**`reviews` has no `user_id`.** The author is reached through `collection_entries`, which is how the table enforces one review per user per album. A `returning user_id` **compiles and fails at runtime**.
+
+**A `case` returning string literals is `text`**, and Postgres will not coerce text into an enum column — `42804`.
+
+**The first subject constraint failed on `ON DELETE SET NULL`.** Postgres re-evaluates CHECK constraints on UPDATE, and `set null` performs one — so _a content action must name exactly one target_ **blocked an author deleting their own review**. Relaxed to tolerate both-null, with the snapshot carrying the row.
+
+**None of these is visible to `npm run verify`**, and the second and third are invisible to reading. **This is F-032's risk arriving**, and it is the reason Docker was started rather than letting CI find out at 23 billed minutes a round.
+
+### 🔎 The privilege assertion, made before the defect for once
+
+**The acting administrator is recorded always and shown never, and that is a column grant rather than a policy.** The RLS policy is satisfied — it is the subject's own row — and the request still fails with `42501`.
+
+**RLS answers which rows; grants answer which columns.** §92 and §94 each paid for that lesson afterwards. **§98 is the first slice to assert it before shipping**, by a test that expects a query to fail.
+
+### ⚠️ Two defects the review caught in this cycle's own work
+
+**An `as never` cast.** `setContentStatus` built its RPC arguments with a computed key and needed the cast to compile — **and `as never` would have silenced a wrong argument name**, on a function whose whole job is to make a guarantee hold. Replaced with two explicit call sites that type-check against the generated schema.
+
+**A prefetch hazard.** `/notices` marks statements read as it renders, and a prefetch renders it on the server — so prefetching could clear the banner for somebody who never clicked. `prefetch={false}` on the only link **narrows it rather than removing it**; the durable fix is to stop writing during render. Nothing is lost when it happens, so it weakens discovery rather than breaking the obligation.
+
+### 📄 Evidence
+
+**CI `36935834052`, attempt 1, `completed/success`**: 45 unit files, 43 integration files, 1 seed, **140 end-to-end in 15.8m, zero flaky, zero retries.**
+
+**31 integration tests locally**, including `admin-privileges` and `write-privileges` **re-run deliberately** — the rewiring touches the exact area §94 found a near-regression in two cycles running.
+
+**Migration applied at STEP J and confirmed** `upToDate: true` before the merge. **Production probed after deploy**: `/` and `/moderation` 200, `/notices` 307 to `/login` signed out.
+
+### 📄 What this slice deliberately did not do
+
+**No reporting.** That is slice 3b, and the order was inverted on purpose: Art 17 was unmet in shipped code while **Art 16 has no gap at all**, since the address published on `/moderation` is already the notice-and-action channel — §16.10b.
+
+**The previous entry, left as written.** Verified at **`2e19ae2`**.
 
 ## §97 — ✅ The checkpoint log is split out of the file every session reads first — **[CI FAILED FOR INFRASTRUCTURE REASONS: run `36235116054` on `9e1bf40`, zero steps, exhausted minutes. DOCUMENTATION ONLY; `npm run verify` green from a clean build.]**
 

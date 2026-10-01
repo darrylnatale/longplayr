@@ -16,7 +16,7 @@
 
 **The verification gate moved, and `CLAUDE.md` now carries it. [APPLIED 2026-09-15]** Work happens on a branch and reaches `main` only through a green CI run; STEP F runs `npm run verify` plus targeted suites; **the migration gate moved from STEP I to STEP J**, so the order is **CI green → migration applied → merge**. The decision is `architecture.md` §12; the process is `CLAUDE.md`. **The two no longer disagree.** (§68, §69)
 
-**Verified 2026-09-26 against the repository, the remote, CI and production.** `main` is at **`9e1bf40`**, `origin/main` identical, working tree clean. **37 migrations, 0 unapplied.** Production returns 200 on `/`, `/albums/all` and `/login`. **The last green CI run remains `e7fd345` on 2026-09-24**; every run since has failed on exhausted minutes, `9e1bf40`'s included (`36235116054`). **`main` has therefore not been CI-verified since `e7fd345`** — the five commits after it are documentation only, and each passed `npm run verify` locally. The previous line here read `4f660bc` and 2026-09-24.
+**Verified 2026-10-02 against the repository, the remote, CI and production.** `main` is at **`2e19ae2`**, the merge of PR #34. **38 migrations, 0 unapplied** — §98's was applied at STEP J and confirmed before the merge. **CI is alive again**: minutes refreshed on 1 October and four runs have passed green since, all attempt 1 and zero flaky. Production returns 200 on `/`, `/moderation` and `/login`, and 307 on `/notices` signed out. **`auth-keeps-email` is pushed as PR #35 with CI in flight.** The previous line here read `9e1bf40` and 2026-09-26.
 
 > ### 📄 This file was split on 2026-09-26, and is 85% smaller
 >
@@ -24,34 +24,13 @@
 >
 > **§1–§12 below are ~21,000 tokens and have not been checked for staleness.** They were moved untouched by decision, and two stale claims were found elsewhere on the same day, so treat them with suspicion.
 
-> # 🛑 CI IS DEAD UNTIL 1 OCTOBER — READ THIS FIRST
+> ### ✅ CI came back on 1 October, and the documentation push cost nothing
 >
-> **GitHub Actions minutes are exhausted.** 2,000 of 2,000 on the free plan for a private repository, confirmed by the maintainer on 2026-09-24. **They refresh on 1 October and the maintainer has decided to wait rather than pay.**
+> **Minutes refreshed and the gate works again.** The first run to reach a runner was `36925511766`. **Four runs have passed green since, every one attempt 1 with zero flaky.**
 >
-> **No cycle can reach STEP J.** That step requires _a completed successful run on the exact pushed SHA_ before a merge, and `architecture.md` §12 deliberately retired the local `verify:full` fallback on the reasoning that CI runs on clean runners. **Runners will not start**, so there is no gate. Jobs fail within seconds with zero steps and no logs.
+> **`paths-ignore` is merged and has been observed working**: a push of three documentation commits (`cf62bc7`) fired **no run at all**. 14 of 40 recent commits were documentation only, and three of the four runs after the last green September run were too.
 >
-> **What is still available**: everything up to STEP I. Documentation and decisions need no CI at all. **Work may be built, verified with `npm run verify`, pushed to a branch and left unmerged** — `CLAUDE.md` permits a cycle closing with an unmerged branch provided the branch, SHA and CI state are recorded.
->
-> **Do not merge without a green run**, and do not treat `npm run verify` as a substitute: it runs neither a database nor a browser.
->
-> **Filed as F-056.** At **23 billed minutes per run** — 1 for the fast job, **22 for integration and end-to-end** — the budget is roughly 87 runs a month and 99+ were used. Related to **F-045**, which recorded what moving every slow test to CI would cost if it bit. **This is that cost arriving.**
-
-> # ▶️ WHEN CI RETURNS ON 1 OCTOBER — START HERE
->
-> **Work is paused by decision, not blocked mid-task.** Nothing is half-finished, `main` is clean and verified, and the tree has no uncommitted changes. **Resume with STEP 00 as normal.**
->
-> **First, in order:**
->
-> 1. **Confirm minutes actually refreshed** — one run is enough. `gh run list --branch main --limit 1`.
-> 2. **Merge PR #32, `ci-skip-docs-only`** (`e4f96b7`) **first.** It adds `paths-ignore` for `docs/**` and markdown, so documentation stops costing a 23-minute run — 14 of 40 recent commits were documentation only, and three of the four runs after the last green one were too. **It touches `ci.yml`, so it is not a documentation-only change and needs a real green run.** Merging it first makes every later documentation push free.
-> 3. **Merge `moderation-policy`** (`ad29689`). One file, `verify` green, render-probed at 200. **It needs the contact address decided first** — it currently says `hello@longplayr.dev-guides.com`, which does not exist. Cloudflare Email Routing forwards it free.
-> 4. **Read F-056 before running many cycles.** The refresh restores the gate; **it does not fix the problem.** At 23 billed minutes a run the budget is ~87 a month and 99+ were used in September. **It will run out again in October on current habits.**
->
-> **Then the strongest candidate is Phase 6 slice 3** — reporting, the admin queue, statements of reasons and the audit trail. It is **fully unblocked**, and `docs/legal-obligations.md` establishes that two of its parts are **legal obligations rather than product tooling**: DSA Art 16 notice-and-action, and Art 17 telling an author why their content was removed. **Nothing in the product currently tells an author anything.**
->
-> **No product decision blocks anything.** Ten were taken on 24 September. What remains open is minor: F-001 favourites reordering, F-024 the seed-removal half, F-041 browse filters.
->
-> **Two things need the maintainer and nobody else**: the contact address above, and a Google Cloud project with OAuth credentials if Google sign-in is wanted — the last item in F-016.
+> **F-056 is closed, with its structural half recorded as addressed rather than solved.** A code run still costs ~23 billed minutes, so the ceiling is still roughly **87 code runs a month** and September used 99+. **Six runs have been spent on 1–2 October.** If it bites again the lever is the integration job's own cost, which reverses what `architecture.md` §12 deliberately moved to CI — a decision, not a tweak.
 
 > ### ⚠️ §96's post-merge run failed, and `main` is verified anyway
 >
