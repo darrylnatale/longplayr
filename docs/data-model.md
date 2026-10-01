@@ -6,6 +6,22 @@ Notation: **[DECIDED]** = explicitly chosen. **[INFERRED]** = follows necessaril
 
 ---
 
+## Contents
+
+- [1. Shape of the model](#1-shape-of-the-model) · 173 words
+- [2. Catalogue entities](#2-catalogue-entities) · 1,172 words
+- [3. User and social entities](#3-user-and-social-entities) · 864 words
+- [4. The core entity](#4-the-core-entity) · 1,591 words
+- [5. Lists and interactions](#5-lists-and-interactions) · 1,662 words
+- [6. Artwork](#6-artwork) · 221 words
+- [7. Derived and operational entities](#7-derived-and-operational-entities) · 1,031 words
+- [8. Cross-cutting behaviour](#8-cross-cutting-behaviour) · 195 words
+- [9. Open questions](#9-open-questions) · 486 words
+- [10. Entities implied by recorded product direction](#10-entities-implied-by-recorded-product-direction) · 1,009 words
+- [11. Open questions carried from product direction](#11-open-questions-carried-from-product-direction) · 800 words
+
+---
+
 ## 1. Shape of the model
 
 Three layers that behave very differently:

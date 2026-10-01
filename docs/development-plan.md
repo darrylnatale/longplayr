@@ -9,6 +9,25 @@ Two ordering principles:
 
 ---
 
+## Contents
+
+- [Phase sequence](#phase-sequence) · 100 words
+- [Phase 0 — Foundation](#phase-0--foundation) · 228 words
+- [Phase 1 — Catalogue](#phase-1--catalogue) · 865 words
+- [Design foundation _(parallel track, begins when screenshots arrive)_ — **complete**](#design-foundation-_parallel-track-begins-when-screenshots-arrive_--complete) · 157 words
+- [Phase 1 reopened — upstream payload capture](#phase-1-reopened--upstream-payload-capture) · 1,480 words
+- [Phase 2 — Core loop](#phase-2--core-loop) · 993 words
+- [Phase 3 — Social](#phase-3--social) · 1,247 words
+- [Phase 4 — Lists](#phase-4--lists) · 581 words
+- [Phase 5 — Discovery](#phase-5--discovery) · 1,085 words
+- [Phase 6 — Safety and admin](#phase-6--safety-and-admin) · 843 words
+- [Phase 7 — Launch readiness](#phase-7--launch-readiness) · 413 words
+- [Working method](#working-method) · 103 words
+- [Deliberately not scheduled](#deliberately-not-scheduled) · 123 words
+- [Recorded direction, not yet scheduled](#recorded-direction-not-yet-scheduled) · 672 words
+
+---
+
 ## Phase sequence
 
 ```
@@ -382,7 +401,7 @@ Sequencing against `product-spec.md` §8.10 faults 1 and 2, and against the enri
 
 **Dependencies.** Phase 3 (list activity needs the feed).
 
-**Status: slice 1 is built, pushed and CI-verified (`a1c9550`, CI #80). [2026-09-04]** Slices 2 and 3 are not built. See `docs/current-state.md` §46.
+**Status: slice 1 is built, pushed and CI-verified (`a1c9550`, CI #80). [2026-09-04]** Slices 2 and 3 are not built. See `docs/cycle-log.md` §46.
 
 **Slicing. [DECIDED 2026-09-03]** The feature list above is delivered in three slices. **This is sequencing within Phase 4, not a reduction of its scope** — every feature listed above remains in the phase, and the definition of done below is unchanged.
 
@@ -583,7 +602,9 @@ Consistent with `docs/claude-code-playbook.md`:
 
 ## Deliberately not scheduled
 
-Comments, private accounts, track-level features, streaming integration, per-item list notes, genres and tags, year-in-review, and native apps. Each is deferred with reasoning in `docs/product-spec.md` §7. None should be added to a phase above without an explicit decision to change scope.
+Comments, private accounts, track-level features, streaming integration, per-item list notes, genres and tags, year-in-review, ~~and native apps~~. Each is deferred with reasoning in `docs/product-spec.md` §7. None should be added to a phase above without an explicit decision to change scope.
+
+**Native apps and push left this list on 2026-09-24 by explicit decision** — the mechanism this paragraph requires. **Both are reopened, neither is scheduled, and neither has a phase.** `product-spec.md` §7a records what reopening them costs, and the questions that must be asked first. **Comments remain on this list**, now with a trigger rather than an open end: revisit when Phase 6 slice 3 ships reporting.
 
 **Algorithmic recommendations** left this list by decision — see the next section.
 

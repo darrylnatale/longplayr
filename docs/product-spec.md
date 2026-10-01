@@ -6,6 +6,21 @@ Notation: **[DECIDED]** = explicitly chosen. **[INFERRED]** = follows necessaril
 
 ---
 
+## Contents
+
+- [1. What longplayr is](#1-what-longplayr-is) · 303 words
+- [2. Non-goals](#2-non-goals) · 123 words
+- [3. The core loop](#3-the-core-loop) · 199 words
+- [4. Decisions of record](#4-decisions-of-record) · 1,427 words
+- [5. Product areas](#5-product-areas) · 658 words
+- [6. Surface definitions](#6-surface-definitions) · 9,507 words
+- [7. Explicitly deferred](#7-explicitly-deferred) · 662 words
+- [8. Open decisions](#8-open-decisions) · 10,727 words
+- [9. Consistency check](#9-consistency-check) · 197 words
+- [10. Recorded product direction — decided, not implemented](#10-recorded-product-direction--decided-not-implemented) · 4,605 words
+
+---
+
 ## 1. What longplayr is
 
 longplayr is a place to keep a record of the albums you've listened to, say what you think of them, and see what the people you follow are listening to.
@@ -86,7 +101,7 @@ Revised entries supersede earlier choices made during the same session.
 | Silent actions  | **Historical and backfilled collection data** populates the collection without generating feed events, which is what makes onboarding backfill possible without flooding followers. **A backdated `listened_on` is not itself a request for silence** — see the amended rule in `data-model.md` |
 | Feed recency    | Feed shows relative time ("2h"). Profiles show no dates anywhere                                                                                                                                                                                                                                |
 | Interactions    | Likes only. **No comments in v1**                                                                                                                                                                                                                                                               |
-| Notifications   | In-app page only — new followers, likes on your reviews, likes on your lists, with an unread count. No email, no push                                                                                                                                                                           |
+| Notifications   | In-app page only — new followers, likes on your reviews, likes on your lists, with an unread count. ~~No email, no push~~ **Push reopened 2026-09-24, §7a. Email remains no**                                                                                                                   |
 
 **Want to Listen additions are in that list and are not yet written. [RECORDED 2026-09-01]** §10.1's decision stands unchanged — Want to Listen generates a normal feed event — but the `Activity` write path does not yet carry that event type, so the first following feed ships without it. **This is a sequencing boundary, not a reversal or a new product decision**: the Feed-contents row above says plainly "Not a closed list — it grows by phase", and this is one of the entries that has not arrived yet. Two questions block it, and both must be asked rather than inferred:
 
@@ -179,7 +194,7 @@ A later Phase 3 slice owns both, together with the schema change that adds the e
 
 **Search** — albums, artists, users. Includes the in-app MusicBrainz fallback for records not yet in the catalogue.
 
-**Notifications** — an in-app notifications page: new follower, like on your review, like on your list. Unread count. **No email, no push.** **[DECIDED — resolves former open decision 8.1]**
+**Notifications** — an in-app notifications page: new follower, like on your review, like on your list. Unread count. ~~**No email, no push.**~~ **[PUSH REOPENED 2026-09-24 — see §7a. Email is unchanged and still no.]** **[DECIDED — resolves former open decision 8.1]**
 
 **Safety** — report content and accounts; block accounts.
 
@@ -623,9 +638,35 @@ Reports queue with content preview and actions (dismiss, remove, suspend, ban). 
 | Per-item list notes         | Additive later without migration, unlike ranked ordering which is settled now                                                                                                                                                                                    |
 | Genres and tags             | Useful for discovery, but MusicBrainz genre data needs evaluation before committing                                                                                                                                                                              |
 | Year in review              | High organic-growth value, but needs a year of data to exist first                                                                                                                                                                                               |
-| Native apps                 | Responsive web first. **Still deferred.** `architecture.md` §19 records the constraints that keep a second client from becoming expensive — which is not a commitment to build one                                                                               |
+| Native apps                 | ~~Responsive web first. **Still deferred.**~~ **[REOPENED 2026-09-24 — see §7a.]** `architecture.md` §19's constraints stop being a precaution and become a requirement                                                                                          |
 
 ---
+
+### 7a. Push and a native client, reopened **[DECIDED 2026-09-24 — direction only]**
+
+**Both were `[DECIDED]` against and both are now reopened**, at the maintainer's decision. The stated goal is re-engagement: **push notifications on a phone are what brings people back** (`product-feedback.md` F-054).
+
+> **⚠️ Reopened is not scheduled, and neither is built, designed or assigned to a phase.** What changed is that two closed decisions are open again.
+
+**The narrower option was offered and declined**, and recording that matters: **a PWA can do push on current mobile platforms**, so reopening push alone would have addressed the stated goal without a second client. **Both were reopened deliberately.**
+
+#### What reopening the native client actually costs
+
+**`architecture.md` §19.3 stops being a precaution.** It has said all along that _a second client is plausible_, and `CLAUDE.md`'s domain-logic rule exists because of it — _if a native client would need this rule to behave correctly, it belongs in `src/services/`_. **That rule has been advice. It becomes a requirement**, and every existing drift from it is now debt rather than an accepted wrinkle. `CLAUDE.md` already names two: `shouldOfferFallback` encodes a product rule in `src/app/search/`, and `collectionPath` builds a web URL inside `src/services/`.
+
+**A second codebase, plus app store review, signing, release cadence and version skew.** The web app can deploy on every merge; a native client cannot, so **the service layer acquires a compatibility obligation it has never had.**
+
+#### What reopening push actually costs
+
+**`architecture.md` §16.3 holds notifications to be directed, private and disjoint from the feed** — and in-app only. Push makes them leave the product, which raises questions none of the existing machinery answers: **consent, per-type preferences, and what a notification says when its subject has since been removed or its actor suspended.**
+
+**Consent is not a preference toggle.** Push requires explicit opt-in, and `docs/legal-obligations.md` flags the TDDDG angle for anything touching a user's terminal equipment. **That is a legal question, not a settings screen.**
+
+**Email stays decided against**, and is untouched by this. Only push was reopened.
+
+#### What must be asked before either is built
+
+Which phase owns them; whether push is delivered by PWA or native; which notification types push at all; per-type and per-device preferences; what happens to a queued push whose subject is removed between send and open; quiet hours; and whether a native client is iOS, Android or both. **None has an obvious default.**
 
 ## 8. Open decisions
 
@@ -1140,6 +1181,21 @@ Candidate functionality, none of it committed: a similarity score or qualitative
 
 EXIF stripping and location granularity interact — photo metadata can carry precise coordinates, so a decision to allow only city-level location is undermined if uploads retain GPS tags. Raise them together.
 
+#### 10.3a Profile pictures: scope, decided **[DECIDED 2026-09-24 — resolves F-052]**
+
+**Build it, narrowly.** `profiles.avatar_url` has existed since Phase 0, `Avatar.tsx` renders it on profiles, followers, the album page, the feed and notifications, and it is denormalised into activity as `actor_avatar_url`. **There has never been an upload path.** This is unfinished scope rather than a new feature — §10.3 already records photo and bio as in scope.
+
+| Decision   | Value                                                                                                                                   |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Storage    | **Supabase Storage.** The `artwork` bucket exists; avatars get their own, because one is catalogue-owned and the other user-owned       |
+| Limits     | **Strict size and format**, enforced server-side. Numbers set at implementation                                                         |
+| EXIF       | **Stripped on upload.** A photo carries GPS coordinates by default, and this product is public by decision                              |
+| Cropping   | **None.** A client-side cropper is meaningful work for a 40px circle beside a handle                                                    |
+| Default    | **Unchanged** — the existing initial-based avatar                                                                                       |
+| Moderation | **Rides on the reporting slice**, not its own mechanism. An avatar is content on an account, and reporting an account already covers it |
+
+**It extends the deletion cascade, and that is the part most likely to be forgotten.** `architecture.md` §15.1 records that **no user-owned storage objects exist today** — the only bucket is catalogue-owned — and that this stops being true the moment avatars ship. **Whoever builds this owns extending the hard delete**, and §87's orphan test is where that gets proven.
+
 ### 10.4 Direct messaging
 
 **Decided, and this reverses an earlier decision.** §5 _Should probably not exist_ previously read "**Direct messages.** Moderation liability far exceeding their value here." That entry is superseded. Messaging is now **intended functionality from the beginning of the social product**, not a future maybe.
@@ -1242,6 +1298,18 @@ The album is longplayr's social object and remains so. This section is about the
 - **Whether this ships as an artist-page feature, a discovery surface, or neither.**
 
 **This does not reverse the track decision.** §2 keeps _"Not track-level"_, and `CLAUDE.md` keeps _"Tracks are never rated, reviewed, logged or listed."_ The direction preserved is narrower: an album may remain the only **social** object while a track becomes usable as a **catalogue and discovery** object. That split is coherent, but it is a direction rather than a decision, and it **strains two existing rules** — see §11 of `data-model.md`, where the tension is recorded rather than resolved.
+
+### 10.8 Comments and status posts **[DECIDED 2026-09-24 — resolves F-053's first two halves]**
+
+**Comments stay deferred until reporting ships.** §7 deferred them as _"the largest moderation liability in the product"_, and that reasoning is unchanged — but the deferral now has a **trigger rather than a vibe**: Phase 6 slice 3 builds reporting, the admin queue and statements of reasons, all of which are legally owed. **Adding the highest-liability content type before the mechanism to handle it exists is backwards.** Revisit when slice 3 lands.
+
+**This is not a permanent no.** That option was offered and declined.
+
+**Status posts are out of scope, and this is a no rather than a deferral.** Every feed event today is **derived from doing something with an album** — added, rated, relistened, reviewed, listed. A free-text post with no album behind it is **a different product**: a microblog with its own moderation, deletion, reporting and feed-eligibility rules, and `CLAUDE.md`'s feed invariant — _an event is generated when a user acts, at the moment they act_ — was written for actions on albums and does not obviously describe posting.
+
+**The narrower version is still available and was not rejected.** F-022 records recommending an album to somebody directly, and a recommendation **anchored to a catalogue row** is a different proposition from free text. **That remains open.**
+
+**Messaging is untouched by this** and is separately recorded in §10.4, where its blocking precondition is now discharged as researched.
 
 ### 10.5 Social philosophy
 
