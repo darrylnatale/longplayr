@@ -186,6 +186,20 @@ _Risk, stated plainly._ **This is the most expensive decision in the project to 
 
 **So custom SMTP is a prerequisite for enabling confirmation at all**, not an improvement to it. `deployment.md` records verification email as a launch prerequisite; **this is the constraint that makes the SMTP choice part of it rather than adjacent to it.** No provider is chosen here.
 
+### 6.2 A rejected attempt keeps the address and never keeps the password **[DECIDED 2026-10-02]**
+
+**React 19 resets an uncontrolled form once its action resolves**, so a rejected sign-in empties every field. `AuthForm` sets no `defaultValue`, so somebody who mistyped a password retypes their address too — on a phone, at the moment they are already mildly annoyed. `product-feedback.md` F-055.
+
+**The address is echoed back through the action state; no password ever is.** That asymmetry is the decision rather than an implementation detail:
+
+- **An address is not a secret and is tedious to retype.** Echoing it costs nothing and is what every well-behaved form does.
+- **A password is a secret, and echoing one puts it in the server action's return value** — which crosses the wire, may be logged, and would be held in client memory for the life of the page. **The browser's own password manager already refills it**, so the work is done by something better placed to do it.
+- **Signup clears both password fields**, including the confirmation. A mismatch means at least one of them is wrong, and refilling either would hide which.
+
+**Found by a test rather than by using the product**, which is worth recording: the password-reset end-to-end spec filled only the password on a second attempt and submitted an empty address. The defect was in the form; the spec was right.
+
+**This covers `/login` and `/signup` only**, which is what `AuthForm` serves. `/forgot-password` reports success for any well-formed address and has nothing to preserve, and `/reset-password` has no address field at all.
+
 ### 6.1 Password reset, and the callback route that never existed **[DECIDED 2026-09-24]**
 
 **There was no way back into an account.** `src/services/auth/` held sign up, resend confirmation, sign in and sign out — no recovery, no route, no link on the login form. `product-spec.md` §5 lists accounts as _"sign up, sign in, sign out, delete account, export data"_: **reset was never scoped rather than deferred.**

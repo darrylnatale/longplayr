@@ -1501,7 +1501,9 @@ The product should eventually be **an app, not a PWA**. The stated reason is spe
 
 ### F-055 — a failed sign-in clears the email you just typed
 
-**2026-09-24 · signup, auth · NEW**
+**2026-09-24 · signup, auth · PROMOTED — DECIDED 2026-10-02, IN FLIGHT**
+
+> **Decision: `architecture.md` §6.2.** The address is echoed back, no password ever is, and signup clears both password fields because a mismatch means one of them is wrong. `/login` and `/signup` only — the two forms `AuthForm` serves.
 
 Get your password wrong and **both fields empty**, so you retype your address as well as your password. On a phone that is a real annoyance at exactly the moment somebody is already mildly frustrated.
 

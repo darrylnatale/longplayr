@@ -10,10 +10,12 @@ import type { AuthFormState } from './actions';
 /**
  * Credentials form, shared by sign in and create account.
  *
- * Behaviour is untouched: the same `useActionState` wiring, the same server
- * action contract, the same field and form-level error shapes, the same
- * `autoComplete` switch keyed off the submit label. Only the presentation moved
- * onto the design foundation.
+ * The same `useActionState` wiring, the same server action contract, the same
+ * field and form-level error shapes, the same `autoComplete` switch keyed off
+ * the submit label.
+ *
+ * **One behaviour has since changed: a rejected attempt keeps the address.**
+ * `architecture.md` §6.2 — and no password field is ever refilled.
  */
 
 function SubmitButton({ label }: { label: string }) {
@@ -40,12 +42,26 @@ export function AuthForm({
 
   return (
     <form action={formAction} className="flex flex-col gap-5">
+      {/*
+       * **`key` as well as `defaultValue`, and the `key` is the part that
+       * works.** React 19 resets an uncontrolled form once its action resolves,
+       * and changing `defaultValue` on an input that is already mounted does
+       * not change what it displays. Keying the input on the echoed address
+       * remounts it, so the new default is the value the reader sees.
+       *
+       * **No password field gets this treatment, deliberately** —
+       * `architecture.md` §6.2. An address is not a secret; a password echoed
+       * through a server action's return value would cross the wire and sit in
+       * client memory, and the browser's password manager already refills it.
+       */}
       <Field id="email" label="Email" error={state.fieldErrors?.email}>
         <input
+          key={state.email ?? ''}
           id="email"
           name="email"
           type="email"
           autoComplete="email"
+          defaultValue={state.email ?? ''}
           required
           aria-describedby={state.fieldErrors?.email ? 'email-error' : undefined}
           className={INPUT}
