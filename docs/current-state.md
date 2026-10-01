@@ -16,7 +16,7 @@
 
 **The verification gate moved, and `CLAUDE.md` now carries it. [APPLIED 2026-09-15]** Work happens on a branch and reaches `main` only through a green CI run; STEP F runs `npm run verify` plus targeted suites; **the migration gate moved from STEP I to STEP J**, so the order is **CI green → migration applied → merge**. The decision is `architecture.md` §12; the process is `CLAUDE.md`. **The two no longer disagree.** (§68, §69)
 
-**Verified 2026-10-02 against the repository, the remote, CI and production.** `main` is at **`2e19ae2`**, the merge of PR #34. **38 migrations, 0 unapplied** — §98's was applied at STEP J and confirmed before the merge. **CI is alive again**: minutes refreshed on 1 October and four runs have passed green since, all attempt 1 and zero flaky. Production returns 200 on `/`, `/moderation` and `/login`, and 307 on `/notices` signed out. **`auth-keeps-email` is pushed as PR #35 with CI in flight.** The previous line here read `9e1bf40` and 2026-09-26.
+**Verified 2026-10-02 against the repository, the remote, CI and production.** `main` is at **`469989c`**, the merge of PR #35. **38 migrations, 0 unapplied** — §98's was applied at STEP J and confirmed before its merge. **CI is alive**: six runs have passed green since the refresh, **every one attempt 1 with zero flaky**, and two documentation pushes fired no run at all. Production returns 200 on `/`, `/moderation` and `/login`, and 307 on `/notices` signed out. **Nothing is unmerged and nothing is pending.**
 
 > ### 📄 This file was split on 2026-09-26, and is 85% smaller
 >

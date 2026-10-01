@@ -1501,7 +1501,7 @@ The product should eventually be **an app, not a PWA**. The stated reason is spe
 
 ### F-055 — a failed sign-in clears the email you just typed
 
-**2026-09-24 · signup, auth · PROMOTED — DECIDED 2026-10-02, IN FLIGHT**
+**2026-09-24 · signup, auth · CLOSED — DELIVERED 2026-10-02 (§99, PR #35)**
 
 > **Decision: `architecture.md` §6.2.** The address is echoed back, no password ever is, and signup clears both password fields because a mismatch means one of them is wrong. `/login` and `/signup` only — the two forms `AuthForm` serves.
 

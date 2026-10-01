@@ -10,6 +10,7 @@
 
 **Unnumbered entries predate the §-numbering convention.** They sit between §87 and §86 in time.
 
+- [§99 — ✅ A rejected sign-in keeps the address you typed](#99---a-rejected-sign-in-keeps-the-address-you-typed--gate-cleared-ci-36936442745-completedsuccess-on-72f9d7d-attempt-1-139-end-to-end-zero-flaky-no-migration-merged-as-pr-35) · 387 words
 - [§98 — ✅ People are told why their content was removed](#98---people-are-told-why-their-content-was-removed--gate-cleared-ci-36935834052-completedsuccess-on-92e3e98-attempt-1-140-end-to-end-zero-flaky-migration-applied-and-confirmed-deployed-and-probed) · 645 words
 - [§97 — ✅ The checkpoint log is split out of the file every session reads first](#97---the-checkpoint-log-is-split-out-of-the-file-every-session-reads-first--ci-failed-for-infrastructure-reasons-run-36235116054-on-9e1bf40-zero-steps-exhausted-minutes-documentation-only-npm-run-verify-green-from-a-clean-build) · 711 words
 - [§96 — ✅ Ceilings on the writes that notify other people](#96---ceilings-on-the-writes-that-notify-other-people--gate-cleared-on-the-branch-ci-36027162590-completedsuccess-on-e7fd345-137-end-to-end-zero-flaky-post-merge-run-failed-for-infrastructure-reasons--see-above-triggers-confirmed-live-on-production) · 548 words
@@ -126,6 +127,34 @@
 - [§17 — Lessons carried forward](#17--lessons-carried-forward) · 450 words
 
 ---
+
+## §99 — ✅ A rejected sign-in keeps the address you typed — **[GATE CLEARED: CI `36936442745` `completed/success` on `72f9d7d`, attempt 1, 139 end-to-end, **zero flaky**. NO MIGRATION. MERGED AS PR #35.]**
+
+**F-055.** Get your password wrong and **both fields emptied**, so you retyped your address as well. React 19 resets an uncontrolled form once its action resolves, and `AuthForm` set no `defaultValue`.
+
+### 🔎 The `key` is what works, not the `defaultValue`
+
+**Changing `defaultValue` on an input that is already mounted does not change what it displays.** The obvious fix is therefore not a fix. The input is keyed on the echoed address so that it remounts and the new default is what the reader sees.
+
+**That is a property of the React runtime rather than of this code**, which is why it was asserted in a browser rather than reasoned about. **Two cases run locally**, deliberately: §95 is this log's record of what happens when I assume instead of checking, and reading the source cannot answer what a form reset does.
+
+### 📄 The decision, which is the asymmetry rather than the fix
+
+**The address is echoed; no password ever is.** An address is not a secret and is tedious to retype. A password echoed through a server action's return value **crosses the wire and sits in client memory for the life of the page**, and the browser's own password manager already refills it.
+
+**Signup clears both password fields**, including the confirmation: a mismatch means at least one is wrong, and refilling either would hide which. `architecture.md` §6.2.
+
+### 📄 What the tests would have missed
+
+**The password assertions are the half that earns its place.** Preserving the address is the visible fix; never preserving a password is the decision — and **a change that refilled both fields would satisfy the address assertion alone.**
+
+### 📄 Scope
+
+**`/login` and `/signup` only**, which is what `AuthForm` serves. `/forgot-password` reports success for any well-formed address and has nothing to preserve; `/reset-password` has no address field.
+
+**Found by a test rather than by using the product**, and worth recording as such: the password-reset end-to-end spec filled only the password on a second attempt and submitted an empty address. **The defect was in the form and the spec was right.**
+
+**The previous entry, left as written.** Verified at **`469989c`**.
 
 ## §98 — ✅ People are told why their content was removed — **[GATE CLEARED: CI `36935834052` `completed/success` on `92e3e98`, attempt 1, 140 end-to-end, **zero flaky**. MIGRATION APPLIED AND CONFIRMED. DEPLOYED AND PROBED.]**
 
