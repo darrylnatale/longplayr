@@ -1,9 +1,37 @@
 name: CI
 
+# Documentation does not reach the build, so it does not need a 23-minute run.
+#
+# **Measured 2026-09-25**: 14 of the last 40 commits on `main` touched only
+# `docs/` or markdown, and each fired the full suite — roughly five hours a
+# month of a 33-hour allowance spent running Playwright against prose. The
+# allowance ran out on 24 September with a week of the month still to go.
+# `docs/product-feedback.md` F-056 carries the arithmetic.
+#
+# **What this gives up, stated rather than glossed.** `format:check` runs
+# Prettier over markdown, so a badly formatted document is no longer caught
+# here. `npm run verify` still catches it locally at STEP F.
+#
+# **It saves less than it looks.** A `pull_request` paths filter is evaluated
+# against the whole PR diff rather than the latest push, so documentation
+# committed inside a code PR still runs the full suite — which is correct. The
+# saving lands on documentation-only pushes to `main` and on wholly
+# documentation pull requests.
+#
+# **Nothing under `src/` or `scripts/` imports or reads markdown**, verified
+# before this filter was added. If that ever changes — MDX content, a
+# markdown-driven route — this filter has to change with it, or CI will skip
+# the change that needed it most.
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
   pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
