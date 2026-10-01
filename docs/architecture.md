@@ -2239,6 +2239,10 @@ Also excluded: RLS policies of any kind; `auth`, `storage` and other non-`public
 
 **This is a dependency, not an aside. If that address is ever removed from that page, this decision breaks and Art 16 is unmet.** Any change to `/moderation`'s contact section has to be read against this section.
 
+**And the dependency runs the other way too. [ADDED 2026-10-02, after it failed]** `/moderation` describes the moderation process in order to discharge **Art 14**, so **every slice that changes moderation makes that page either more or less true.** Slice 3b shipped reporting and left the page saying _"Reporting is not built yet"_ — a published falsehood on a page whose entire value is that it is checkable, and one the paragraph's own comment had predicted by saying it would be removed by the slice that built reporting.
+
+**So `/moderation` is a deliverable of any moderation slice, not a neighbour of one.** The check is specific: **read the page against the product before closing the cycle**, because the failure mode is a sentence that was true when written.
+
 ### 16.10c Both tables cascade from `profiles`, and that may be wrong for a reason only a lawyer can settle **[DECIDED 2026-10-01, with a flagged conflict]**
 
 **`CLAUDE.md` is explicit: _"Account deletion is a hard delete with a complete cascade. An orphaned row is a privacy failure."_**
