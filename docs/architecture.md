@@ -2305,6 +2305,20 @@ Also excluded: RLS policies of any kind; `auth`, `storage` and other non-`public
 
 **This is the §92 and §94 lesson applied before the defect rather than after it**: **RLS answers which rows, grants answer which columns.** Those two cycles each found a privilege hole of this exact shape, and the second found it in migrations that appeared to withhold what they granted. **A test asserting the subject cannot read `actor_id` is part of the slice**, because the only evidence that a revoke worked is a query that fails.
 
+### 16.11 An index on `albums.created_at`, and what it deliberately does not claim **[DECIDED 2026-10-02]**
+
+**`albums` carries seven indexes and none of them is on `created_at`** — title trigram, `first_release_date`, `artwork_status`, `search_vector`, `hydration_status`, `popularity_score`, `slug`. Verified against the migrations rather than assumed.
+
+**Two surfaces sort on it.** `getRecentAlbums` orders by `created_at desc` with no filter at all, which is Home and Browse; and `catalogueOrderFor` **ends every catalogue sort at `created_at`** so the ordering is total, which makes it the final key on `/albums/all` under every sort and the leading key under _Recently added_.
+
+**This claims no measured improvement, and that restraint is the point.** `product-feedback.md` F-050 states that at roughly 1,050 albums the scan **costs nothing measurable**, and that the honest trigger to act is the catalogue doubling or these pages appearing in a latency measurement — **neither of which is observed.** An index justified by a benchmark nobody ran would be exactly the kind of claim this project does not make.
+
+**What justifies it instead** is that the read sorts an unindexed column on the product's two busiest pages, the index is one statement, and **F-050 names it as separable and still useful after the rewrite it eventually wants.** It is cheap insurance, not a fix.
+
+**F-050 itself stays deferred, on its own trigger rather than on taste.** Its substance — asking for each artist's most recent album instead of reading 750 and discarding most of them — is unchanged and still correct, and `CLAUDE.md` is explicit that the cycle process must not be used to manufacture work. **This cycle takes the separable piece and leaves the decision alone.**
+
+---
+
 ## 17. Scalability — what breaks first, and when
 
 Honest ordering of what would need attention, rather than premature optimisation:
