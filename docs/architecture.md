@@ -1601,7 +1601,13 @@ A mechanical scan for `.click()` followed within three non-blank lines by `page.
 
 **What this gives up, stated rather than glossed.** A documentation-only change now waits for the full suite — roughly 23 minutes — rather than merging immediately. **§115, §116 and §117 each cost zero runs under the filter and would each have cost one now.** That is the trade: wall time for a gate that holds without being remembered.
 
-**And it ends something worth ending.** `CLAUDE.md`'s STEP H has always said to commit on a working branch rather than on `main`, and documentation has gone straight to `main` repeatedly — `6c3dff5`, `788328c`, §112's checkpoints and others. **Protection blocks direct pushes to a branch with required checks**, so the rule now holds mechanically instead of by my remembering it.
+**And it changes something worth changing, though less than first claimed. [CORRECTED 2026-10-02, within the hour]** `CLAUDE.md`'s STEP H has always said to commit on a working branch rather than on `main`, and documentation has gone straight to `main` repeatedly — `6c3dff5`, `788328c`, §112's checkpoints and others.
+
+**The first version of this paragraph said protection now makes that rule "hold mechanically instead of by my remembering it." That is false, and the reason is in the very next paragraph.** `enforce_admins` is **off**, and GitHub lets administrators bypass every protection on the branch. **The repository has exactly one user, and they are an administrator** — so nothing is mechanically prevented for the only person it could apply to.
+
+**What protection actually buys, stated accurately.** The merge button on a pull request refuses until both checks are green, and taking the override is a visible, deliberate act rather than a silent `git push`. **It converts a rule I had to remember into a default I have to override** — which is a real improvement, and is not the same as enforcement.
+
+**Turning `enforce_admins` on would make the claim true, and is deliberately not done** for the reason below.
 
 **`enforce_admins` is deliberately off.** A solo maintainer locked out of their own `main` by a stuck check has no second person to appeal to, and the escape hatch is worth more than the extra rigour. **Required reviews are off for the same reason** — GitHub will not let an author approve their own pull request, so requiring one would deadlock every cycle.
 
