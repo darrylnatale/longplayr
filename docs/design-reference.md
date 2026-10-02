@@ -597,3 +597,31 @@ choices already built into search, profile and `AlbumCover`, and they stand.
 **None of these is a design task yet.** All depend on product questions that `product-spec.md` §10 and §8.9 require be asked rather than inferred, and a design that answers them by drawing them is the same failure as code that answers them by implementing them.
 
 Taste overlap (§10.2) and messaging (§10.4) have **no design work recorded at all**, deliberately — messaging in particular is blocked on a legal precondition, and sketching an inbox would imply a shape the safety architecture has not earned yet.
+
+---
+
+## 13. Pagination shows page numbers, and one control serves every surface **[DECIDED 2026-10-02]**
+
+**`Pagination` offered Previous, Next and the text `Page 3 of 40`.** You could not ask for page 5 without clicking through to it. `product-feedback.md` F-046.
+
+**The decision F-046 actually poses is not whether to add numbers — it is whether one control can serve three surfaces with very different scales.** It is shared by the catalogue destination, which can run to hundreds of pages, the collection destination, which has a few, and `RelationshipPage`, where a follower list may have two.
+
+**One control, windowed.** First and last are always shown, a span around the current page is shown, and runs of skipped pages collapse to an ellipsis. That answers the scale question by **degrading rather than by branching**:
+
+- one page renders nothing at all, exactly as before;
+- a handful of pages renders every number and no ellipsis, so a two-page follower list looks like a two-page follower list;
+- a large catalogue renders a fixed-width window, so the control never grows with the data.
+
+**No per-surface variant, and that is the point.** A variant would mean three behaviours to keep consistent and three places for a regression, in service of a difference the window already absorbs.
+
+**One control was not true when this section was first drafted, and making it true was most of the work.** `Pagination` was imported by **two** places — the catalogue destination and `RelationshipPage`. The collection and lists destinations each carried **their own copy of the markup**, which F-046's own entry had not noticed.
+
+**The stated reason for the collection's copy was the Newer/Older label pair** — which is an argument for the shared component supporting two labels, not for duplicating forty lines of markup. `Pagination` now takes optional `backward` and `forward`, and the collection passes the time-flavoured pair only where the leading key is a date running newest first. **The lists copy had no stated reason at all**, and had quietly drifted in type size and spacing.
+
+**Shipping the improvement without consolidating would have left this section claiming something false** — the failure `architecture.md` §16.10b was written about one cycle earlier, where a page described a product it had stopped matching.
+
+**Every caller passes the complete nav label**, ending in _pages_. That matters beyond tidiness: three end-to-end specs assert that a nav named exactly `Collection pages` is absent on a single-page collection, so a shortened label would have made all three **pass for the wrong reason**.
+
+**A gap is never drawn for a single page.** Replacing one number with an ellipsis is strictly worse — same width, less function — so a run of exactly one collapses to the number itself.
+
+**The computation is a pure function and is not in `src/services/`.** `CLAUDE.md`'s test is whether a native client would need the rule to behave correctly: **it would not.** A page window shapes what the web renders and nothing else, so it is colocated with the component — and being pure, it is unit-tested directly rather than through a browser.

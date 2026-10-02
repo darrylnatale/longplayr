@@ -1303,7 +1303,9 @@ Under the rule as approved all four survive, because Tame Impala is the first cr
 
 ### F-046 — pagination offers only Previous and Next, with no way to jump to a page
 
-**2026-09-16 · browse, pagination · NEW**
+**2026-09-16 · browse, pagination · PROMOTED — DECIDED 2026-10-02, IN FLIGHT**
+
+> **Decision: `design-reference.md` §13.** One windowed control for all three surfaces rather than a per-surface variant — first and last always shown, a span around the current page, runs collapsed to an ellipsis. **It answers this entry's scale question by degrading rather than by branching.** A run of exactly one page never collapses, because an ellipsis the same width as the number it replaces is strictly worse.
 
 On the all-albums page you can go **next** or **previous**, but there is no way to go **to a specific page** — you cannot ask for page 5 without clicking through to it.
 

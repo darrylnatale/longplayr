@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
+import { Pagination } from '@/components/Pagination';
 import { Container } from '@/components/Container';
 import { CreateListForm } from '@/components/CreateListForm';
 import { SectionHeader } from '@/components/SectionHeader';
@@ -100,37 +101,22 @@ export default async function ProfileListsPage({
         </ul>
       )}
 
-      {totalPages > 1 && (
-        <nav aria-label="List pages" className="mt-8 flex items-center gap-4 pb-12">
-          <div className="flex-1">
-            {page > 1 && (
-              <Link
-                href={`/${profile.handle}/lists${page - 1 === 1 ? '' : `?page=${page - 1}`}`}
-                rel="prev"
-                className="text-sm text-text-secondary transition-colors hover:text-text"
-              >
-                <span aria-hidden>←</span> Previous
-              </Link>
-            )}
-          </div>
-
-          <p className="tabular text-xs text-text-faint">
-            Page {page} of {totalPages}
-          </p>
-
-          <div className="flex flex-1 justify-end">
-            {page < totalPages && (
-              <Link
-                href={`/${profile.handle}/lists?page=${page + 1}`}
-                rel="next"
-                className="text-sm text-text-secondary transition-colors hover:text-text"
-              >
-                Next <span aria-hidden>→</span>
-              </Link>
-            )}
-          </div>
-        </nav>
-      )}
+      {/*
+       * **The shared pager since 2026-10-02.** This page carried its own copy
+       * of the markup, slightly divergent in type size and spacing — which is
+       * the ordinary cost of duplication rather than a deliberate difference.
+       * `design-reference.md` §13.
+       *
+       * Neutral labels: the axis is when a list was made, but the reader is
+       * looking for a list rather than scrubbing a timeline, which is the same
+       * reasoning `Pagination`'s docstring gives for relationship lists.
+       */}
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        href={(n) => `/${profile.handle}/lists${n === 1 ? '' : `?page=${n}`}`}
+        label="List pages"
+      />
     </Container>
   );
 }
