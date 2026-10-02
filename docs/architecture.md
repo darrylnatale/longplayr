@@ -1116,7 +1116,9 @@ The distributions **materially overlap**, so no global threshold separates them.
 
 **Artists only.** The entry's claim is that phonetics _"suit names well"_, and that is what the algorithm is for; an album title is not a name, and `Kid A` against `Kid B` is the kind of collision a title would produce.
 
-### 10.4a The alias half of F-019 is deferred, on a finding the entry does not contain **[DECIDED 2026-10-02]**
+### 10.4a The alias half of F-019 is deferred, on a finding the entry does not contain **[DECIDED 2026-10-02 — SUPERSEDED the same day by §10.5, which built it]**
+
+**Preserved rather than rewritten, per _Historical integrity_.** The deferral was made on sound reasoning and then lifted within the day, because one of its two premises turned out to be false. **Its last sentence — that this cannot be verified on the maintainer's machine — stopped being true when `scripts/write-local-env.mjs` was changed to preserve a real `MUSICBRAINZ_CONTACT` through `db:env`.** The re-scoping argument was correct and was honoured: this was taken as its own queue-and-ingest cycle with a new job kind, exactly as the section asked, rather than folded into a search change.
 
 **Artists only ever arrive embedded in `artist-credits`** on a release-group or release response. **There is no direct `artist/{mbid}` lookup anywhere in the codebase**, and `inc=artist-credits` does not carry aliases.
 
@@ -1125,6 +1127,54 @@ The distributions **materially overlap**, so no global threshold separates them.
 **That is materially more than the entry implies.** F-019 says aliases would arrive _"without touching the search engine"_, which is true and was never the hard part. **What it does not say is that nothing currently fetches them.**
 
 **It is not refused, only re-scoped.** The alias half is a queue-and-ingest cycle with a new job kind, and it should be taken as one — **not folded into a search change**, which is what the entry's framing invites. **And it cannot be verified on the maintainer's machine**: `MUSICBRAINZ_CONTACT` is a placeholder locally and the client refuses live requests while it looks like one, which is enforced in code.
+
+### 10.5 Aliases are an ingest concern with a status column, not a search feature **[DECIDED 2026-10-02]**
+
+**MusicBrainz aliases widen matching and are never rendered.** `artists.name` stays the one canonical name every surface displays; aliases exist so that somebody typing a former name, a transliteration or a known misspelling arrives at the artist anyway.
+
+#### What is kept, and why the exclusions are decisions
+
+`inc=aliases` returns a `type` per alias. **Two types are admitted and two are refused**, and the refusals were settled against live data rather than reasoned about — the twelve aliases MusicBrainz returns for the artist it now calls _Ye_:
+
+| Type          | Count | Treatment                 | Why                                                                                                                                                                                                                             |
+| ------------- | ----- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Artist name` | 6     | **Kept** as `artist_name` | Former and alternate performing names — `Kanye`, and `Kanye West` itself, which is no longer the canonical name                                                                                                                 |
+| `Search hint` | 3     | **Kept** as `search_hint` | **The highest-value rows in the feature.** One of them is `Kayne West` — a misspelling an upstream editor recorded by hand because people type it                                                                               |
+| `Legal name`  | 2     | **Refused**               | A privacy decision, not an oversight. Making an artist who performs under a pseudonym findable by a birth name is not a default to take silently, and MusicBrainz types it separately because it _is_ a different kind of thing |
+| untyped       | 1     | **Refused**               | The one untyped alias is `Donda` — an **album title**. Untyped is a mixed bag, and admitting it admits noise rather than names                                                                                                  |
+
+**A curated misspelling is reachable no other way.** §10.4's phonetic fallback cannot find `Kayne West` from `Ye`, because they do not sound alike; trigram similarity cannot either. The only thing that connects them is a human having written it down upstream, which is precisely what `Search hint` is.
+
+**An unrecognised type is dropped rather than guessed at.** The allowlist is the decision, so a type MusicBrainz adds later is a decision to make, not one to infer.
+
+#### Matching, and the counting bug it would otherwise cause
+
+`search_artists` gains an `alias_hits` CTE that **aggregates to one row per artist before joining**. An exact alias match scores **tier 2** — below an exact canonical-name match at tier 1, above every fuzzy tier — so an alias can widen the result set but can never outrank the real name.
+
+**The aggregation is not a tidiness measure.** Joining aliases directly multiplies the artist's row by the number of matching aliases, which inflates `album_count` by the same factor and emits duplicates. **That reads as a ranking bug and is a counting one**, which is the expensive kind to diagnose; the integration test asserts `album_count` against the real `album_artists` count for exactly that reason.
+
+#### `artists.alias_status`, which is the part the plan did not anticipate
+
+**The enqueue path has to answer "which artists still need aliases?", and nothing on `artists` could.** Both mechanisms available without a new column were wrong:
+
+- **An anti-join against `artist_aliases`** cannot tell _never fetched_ from _fetched, and this artist genuinely has none_. Many artists have no admissible alias at all, so every one of them would be re-requested on every sweep, forever, spending a shared 1 req/sec budget to re-learn a settled fact.
+- **Inferring it from `ingestion_jobs` history** — which `enqueueFailedExpansions` legitimately does, and which is durable here, since no retention policy prunes that table — forces the candidate set to come from `artists` and be filtered afterwards. A bounded read then returns mostly-settled artists once the backfill is underway, making progress depend on page position: the defect shape `product-spec.md` §8.10 records.
+
+**So this mirrors `albums.artwork_status` and `releases.tracklist_status` exactly.** `pending → stored | absent | failed`, where **`stored` and `absent` are both settled** and only `failed` is retried. One pattern in the codebase for this question rather than three.
+
+**No grant statements, and that was checked rather than assumed.** `create_catalogue.sql` grants `select` on `public.artists` at **table** level, so the column is readable the moment it exists. Had those grants been column-scoped, the column would have read as empty to every signed-out visitor — the failure §16.5 describes. Exposing ingestion state publicly is intended and consistent: `albums.artwork_status` has been public on the same terms since Phase 1.
+
+#### A 404 is absence, not failure
+
+**`stored` and `absent` are settled; only `failed` is retried** — so what a 404 maps to decides whether a sweep terminates. MusicBrainz no longer resolving an artist MBID almost always means a merge, which no number of retries undoes.
+
+**The first implementation of this recorded a 404 as `failed`, and STEP G caught it.** That artist would have been re-queued on every sweep, indefinitely, spending a shared one-per-second request each time to re-learn a permanent fact. It is recorded as `absent`, which is the same reasoning and the same treatment `fetchAndStoreTracklist` already applies to a merged-away release — and both directions are now asserted: a 404 settles, a 503 stays retryable.
+
+#### Cost
+
+**One request per artist, not per album** — which is what makes this affordable. A single call widens search across that artist's whole discography. At roughly one artist per second serialised through the shared limiter, a thousand artists is about seventeen minutes of budget, so `db:backfill:aliases` queues by default and drains only under `BACKFILL_DRAIN=true`.
+
+---
 
 ## 11. Environments and deployment
 

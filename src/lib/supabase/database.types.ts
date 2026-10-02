@@ -213,8 +213,47 @@ export type Database = {
           },
         ]
       }
+      artist_aliases: {
+        Row: {
+          artist_id: string
+          created_at: string
+          id: string
+          is_primary: boolean | null
+          kind: Database["public"]["Enums"]["artist_alias_kind"]
+          locale: string | null
+          name: string
+        }
+        Insert: {
+          artist_id: string
+          created_at?: string
+          id?: string
+          is_primary?: boolean | null
+          kind: Database["public"]["Enums"]["artist_alias_kind"]
+          locale?: string | null
+          name: string
+        }
+        Update: {
+          artist_id?: string
+          created_at?: string
+          id?: string
+          is_primary?: boolean | null
+          kind?: Database["public"]["Enums"]["artist_alias_kind"]
+          locale?: string | null
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "artist_aliases_artist_id_fkey"
+            columns: ["artist_id"]
+            isOneToOne: false
+            referencedRelation: "artists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       artists: {
         Row: {
+          alias_status: Database["public"]["Enums"]["alias_status"]
           created_at: string
           disambiguation: string | null
           id: string
@@ -227,6 +266,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          alias_status?: Database["public"]["Enums"]["alias_status"]
           created_at?: string
           disambiguation?: string | null
           id?: string
@@ -239,6 +279,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          alias_status?: Database["public"]["Enums"]["alias_status"]
           created_at?: string
           disambiguation?: string | null
           id?: string
@@ -1346,6 +1387,8 @@ export type Database = {
         | "audiobook"
         | "dj_mix"
       album_type: "album" | "ep" | "other"
+      alias_status: "pending" | "stored" | "absent" | "failed"
+      artist_alias_kind: "artist_name" | "search_hint"
       artwork_status: "pending" | "found" | "absent" | "failed"
       content_status: "live" | "removed"
       date_precision: "day" | "month" | "year"
@@ -1356,6 +1399,7 @@ export type Database = {
         | "fetch_releases"
         | "fetch_tracklist"
         | "discover_curated_artist"
+        | "fetch_artist_aliases"
       job_status: "pending" | "running" | "succeeded" | "failed"
       moderation_action_kind:
         | "content_removed"
@@ -1522,6 +1566,8 @@ export const Constants = {
         "dj_mix",
       ],
       album_type: ["album", "ep", "other"],
+      alias_status: ["pending", "stored", "absent", "failed"],
+      artist_alias_kind: ["artist_name", "search_hint"],
       artwork_status: ["pending", "found", "absent", "failed"],
       content_status: ["live", "removed"],
       date_precision: ["day", "month", "year"],
@@ -1532,6 +1578,7 @@ export const Constants = {
         "fetch_releases",
         "fetch_tracklist",
         "discover_curated_artist",
+        "fetch_artist_aliases",
       ],
       job_status: ["pending", "running", "succeeded", "failed"],
       moderation_action_kind: [

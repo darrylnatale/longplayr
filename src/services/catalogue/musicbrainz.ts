@@ -447,6 +447,51 @@ export function getRelease(mbid: string): Promise<MbReleaseDetail> {
   });
 }
 
+/** One MusicBrainz alias, as the `inc=aliases` include returns it. */
+export type MbAlias = {
+  name: string;
+  'sort-name'?: string | null;
+  /**
+   * `Artist name`, `Search hint`, `Legal name`, or **null**.
+   *
+   * **Null is common and is not an error** — one of Ye's twelve aliases is
+   * untyped, and it is `Donda`, an album title. `architecture.md` §10.5
+   * records that untyped aliases are dropped for exactly that reason.
+   */
+  type?: string | null;
+  locale?: string | null;
+  primary?: boolean | null;
+};
+
+/** An artist looked up directly, carrying its aliases. */
+export type MbArtistWithAliases = {
+  id: string;
+  name: string;
+  aliases?: MbAlias[] | null;
+};
+
+/**
+ * One artist, with its aliases.
+ *
+ * **The only direct artist lookup in the codebase, and it exists because
+ * nothing else carries aliases.** Artists otherwise arrive embedded in
+ * `artist-credits` on a release-group or release response, and that include
+ * returns id, name, sort-name and disambiguation — **no aliases**. That finding
+ * is what re-scoped F-019 from a search change into a queue-and-ingest one:
+ * every artist costs a request against a one-per-second budget.
+ *
+ * **Verified against the live API on 2026-10-02.** The artist MusicBrainz now
+ * calls *Ye* returns twelve aliases across four type values, including the
+ * curated misspelling `Kayne West`. `architecture.md` §10.5.
+ */
+export function getArtistWithAliases(mbid: string): Promise<MbArtistWithAliases> {
+  return request<MbArtistWithAliases>(`/artist/${mbid}`, {
+    // Nothing else. `inc=aliases` alone keeps the response small on a path
+    // that will run once per artist in the catalogue.
+    inc: 'aliases',
+  });
+}
+
 /**
  * Free-text search over release groups.
  *

@@ -9,12 +9,15 @@ import {
   enqueueJob,
   enqueueFailedExpansions,
   enqueueMissingArtwork,
+  enqueueMissingArtistAliases,
   queueDepth,
   reclaimStaleJobs,
 } from '@/services/catalogue/jobs';
 import * as ingest from '@/services/catalogue/ingest';
 import { ingestReleaseGroupPayload } from '@/services/catalogue/ingest';
 import * as artwork from '@/services/catalogue/artwork';
+import * as mb from '@/services/catalogue/musicbrainz';
+import { fetchAndStoreArtistAliases } from '@/services/catalogue/aliases';
 import { ARTWORK_BUCKET } from '@/services/catalogue/artwork';
 import { sleep } from '@/services/catalogue/rate-limiter';
 import {
@@ -1345,5 +1348,161 @@ describe('enqueueFailedExpansions', () => {
       .eq('status', 'pending')
       .single();
     expect(data?.priority).toBe(DEFAULT_JOB_PRIORITY);
+  });
+});
+
+/**
+ * Alias enqueueing - F-019.
+ *
+ * **What is under test is termination, not matching.** Whether an alias widens
+ * search is `search.test.ts`'s question; the question here is whether a sweep
+ * ever stops, which is the thing `alias_status` was added to guarantee.
+ */
+describe('enqueueMissingArtistAliases', () => {
+  const ARTIST_A = '0b0e4f1e-7777-4000-8000-00000000aaaa';
+  const ARTIST_B = '0b0e4f1e-7777-4000-8000-00000000bbbb';
+
+  async function seedArtist(mbid: string, aliasStatus: 'pending' | 'stored' | 'absent' | 'failed') {
+    const { error } = await admin.from('artists').insert({
+      mbid,
+      name: `Artist ${mbid.slice(-4)}`,
+      sort_name: 'x',
+      alias_status: aliasStatus,
+    });
+    if (error) throw error;
+  }
+
+  it('queues an artist that has never been attempted', async () => {
+    await seedArtist(ARTIST_A, 'pending');
+
+    expect(await enqueueMissingArtistAliases({ admin })).toMatchObject({
+      candidates: 1,
+      queued: 1,
+    });
+  });
+
+  it('retries an artist whose fetch failed', async () => {
+    await seedArtist(ARTIST_A, 'failed');
+
+    expect(await enqueueMissingArtistAliases({ admin })).toMatchObject({
+      candidates: 1,
+      queued: 1,
+    });
+  });
+
+  it('never re-queues an artist MusicBrainz has no aliases for', async () => {
+    // **The defect this column exists to prevent.** Judged by `artist_aliases`
+    // alone this artist is identical to an unfetched one, so an anti-join there
+    // would spend a request re-learning `absent` on every sweep, forever.
+    await seedArtist(ARTIST_A, 'absent');
+
+    expect(await enqueueMissingArtistAliases({ admin })).toMatchObject({
+      candidates: 0,
+      queued: 0,
+    });
+  });
+
+  it('never re-queues an artist whose aliases are stored', async () => {
+    await seedArtist(ARTIST_A, 'stored');
+
+    expect(await enqueueMissingArtistAliases({ admin })).toMatchObject({
+      candidates: 0,
+      queued: 0,
+    });
+  });
+
+  it('sweeps several artists in one pass, and is idempotent', async () => {
+    await seedArtist(ARTIST_A, 'pending');
+    await seedArtist(ARTIST_B, 'failed');
+
+    expect(await enqueueMissingArtistAliases({ admin })).toMatchObject({
+      candidates: 2,
+      queued: 2,
+    });
+    // Both now carry an outstanding job, so the second pass queues nothing
+    // even though neither status has changed yet.
+    expect(await enqueueMissingArtistAliases({ admin })).toMatchObject({
+      candidates: 2,
+      queued: 0,
+    });
+  });
+
+  it('honours the limit', async () => {
+    await seedArtist(ARTIST_A, 'pending');
+    await seedArtist(ARTIST_B, 'pending');
+
+    expect(await enqueueMissingArtistAliases({ admin, limit: 1 })).toMatchObject({
+      candidates: 1,
+      queued: 1,
+    });
+  });
+
+  it('defaults a new artist to pending, so ingestion makes it a candidate', async () => {
+    // The column default is what connects this sweep to ordinary ingestion:
+    // nothing has to remember to mark a newly ingested artist as owing aliases.
+    const { error } = await admin
+      .from('artists')
+      .insert({ mbid: ARTIST_A, name: 'Fresh', sort_name: 'Fresh' });
+    if (error) throw error;
+
+    const { data } = await admin
+      .from('artists')
+      .select('alias_status')
+      .eq('mbid', ARTIST_A)
+      .single();
+    expect(data?.alias_status).toBe('pending');
+  });
+});
+
+/**
+ * A 404 on the alias fetch is settled, not retryable - found at STEP G.
+ *
+ * **This was a real defect in the first implementation**, which recorded a 404
+ * as `failed`. `failed` is retryable, so an artist MusicBrainz had merged away
+ * would be re-queued on every sweep forever, spending the shared 1 req/sec
+ * budget each time to re-learn the same permanent fact.
+ */
+describe('alias fetch treats a vanished artist as absence', () => {
+  const GONE = '0b0e4f1e-7777-4000-8000-00000000dead';
+
+  it('records absent, so the sweep never queues that artist again', async () => {
+    const { error } = await admin
+      .from('artists')
+      .insert({ mbid: GONE, name: 'Merged Away', sort_name: 'Merged Away' });
+    if (error) throw error;
+
+    vi.spyOn(mb, 'getArtistWithAliases').mockRejectedValue(new mb.NotFoundError(GONE));
+
+    const result = await fetchAndStoreArtistAliases(GONE, admin);
+    expect(result.status).toBe('absent');
+
+    const { data } = await admin.from('artists').select('alias_status').eq('mbid', GONE).single();
+    expect(data?.alias_status).toBe('absent');
+
+    // The sweep is the thing that would have looped.
+    expect(await enqueueMissingArtistAliases({ admin })).toMatchObject({
+      candidates: 0,
+      queued: 0,
+    });
+  });
+
+  it('still records a transient error as failed, so it is retried', async () => {
+    const { error } = await admin
+      .from('artists')
+      .insert({ mbid: GONE, name: 'Flaky', sort_name: 'Flaky' });
+    if (error) throw error;
+
+    // A 503 is the rate limiter being exceeded - exactly what must be retried.
+    vi.spyOn(mb, 'getArtistWithAliases').mockRejectedValue(new Error('503 Service Unavailable'));
+
+    expect((await fetchAndStoreArtistAliases(GONE, admin)).status).toBe('failed');
+
+    const { data } = await admin.from('artists').select('alias_status').eq('mbid', GONE).single();
+    expect(data?.alias_status).toBe('failed');
+
+    expect(await enqueueMissingArtistAliases({ admin })).toMatchObject({
+      candidates: 1,
+      queued: 1,
+    });
   });
 });
