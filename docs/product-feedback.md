@@ -14,7 +14,7 @@ Notation follows the rest of `docs/`: absolute dates, and **[OPEN]** / **[DECIDE
 - [2. Where this sits in the document hierarchy](#2-where-this-sits-in-the-document-hierarchy) · 187 words
 - [3. Operating rules](#3-operating-rules) · 253 words
 - [4. How to write an entry](#4-how-to-write-an-entry) · 264 words
-- [5. Intake](#5-intake) · 34,689 words
+- [5. Intake](#5-intake) · 35,325 words
 - [6. Triage](#6-triage) · 310 words
 - [7. Promotion — where an item goes when it leaves this file](#7-promotion--where-an-item-goes-when-it-leaves-this-file) · 251 words
 - [8. Relationship to the development cycle](#8-relationship-to-the-development-cycle) · 498 words
@@ -944,7 +944,9 @@ Measured on the deployed database at 14:04 UTC. A new artist page was opened at 
 
 ### F-035 — artist names should be clickable wherever they appear
 
-**2026-09-13 · browse, search, lists · TRIAGED — DELIVERED 2026-09-15, SEARCH FOLLOWED IN THE NEXT CYCLE**
+**2026-09-13 · browse, search, lists · CLOSED — FULLY DELIVERED, CONFIRMED 2026-10-02**
+
+> **Closed at STEP A on 2026-10-02 after checking the code rather than the status line.** All the surfaces this entry named now use `ArtistCredit`: search album results (`search/page.tsx`), the list detail page, the grids and the artist page. **The album page's plain `display_credit` fallback is correct rather than outstanding** — it renders only when an album has no credited artists, where there is nothing to link to.
 
 **[Updated 2026-09-15.]** Artist credits are now links on **Home**, **Browse**, **ranked list rows** and the **artist page** (`8544330`, CI #110), and on **search's album results** in the cycle immediately after. The entry's own surface table **undercounted** — it omitted Home, and described Browse's captioned section as _Popular_, which `design-reference.md` §11.11 had changed to _Recently added_ on the day this was filed.
 
@@ -1425,7 +1427,9 @@ The all-albums page sorts by release year **most recent first**, and there is no
 
 ### F-051 — the post-merge CI run is not redundant, and the reason took a correction to find
 
-**2026-09-17 · development process, CI · NEW**
+**2026-09-17 · development process, CI · CLOSED — RECORDED, NO ACTION 2026-10-02**
+
+> **This entry's purpose was the correction, and it achieved it.** The conclusion is that the post-merge run is **not** redundant: it tests a different tree from the pull-request run, which tests the merge result rather than `main` itself. **So there is nothing to remove and no saving to take** — closing it as a recorded finding rather than leaving it open as if it proposed work. Relevant to F-056's budget arithmetic, which should not count post-merge runs as waste.
 
 **Filed after a wrong answer was given and checked.** Asked whether a cancelled run mattered, the first answer was that post-merge runs duplicate the pull-request run and cost only runner minutes. **The timing shows that is false in exactly the case that matters.**
 
@@ -1717,6 +1721,36 @@ Running `npm run db:types` with Docker stopped **wrote the CLI's error JSON into
 - **A guard would be cheap and is worth weighing against the fix**: if the output does not begin with `export type Json`, do not write it.
 - **Not urgent.** `git checkout --` is a complete recovery and the file is always committed. **Filed because the next person to hit it will be looking at a TypeScript error, not at Docker.**
 - **Related:** **F-036** is the closed entry on environment failures reported as test failures; `architecture.md` §12.2 is the pattern it established.
+
+---
+
+### F-059 — slug assignment is quadratic in albums sharing a title, and caps a bulk insert
+
+**2026-10-02 · catalogue, ingestion, performance · NEW — MEASURED, NOT URGENT**
+
+**Found by the Phase 7 performance pass** (§107's successor, `architecture.md` §17.2 and §17.3). Both numbers are measured at 50,007 synthetic albums locally — roughly **48× the live catalogue**.
+
+**`assign_album_slug` costs O(albums already sharing that title) per insert**, because §89's free-slug search probes upward from the base until it finds an unused counter.
+
+| Rows inserted | Sharing one title  | All distinct titles |
+| ------------- | ------------------ | ------------------- |
+| 250           | 0.80 s             | 0.19 s              |
+| 1,000         | 4.01 s             | 0.14 s              |
+| 2,000         | 11.79 s            | 0.21 s              |
+| 50,000        | **did not finish** | ~2 s (batched)      |
+
+**Distinct titles are flat; a shared title is quadratic.**
+
+**And `pg_advisory_xact_lock` per slug base caps a single transaction** at somewhere between **12,000 and 20,000 distinct titles** before `out of shared memory`. Re-locking the same base is not a new lock entry, so the limit is distinct titles rather than rows.
+
+**Context, not a resolution.**
+
+- **Reachable rather than contrived.** _Greatest Hits_ is among the most common album titles there is, and `CLAUDE.md` makes the catalogue **completion-oriented in depth** — which is the direction that accumulates shared titles.
+- **Not a problem today.** Ingestion inserts one album per transaction, so the cost is the number of existing albums with that base: a handful. **The trigger is a single title reaching the low hundreds, or any attempt at bulk loading.**
+- **This is the thing standing in front of F-039** (MusicBrainz full database dumps), which is precisely a large single-transaction insert and would meet both limits. **Batching under 12,000 distinct titles is the mechanical workaround** — 50,000 in ten batches took about two seconds.
+- **No fix is proposed, deliberately.** Both are properties of a trigger written to fix a real collision defect (§88, §89), and replacing the probe loop with a direct `max(counter)` lookup is a plausible but unexamined idea that would need its own cycle and its own collision tests.
+- **What was missing was the number.** The read paths that serve pages were measured in the same pass and are fine — `architecture.md` §17.1.
+- **Related:** **F-039** database dumps; **F-050**, deferred on its own trigger in the same way.
 
 ---
 
