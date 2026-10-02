@@ -16,7 +16,9 @@
 
 **The verification gate moved, and `CLAUDE.md` now carries it. [APPLIED 2026-09-15]** Work happens on a branch and reaches `main` only through a green CI run; STEP F runs `npm run verify` plus targeted suites; **the migration gate moved from STEP I to STEP J**, so the order is **CI green → migration applied → merge**. The decision is `architecture.md` §12; the process is `CLAUDE.md`. **The two no longer disagree.** (§68, §69)
 
-**Verified 2026-10-02 against the repository, the remote, CI and production.** `main` is at **`469989c`**, the merge of PR #35. **38 migrations, 0 unapplied** — §98's was applied at STEP J and confirmed before its merge. **CI is alive**: six runs have passed green since the refresh, **every one attempt 1 with zero flaky**, and two documentation pushes fired no run at all. Production returns 200 on `/`, `/moderation` and `/login`, and 307 on `/notices` signed out. **Nothing is unmerged and nothing is pending.**
+**Verified 2026-10-02 against the repository, the remote, CI and production.** `main` is at **`d44dca7`**, the merge of PR #37. **39 migrations, 0 unapplied** — §98's and §100's were each applied at STEP J and confirmed before their merges. **Nine CI runs since the 1 October refresh, every one green on attempt 1 with zero flaky**, and three documentation pushes fired no run at all. Production probed: `/`, `/moderation` and `/albums/all` 200, `/notices` 307 signed out, and `/moderation` confirmed carrying the corrected text. **Nothing is unmerged and nothing is pending.**
+
+**Phase 6 is complete. [2026-10-02]** All three slices shipped — status enforced on every read path (§91), an admin who can act (§92), and reporting with statements of reasons (§98, §100). **Both DSA obligations are discharged in code**: Art 16 notice-and-action and Art 17 statements of reasons. **Blocking remains unassigned by decision**, and is the only named Phase 6 item not built.
 
 > ### 📄 This file was split on 2026-09-26, and is 85% smaller
 >

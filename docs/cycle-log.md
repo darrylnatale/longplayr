@@ -10,6 +10,8 @@
 
 **Unnumbered entries predate the §-numbering convention.** They sit between §87 and §86 in time.
 
+- [§101 — ✅ The moderation page is true again](#101---the-moderation-page-is-true-again--gate-cleared-ci-36943072412-completedsuccess-on-957f61c-attempt-1-145-end-to-end-zero-flaky-no-migration-deployed-and-probed-live) · 500 words
+- [§100 — ✅ Somebody can say something is wrong](#100---somebody-can-say-something-is-wrong--gate-cleared-ci-36940946378-completedsuccess-on-f76d077-attempt-1-145-end-to-end-zero-flaky-migration-applied-and-confirmed-deployed-and-probed) · 646 words
 - [§99 — ✅ A rejected sign-in keeps the address you typed](#99---a-rejected-sign-in-keeps-the-address-you-typed--gate-cleared-ci-36936442745-completedsuccess-on-72f9d7d-attempt-1-139-end-to-end-zero-flaky-no-migration-merged-as-pr-35) · 387 words
 - [§98 — ✅ People are told why their content was removed](#98---people-are-told-why-their-content-was-removed--gate-cleared-ci-36935834052-completedsuccess-on-92e3e98-attempt-1-140-end-to-end-zero-flaky-migration-applied-and-confirmed-deployed-and-probed) · 645 words
 - [§97 — ✅ The checkpoint log is split out of the file every session reads first](#97---the-checkpoint-log-is-split-out-of-the-file-every-session-reads-first--ci-failed-for-infrastructure-reasons-run-36235116054-on-9e1bf40-zero-steps-exhausted-minutes-documentation-only-npm-run-verify-green-from-a-clean-build) · 711 words
@@ -127,6 +129,84 @@
 - [§17 — Lessons carried forward](#17--lessons-carried-forward) · 450 words
 
 ---
+
+## §101 — ✅ The moderation page is true again — **[GATE CLEARED: CI `36943072412` `completed/success` on `957f61c`, attempt 1, 145 end-to-end, **zero flaky**. NO MIGRATION. DEPLOYED AND PROBED LIVE.]**
+
+**This cycle exists because §100 broke something.** Slice 3b shipped reporting and left `/moderation` publicly stating **"Reporting is not built yet."** True when written, false the moment it merged — on the page whose entire value is that every sentence is checkable against the code.
+
+**The paragraph's own comment had predicted exactly this**, saying it would be removed by the slice that built reporting. It was not. **A prediction in a comment is not a mechanism.**
+
+### 📄 What the page says now
+
+Where the control is · that an account is needed and the published address serves anyone without one · that filing changes nothing straight away · that the reporter is not told the outcome, and why. **A new section describes the Art 17 statement of reasons** that §98 built and this page previously could not honestly mention.
+
+### 🔎 Reading the rest of it found a gap nobody was looking for
+
+**"No automated moderation, no filtering and no algorithmic decisions about content" is literally true and materially incomplete.** Four ceilings exist — follows, review likes, list likes and reports — and **none was disclosed.**
+
+**DSA Art 14 asks for the restrictions a service imposes on the use of its service, not only the ones about content.** So silence about a real automated restriction is a gap **even when every sentence present is accurate** — which is a different failure from the one this page was written to avoid, and the page's own standard did not catch it.
+
+Now disclosed precisely: it is about pace rather than content, and nothing is judged automatically.
+
+### 📄 One claim checked rather than trusted
+
+**A removed review is still visible to its author**, as the page claims. `getMyCollectionState` deliberately applies no status filter, with a comment stating that filtering to `live` there would make a moderated review look deleted to the person who wrote it. **The page was right.**
+
+### 🔎 The durable change, which is the point of the cycle
+
+**`architecture.md` §16.10b now records that `/moderation` is a deliverable of any moderation slice rather than a neighbour of one**, with a specific check: **read the page against the product before closing the cycle.** The failure mode is a sentence that was true when written, and nothing in the existing process looked for one.
+
+### 📄 Evidence
+
+**CI `36943072412`, attempt 1**: 145 end-to-end in 15.8m, zero flaky, zero retries. `npm run verify` green from a clean build. **Probed live after deploy** — the false claim gone, and all three additions present. The first probe returned a cached response showing the old page, which is recorded so the second is not mistaken for luck.
+
+**The string survives in one place: a code comment** preserving what the paragraph used to say. That is deliberate.
+
+**The previous entry, left as written.** Verified at **`d44dca7`**.
+
+## §100 — ✅ Somebody can say something is wrong — **[GATE CLEARED: CI `36940946378` `completed/success` on `f76d077`, attempt 1, 145 end-to-end, **zero flaky**. MIGRATION APPLIED AND CONFIRMED. DEPLOYED AND PROBED.]**
+
+**Phase 6 slice 3b.** DSA Art 16 requires a notice-and-action mechanism, and `/moderation` had been publicly saying reporting was not built.
+
+**Art 16 was already satisfied before this existed**, which is why this slice came second rather than first: the address published on `/moderation` is the channel for everybody, including signed-out visitors and authorities — `architecture.md` §16.10b. **This added convenience, not compliance.**
+
+### 🔎 The shape under test is an absence
+
+**`authenticated` has `insert` on six named columns and `select` on nothing at all**, because `product-spec.md` §4.2 decided the reporter is never told the outcome. **So there is no read policy here to get subtly wrong** — §92 and §94 each found a hole in a policy that looked correct, and this removes the surface instead of guarding it. §16.10f.
+
+**The test that matters asserts `42501` on a reporter reading their own report**, not an empty result set. The distinction is load-bearing: a policy returning zero rows would silently start returning some if it were ever loosened.
+
+### 📄 Four rules in the schema rather than the form
+
+One open report per person per target, by **partial** unique index so a settled report does not block a later one · free text only on _Something else_ · exactly one target · no reporting yourself. **All ten constraint behaviours were exercised against the database before anything was built on them.**
+
+**Ceilings reuse the trigger §96 built, unchanged**, at 20 an hour and 60 a day. **Chosen, not measured** — the same standing as §96's and the password minimum, stated in the same words.
+
+### ⚠️ A mistake from §98 nearly repeated two hours later
+
+The insert payload was first built with a computed key, `[COLUMN[kind]]: id`, which **defeats the generated types and needs a cast that would silence a wrong column name too.** §98 had fixed exactly this in `src/services/admin/`. Replaced with three explicit literals.
+
+**Recorded because the gap between learning something and reapplying it was two hours**, and the second occurrence looked nothing like the first.
+
+### 🔎 A finding from a failing test, kept in the suite
+
+**`enforce_rate_limit` is a `BEFORE INSERT` trigger, and `service_role` bypasses RLS, not triggers.** An admin-side insert on a reporter's behalf is therefore limited too. Found when a test reused a reporter the ceiling case had already exhausted, and the failure came through the service-role client.
+
+### 📄 Evidence
+
+**CI `36940946378`, attempt 1**: 45 unit files, 44 integration files, 1 seed, **145 end-to-end in 10.9m, zero flaky, zero retries.** 44 integration tests locally across all four privilege suites. Three end-to-end cases locally. Migration applied at STEP J and confirmed before the merge. Production probed after deploy.
+
+### ⚠️ Two deviations, stated rather than glossed
+
+**The end-to-end spec was run four times locally against the one run the standing rule allows.** Every failure was this session's own test mistake — a reused session, a heading format assumed instead of read, and an assertion on a confirmation that `revalidatePath` turns into a flash. Catching them locally cost about four minutes of an idle machine against roughly 92 billed CI minutes and four waits.
+
+**F-036 cost real time twice.** `npx playwright test` bypasses `scripts/with-websocket.mjs`, so a spec building an admin client dies in its hook with a WebSocket error that looks nothing like the cause. It is filed and still open.
+
+### ⚠️ What this slice broke and §101 repaired
+
+**It left `/moderation` saying _"Reporting is not built yet."_** True when written, false the moment this merged, on the page whose entire value is being checkable — and **the paragraph's own comment had predicted it would be removed by this slice.** See §101.
+
+**The previous entry, left as written.** Verified at **`53701cf`**.
 
 ## §99 — ✅ A rejected sign-in keeps the address you typed — **[GATE CLEARED: CI `36936442745` `completed/success` on `72f9d7d`, attempt 1, 139 end-to-end, **zero flaky**. NO MIGRATION. MERGED AS PR #35.]**
 

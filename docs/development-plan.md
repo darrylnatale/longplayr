@@ -526,6 +526,8 @@ Sequencing against `product-spec.md` §8.10 faults 1 and 2, and against the enri
 >
 > **Neither is discharged by the enforcement §91 built**, which governs what _readers_ see. These are about what the _affected person_ is told.
 
+**Phase 6 is complete. [2026-10-02]** Slice 1 at §91, slice 2 at §92, **slice 3a at §98 and slice 3b at §100** — and **§101 repaired what §100 broke** on the public moderation page. **Blocking remains unassigned by decision** and is the only named item here not built.
+
 **Slice 3 split into 3a and 3b on 2026-10-01, and the order is inverted from what was first decided.** **[SUPERSEDES the boundary recorded earlier the same day, which kept slice 3 whole in one migration. That decision is not edited away — it was taken without the evidence below, which STEP D produced by reading the code.]**
 
 | Slice                          | Contents                                                                                                                                                                                                 | Why this order                                                                                                                                                                                                                               |
