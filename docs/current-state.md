@@ -16,7 +16,11 @@
 
 **The verification gate moved, and `CLAUDE.md` now carries it. [APPLIED 2026-09-15]** Work happens on a branch and reaches `main` only through a green CI run; STEP F runs `npm run verify` plus targeted suites; **the migration gate moved from STEP I to STEP J**, so the order is **CI green → migration applied → merge**. The decision is `architecture.md` §12; the process is `CLAUDE.md`. **The two no longer disagree.** (§68, §69)
 
-**Verified 2026-10-02 against the repository, the remote, CI and production.** `main` is at **`113cff7`**, the merge of PR #50. **44 migrations, 0 unapplied**, and **`npm run db:drift` reports no real drift across all 44** (§114). **Nothing is unmerged and nothing is pending.**
+**Verified 2026-10-02 against the repository, the remote, CI and production.** `main` is at **`eaeba21`** plus this cycle. **44 migrations, 0 unapplied**, `npm run db:drift` reports no real drift. **Production artwork: `pending` 0, `found` 990, `absent` 85, `failed` 0 of 1,075 albums** — the backlog is cleared, not clearing (§116).
+
+**CI budget is the live constraint, and §115 answered what it costs.** 37 runs since the refresh, ~790 of 2,000 billed minutes in two days, **32 of 32 green on attempt 1 with zero failures** — the arrangement works, and the runway ends around **5 October**. **The slow job is 92–95% of a run**, and half the events are post-merge runs F-051 established are not redundant, **so the lever is per-run cost rather than run count.** §115 recommends no change to the gate: the answer was a number, not a change.
+
+**Cycles are being run sequentially rather than in parallel**, because §114's documentation collision cost a full run — two branches adding a section at the same anchor, and STEP J needs green on the exact pushed SHA. **§115, §116 and §117 each cost zero runs**, being documentation only.
 
 **Three checkpoints were owed and are now written** — §112 the environment check, §113 the collection filter, §114 the drift check. **This line read `66d2ecd` while `main` was at `6906b15`**, which is the staleness §101 and the documentation split were about, recurring because three cycles ran in parallel without closing.
 

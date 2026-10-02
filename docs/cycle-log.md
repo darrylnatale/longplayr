@@ -10,6 +10,7 @@
 
 **Unnumbered entries predate the §-numbering convention.** They sit between §87 and §86 in time.
 
+- [§117 — ✅ The obvious fix to the quadratic slug is wrong twice](#117---the-obvious-fix-to-the-quadratic-slug-is-wrong-twice--ci-skipped-documentation-only-paths-ignore-fires-no-run) · 531 words
 - [§116 — ✅ The artwork backlog is not clearing, it is cleared](#116---the-artwork-backlog-is-not-clearing-it-is-cleared--ci-skipped-documentation-only-paths-ignore-fires-no-run-confirmed-from-gh-run-list) · 399 words
 - [§115 — ✅ What moving every slow test to CI costs, answered](#115---what-moving-every-slow-test-to-ci-costs-answered--ci-skipped-documentation-only-paths-ignore-fires-no-run-confirmed-from-gh-run-list) · 464 words
 - [§114 — ✅ Comparing the deployed schema against the migrations](#114---comparing-the-deployed-schema-against-the-migrations--gate-cleared-ci-37011574887-completedsuccess-on-ff480f6-attempt-1-no-migration-merged-as-pr-50) · 537 words
@@ -144,6 +145,49 @@
 - [§17 — Lessons carried forward](#17--lessons-carried-forward) · 450 words
 
 ---
+
+## §117 — ✅ The obvious fix to the quadratic slug is wrong twice — **[CI SKIPPED: documentation only, `paths-ignore` fires no run.]**
+
+**F-059 records the quadratic cost §109 measured and calls its own proposed fix _"plausible but unexamined"_.** The entry also says it _"would need its own cycle and its own collision tests"_. **This is that cycle, and it ends by not building it.**
+
+### 🔎 Wrong once: it reproduces §89's own bug
+
+`slug like base || '-%'` **does not match only counters of that base.** With `base = 'kid-a'`, it matches `kid-a-live` and `kid-a-2-3` as well as `kid-a-2` — and **`substring('kid-a-live' from 7)` is `'live'`, which cannot cast to `int`.**
+
+**So the naive form errors on any album whose title extends another album's title.** That is precisely §89's family: that entry records `row_number()` handing `kid-a-2` to both a second _Kid A_ and an album titled _Kid A 2_. **The same trap, reached by a different route, eight days later.**
+
+**A numeric-anchored regex is correct** and gives the probe loop's answer on the real collision — with `kid-a` and `kid-a-2` present, next counter is 3.
+
+### 🔎 Wrong twice: without a second index it is a pessimisation
+
+**This is the half that would have shipped**, because it is invisible without a plan.
+
+| query                                | plan                                                         |
+| ------------------------------------ | ------------------------------------------------------------ |
+| `slug = 'kid-a-2'`                   | `Index Only Scan` with `Index Cond`                          |
+| `slug like 'kid-a-%'`                | **Seq Scan**                                                 |
+| same, seqscan off, no pattern index  | `Index Only Scan` with **no `Index Cond` — only a `Filter`** |
+| same, with `(slug text_pattern_ops)` | `Index Only Scan` with a real range `Index Cond`             |
+
+**The probe loop does one cheap index hit per sibling — one or two in the common case.** The pattern lookup, without a `text_pattern_ops` index, **reads the whole index on every insert.** The default unique btree cannot serve a prefix as a range under the default collation.
+
+**So the fix as imagined is strictly worse where it matters most often**, and better only where siblings are many — the pathological case the entry is about.
+
+### 📄 One pleasing result
+
+**Postgres derives the prefix range from `^kid-a-[0-9]+$` itself**, producing the same `Index Cond` as the `LIKE`. **So the correct form is also the fast one**, given the index — no separate `LIKE` clause is needed.
+
+### 📄 The recipe, and the decision not to use it yet
+
+**Two requirements, and F-059 names neither**: a numeric-anchored regex rather than a `LIKE`, and a second index on `slug` with `text_pattern_ops`.
+
+**Not built, because F-059's own trigger has not fired** — a single title reaching the low hundreds, or an attempt at bulk loading. **1,075 albums, one insert per transaction**, and `CLAUDE.md` forbids using the cycle process to manufacture work.
+
+**What this cycle changes is that the fix is no longer unexamined.** The next person to reach for it will not spend a cycle discovering that the obvious version both errors and slows things down. **The knowledge was perishable; the code change is not yet warranted**, and separating those two is the whole outcome.
+
+`architecture.md` §17.4.
+
+**The previous entry, left as written.** Verified at **`eaeba21`**.
 
 ## §116 — ✅ The artwork backlog is not clearing, it is cleared — **[CI SKIPPED: documentation only, `paths-ignore` fires no run. Confirmed from `gh run list`.]**
 

@@ -14,7 +14,7 @@ Notation follows the rest of `docs/`: absolute dates, and **[OPEN]** / **[DECIDE
 - [2. Where this sits in the document hierarchy](#2-where-this-sits-in-the-document-hierarchy) · 187 words
 - [3. Operating rules](#3-operating-rules) · 253 words
 - [4. How to write an entry](#4-how-to-write-an-entry) · 264 words
-- [5. Intake](#5-intake) · 36,984 words
+- [5. Intake](#5-intake) · 37,161 words
 - [6. Triage](#6-triage) · 310 words
 - [7. Promotion — where an item goes when it leaves this file](#7-promotion--where-an-item-goes-when-it-leaves-this-file) · 251 words
 - [8. Relationship to the development cycle](#8-relationship-to-the-development-cycle) · 498 words
@@ -1761,7 +1761,13 @@ Running `npm run db:types` with Docker stopped **wrote the CLI's error JSON into
 
 ### F-059 — slug assignment is quadratic in albums sharing a title, and caps a bulk insert
 
-**2026-10-02 · catalogue, ingestion, performance · NEW — MEASURED, NOT URGENT**
+**2026-10-02 · catalogue, ingestion, performance · TRIAGED 2026-10-02 — FIX EXAMINED AND REJECTED AS DESCRIBED; STILL NOT BUILT (§117)**
+
+> **The fix this entry calls _"plausible but unexamined"_ is now examined, and it is wrong twice** — `architecture.md` §17.4.
+> **Wrong once**: `slug like base || '-%'` matches `kid-a-live` and `kid-a-2-3`, and `substring` on the first yields `'live'`, which cannot cast to `int`. **It errors on any album whose title extends another album's title** — §89's own bug family.
+> **Wrong twice**: `slug = …` is an index probe, but the pattern lookup gets **no `Index Cond` at all** without a `text_pattern_ops` index — it reads the whole index. **So the naive fix replaces one or two probes with a whole-table scan per insert**, strictly worse in the common case.
+> **The correct recipe is a numeric-anchored regex plus a second index on `slug`** — and pleasingly, Postgres derives the prefix range from the regex itself, so no separate `LIKE` is needed.
+> **Still not built: this entry's own trigger has not fired.** What changed is that the fix is no longer unexamined, which was the perishable part.
 
 **Found by the Phase 7 performance pass** (§107's successor, `architecture.md` §17.2 and §17.3). Both numbers are measured at 50,007 synthetic albums locally — roughly **48× the live catalogue**.
 

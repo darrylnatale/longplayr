@@ -27,7 +27,7 @@ Notation: **[DECIDED]** = explicitly chosen. **[INFERRED]** = follows necessaril
 - [14. Security](#14-security) · 1,773 words
 - [15. Privacy](#15-privacy) · 767 words
 - [16. Data access patterns](#16-data-access-patterns) · 14,179 words
-- [17. Scalability — what breaks first, and when](#17-scalability--what-breaks-first-and-when) · 935 words
+- [17. Scalability — what breaks first, and when](#17-scalability--what-breaks-first-and-when) · 1,497 words
 - [17a. A temporary operator surface for the ingestion queue **[DECIDED 2026-09-13]**](#17a-a-temporary-operator-surface-for-the-ingestion-queue-decided-2026-09-13) · 1,407 words
 - [18. Verification required before implementation](#18-verification-required-before-implementation) · 558 words
 - [19. Long-term architectural constraints](#19-long-term-architectural-constraints) · 1,350 words
@@ -2647,6 +2647,51 @@ None of these need addressing before launch. All are listed so that when somethi
 **This matters for exactly one thing that is already recorded direction**: `product-feedback.md` **F-039**, MusicBrainz full database dumps. A dump load is precisely a large single-transaction insert, and it would meet both this ceiling and §17.2's quadratic cost. **Anyone taking F-039 should read these two sections first**; batching under 12,000 distinct titles per transaction is the mechanical workaround, and 50,000 loaded in ten batches took about two seconds.
 
 **No fix is proposed here, deliberately.** Both are properties of a trigger written to fix a real defect (§88, §89), the product is at 1/48th of the measured volume, and `CLAUDE.md` forbids using the cycle process to manufacture work. **What was missing was the number, and now there is one.**
+
+### 17.4 The obvious fix to §17.2 is wrong twice, and is still not needed **[EXAMINED 2026-10-02]**
+
+**F-059 records the quadratic cost and says the fix — replacing §89's probe loop with a direct `max(counter)` lookup — is _"plausible but unexamined"_.** It is now examined. **It is wrong in two independent ways, and neither is visible from reading the entry.**
+
+#### 🔎 Wrong once: it reproduces §89's own bug
+
+A lookup of the form `slug like base || '-%'` **does not match only counters of that base.** Measured against the fixture catalogue with `base = 'kid-a'`:
+
+| slug         | `like 'kid-a-%'` | `~ '^kid-a-[0-9]+$'` |
+| ------------ | ---------------- | -------------------- |
+| `kid-a`      | no               | no                   |
+| `kid-a-2`    | **yes**          | **yes**              |
+| `kid-a-live` | **yes**          | no                   |
+| `kid-a-2-3`  | **yes**          | no                   |
+
+**`substring('kid-a-live' from 7)` is `'live'`, which cannot cast to `int`.** So the naive form **errors on any album whose title extends another album's title** — and that is precisely §89's family: that entry records `row_number()` handing `kid-a-2` to both a second _Kid A_ and an album titled _Kid A 2_.
+
+**A numeric-anchored regex is correct**, and gives the same answer as the probe loop on the real collision: with `kid-a` and `kid-a-2` present, next counter is **3**.
+
+#### 🔎 Wrong twice: without a second index it is a pessimisation
+
+**`slug = 'kid-a-2'` is an `Index Only Scan` with an `Index Cond`** — the probe loop's lookup is a cheap index hit, and it does **one per sibling of that base**, which in the common case is one or two.
+
+**The pattern lookup is not.** Measured:
+
+| query                                          | plan                                                                               |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `slug like 'kid-a-%'`                          | **Seq Scan**                                                                       |
+| same, `enable_seqscan = off`, no pattern index | `Index Only Scan` with **no `Index Cond` — only a `Filter`**, i.e. the whole index |
+| same, **with `(slug text_pattern_ops)`**       | `Index Only Scan` with a real `Index Cond` range                                   |
+
+**The default unique btree cannot serve a prefix as a range** under the default collation; it degenerates to reading every index entry. **So the naive fix replaces one or two index probes with a scan proportional to the whole table, on every insert** — strictly worse in the common case, and better only where siblings are many.
+
+**A happy finding: the regex alone suffices.** Postgres derives the prefix range from `^kid-a-[0-9]+$` itself and produces the same `Index Cond`, so **no separate `LIKE` is needed** — the correct form is also the fast one, given the index.
+
+#### 📄 So the recipe, recorded for when it is needed
+
+**Two requirements, and the entry names neither:** a **numeric-anchored regex** rather than a `LIKE`, and a **second index on `slug` with `text_pattern_ops`**.
+
+#### 📄 And it is deliberately not built
+
+**F-059's own trigger has not fired** — a single title reaching the low hundreds, or an attempt at bulk loading. The catalogue holds 1,075 albums, ingestion inserts one per transaction, and `CLAUDE.md` is explicit that the cycle process must not be used to manufacture work.
+
+**What this cycle changes is that the fix is no longer unexamined.** The next person to reach for it will not spend a cycle discovering that the obvious version both errors and slows things down. **That knowledge was perishable; the code change is not yet warranted.**
 
 ## 17a. A temporary operator surface for the ingestion queue **[DECIDED 2026-09-13]**
 
