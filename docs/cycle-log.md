@@ -10,6 +10,9 @@
 
 **Unnumbered entries predate the §-numbering convention.** They sit between §87 and §86 in time.
 
+- [§104 — ✅ An index for the column two pages sort on](#104---an-index-for-the-column-two-pages-sort-on--gate-cleared-ci-36954956432-completedsuccess-on-0119a44-attempt-1-migration-applied-and-confirmed-merged-as-pr-40) · 394 words
+- [§103 — ✅ The test suite fails about what is actually wrong](#103---the-test-suite-fails-about-what-is-actually-wrong--gate-cleared-ci-36953900325-completedsuccess-on-499c8b8-attempt-1-145-end-to-end-zero-flaky-no-migration-merged-as-pr-39) · 318 words
+- [§102 — ✅ The notice write moved out of the page and into a hop](#102---the-notice-write-moved-out-of-the-page-and-into-a-hop--gate-cleared-ci-36953136826-completedsuccess-on-7036bf2-attempt-1-146-end-to-end-zero-flaky-no-migration-merged-as-pr-38) · 447 words
 - [§101 — ✅ The moderation page is true again](#101---the-moderation-page-is-true-again--gate-cleared-ci-36943072412-completedsuccess-on-957f61c-attempt-1-145-end-to-end-zero-flaky-no-migration-deployed-and-probed-live) · 500 words
 - [§100 — ✅ Somebody can say something is wrong](#100---somebody-can-say-something-is-wrong--gate-cleared-ci-36940946378-completedsuccess-on-f76d077-attempt-1-145-end-to-end-zero-flaky-migration-applied-and-confirmed-deployed-and-probed) · 646 words
 - [§99 — ✅ A rejected sign-in keeps the address you typed](#99---a-rejected-sign-in-keeps-the-address-you-typed--gate-cleared-ci-36936442745-completedsuccess-on-72f9d7d-attempt-1-139-end-to-end-zero-flaky-no-migration-merged-as-pr-35) · 387 words
@@ -129,6 +132,82 @@
 - [§17 — Lessons carried forward](#17--lessons-carried-forward) · 450 words
 
 ---
+
+## §104 — ✅ An index for the column two pages sort on — **[GATE CLEARED: CI `36954956432` `completed/success` on `0119a44`, attempt 1. MIGRATION APPLIED AND CONFIRMED. MERGED AS PR #40.]**
+
+**`albums` carried seven indexes and none on `created_at`** — title trigram, `first_release_date`, `artwork_status`, `search_vector`, `hydration_status`, `popularity_score`, `slug. Checked against the migrations rather than assumed.
+
+**Two surfaces sort on it.** `getRecentAlbums` orders by `created_at desc` with **no filter at all**, which is Home and Browse; and `catalogueOrderFor` ends every catalogue sort at `created_at` so the ordering is total — the final key on `/albums/all` under every sort, the leading key under _Recently added_.
+
+### 🔎 F-050 proper was deliberately not built, and that is the cycle's main decision
+
+**Its own entry sets the trigger**: the catalogue roughly doubling, or Home and Browse appearing in a latency measurement. **Neither is observed**, and the entry states that at ~1,050 albums the scan costs nothing measurable.
+
+**`CLAUDE.md` is explicit that the cycle process must not be used to manufacture work**, and STEP A establishing that a finding is not worth acting on yet is a valid outcome. So this took **the separable piece the entry itself names** and left the decision alone.
+
+### 📄 What it refuses to claim
+
+**No measured improvement.** There is no benchmark, and an index justified by one nobody ran would be the kind of claim this project does not make. What justifies it is that the read sorts an unindexed column on the two busiest pages, it is one statement, and F-050 names it as **still useful after the rewrite it eventually wants.** Cheap insurance, not a fix. `architecture.md` §16.11.
+
+### ⚠️ Evidence limitation, argued rather than hidden
+
+**The migration was not applied locally.** Docker Desktop's process was running but its daemon would not come ready after being shut down, and roughly twenty-two minutes went into it across two cycles before stopping — rather than clicking through a GUI prompt on the maintainer's machine.
+
+**For this migration that was judged acceptable, and the judgement is recorded so it can be disagreed with.** It is a single `create index` with no logic, no constraint and no function — **nothing in it could be invisible to reading**, which was the actual lesson of §98's three execution-only defects. CI applies every migration to a fresh database.
+
+**The previous entry, left as written.** Verified at **`b19bb70`**.
+
+## §103 — ✅ The test suite fails about what is actually wrong — **[GATE CLEARED: CI `36953900325` `completed/success` on `499c8b8`, attempt 1, 145 end-to-end, **zero flaky**. NO MIGRATION. MERGED AS PR #39.]**
+
+**F-036, promoted on fresh evidence.** Two failures with one cause, and both cost real time on 2026-10-02 — **the second twice in one night, by the agent that had already read the entry describing it.**
+
+### 🔎 What they looked like, and what they were
+
+**A stopped Docker daemon reported itself as `Timed out waiting 120000ms from config.webServer`.** Playwright waits for `baseURL` to return a success status, `/` calls Supabase, and the call fails with `ECONNREFUSED`. **The message names the Next dev server, which is working perfectly** — and both remedies it suggests, killing stale servers and freeing port 3000, are wrong.
+
+**`npx playwright test` reported itself as a missing WebSocket inside a test hook.** That path bypasses `scripts/with-websocket.mjs`, so under Node 20 every spec building an admin client dies in `beforeAll` with a stack naming `@supabase/realtime-js` — **which looks like a product fault.**
+
+### 📄 Two mechanisms, because the detection points differ
+
+**`scripts/preflight-e2e.mjs`** checks `.env.local` and whether Supabase answers, and names the remedy rather than the symptom. Skipped when `PLAYWRIGHT_BASE_URL` is set.
+
+**The WebSocket guard is in `playwright.config.ts`**, because that file is the one thing **both** entry points load. **A preflight only runs on the supported path, and that path was never the broken one** — which is the whole reason the two guards live in different places.
+
+### 📄 Verified by triggering, not by reasoning
+
+With Docker genuinely down the preflight failed **in under a second** with the correct diagnosis. `npx playwright test` now errors naming `npm run test:e2e`. The shim path still lists every spec — the guard cannot fire under it, and cannot fire on CI, which pins Node 22. `architecture.md` §12.2.
+
+**The previous entry, left as written.** Verified at **`0949322`**.
+
+## §102 — ✅ The notice write moved out of the page and into a hop — **[GATE CLEARED: CI `36953136826` `completed/success` on `7036bf2`, attempt 1, 146 end-to-end, **zero flaky**. NO MIGRATION. MERGED AS PR #38.]**
+
+**§98 shipped `/notices` marking statements read as it rendered**, with `prefetch={false}` on the banner as the control, and recorded the arrangement as a known limitation whose durable fix was _to stop writing during render_.
+
+### 🔎 STEP A found the repo had already solved it, and §98 simply did not look
+
+`src/app/notifications/[id]/route.ts` says it in its own docstring: _"`prefetch={false}` on the link is what keeps this honest. A prefetched route would mark notifications read on hover."_ **It handles the identical problem with a route handler that writes and redirects.**
+
+**This is the second time in two days that an existing answer was in the repository and was not found.** §100 records the same shape — the computed-key mistake §98 had fixed two hours earlier, repeated in a form that looked different. **The failure is not ignorance of the lesson; it is not recognising the situation as the one the lesson applies to.**
+
+### 📄 What changed, and what it buys
+
+`/notices/read` marks everything seen and redirects; the page is a pure read.
+
+**The gain is not tidiness.** With the write in the page, **every future link to `/notices` had to remember `prefetch={false}`** — a correctness property maintained by memory, on a surface that discharges DSA Art 17. **Now only the hop needs it**, and a link to the page may prefetch freely.
+
+### 📄 The trade, with a test guarding it
+
+**Arriving at `/notices` directly leaves the banner up**, because the page writes nothing. There is an end-to-end case asserting exactly that, **so nobody later reads it as a bug and "fixes" it back.** It is the easier of the two failures to notice: a stale badge is visible, a badge cleared for somebody who never read the notice is not.
+
+**Navigation never depends on the write** — awaited inside `try`/`catch`, redirect either way, matching §16.3. A lost write costs one stale banner; a failed redirect would cost somebody the explanation they are owed.
+
+### ⚠️ An evidence limitation, and CI resolved it
+
+**The new end-to-end case was not run locally.** Docker would not restart after being shut down at the end of the previous cycle, and roughly seventeen minutes went into trying before stopping. **CI is the documented gate and it passed on attempt 1**, so the gap closed — but it is recorded because the earlier local runs this session were an exception and this was the default.
+
+`architecture.md` §16.10h.
+
+**The previous entry, left as written.** Verified at **`28de1e8`**.
 
 ## §101 — ✅ The moderation page is true again — **[GATE CLEARED: CI `36943072412` `completed/success` on `957f61c`, attempt 1, 145 end-to-end, **zero flaky**. NO MIGRATION. DEPLOYED AND PROBED LIVE.]**
 
