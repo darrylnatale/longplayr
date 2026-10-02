@@ -270,15 +270,51 @@ export async function getCatalogueAlbums({
   reversed = false,
   limit = CATALOGUE_PAGE_SIZE,
   offset = 0,
+  excludeHeldBy,
 }: {
   sort?: CatalogueSort;
   reversed?: boolean;
   limit?: number;
   offset?: number;
+  /**
+   * Hide albums this user already holds — F-042, `architecture.md` §16.13.
+   *
+   * **A user id rather than a boolean**, so the service never has to ask who is
+   * reading. The caller knows, and a service that guessed would be the only
+   * place a signed-out visitor could accidentally get a personal filter.
+   */
+  excludeHeldBy?: string;
 } = {}): Promise<CataloguePage> {
   const supabase = await createClient();
 
-  let query = supabase.from('albums').select(ALBUM_SUMMARY_COLUMNS, { count: 'exact' });
+  /*
+   * **An anti-join through a left embed, and it was verified rather than
+   * assumed.** `collection_entries!left(id)` with a `user_id` filter and
+   * `is.null` on the embed returns the albums with no row for that user, and
+   * **the exact count respects it** — 4 of 7 on the fixture catalogue, with
+   * `Content-Range: 0-0/4`. That mattered enough to check against a running
+   * PostgREST: `product-spec.md` §8.10's `referencedTable` note is the standing
+   * reminder that documented behaviour is not verified behaviour.
+   *
+   * **The ordering chain below is untouched by it**, which is the whole reason
+   * this shape was chosen over an RPC — the six catalogue sorts live in
+   * `catalogueOrderFor` and would have had to be restated in SQL.
+   */
+  /*
+   * **Two literal selects rather than one computed string.** PostgREST's select
+   * parser is type-level, and a template literal collapses every row to
+   * `ParserError` — **and the cast that silences that would silence a genuinely
+   * wrong column too.** That is the mistake §98 fixed as an `as never` and §100
+   * nearly repeated with a computed key; third occurrence, and four lines of
+   * duplication buys back the whole schema check.
+   */
+  let query = excludeHeldBy
+    ? supabase
+        .from('albums')
+        .select(`${ALBUM_SUMMARY_COLUMNS}, collection_entries!left(id)`, { count: 'exact' })
+        .eq('collection_entries.user_id', excludeHeldBy)
+        .is('collection_entries', null)
+    : supabase.from('albums').select(ALBUM_SUMMARY_COLUMNS, { count: 'exact' });
 
   // Applied in sequence, ending at `created_at` so the ordering is total —
   // without that, two rows comparing equal can swap between requests and an

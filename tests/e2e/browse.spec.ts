@@ -205,3 +205,79 @@ test('a Various Artists credit is named but is not a link', async ({ page }) => 
   await expect(recent.getByText('Various Artists').first()).toBeVisible();
   await expect(recent.getByRole('link', { name: 'Various Artists', exact: true })).toHaveCount(0);
 });
+
+/**
+ * Hiding what you already hold — F-042, `architecture.md` §16.13.
+ *
+ * **This layer is the only one that can prove it.** `getCatalogueAlbums` builds
+ * a cookie-bound client and cannot be called without a request scope, which is
+ * why no integration test reaches it. The anti-join itself was verified against
+ * a running PostgREST — 4 of 7 with `Content-Range: 0-0/4` — and what remains
+ * to prove is that the parameter reaches the query and survives the controls.
+ *
+ * **The negative case is the one that would be missed.** A toggle rendered for
+ * everybody would satisfy the positive assertion alone, and this is the first
+ * control on a catalogue surface that depends on who is reading.
+ */
+test('a signed-in reader can hide the albums they already have', async ({ page }) => {
+  const admin = adminClient();
+  const user = uniqueUser();
+  createdEmails.push(user.email);
+
+  const { data: created, error: createError } = await admin.auth.admin.createUser({
+    email: user.email,
+    password: user.password,
+    email_confirm: true,
+  });
+  if (createError) throw createError;
+  const id = created.user!.id;
+  const { error: profileError } = await admin.from('profiles').insert({ id, handle: user.handle });
+  if (profileError) throw profileError;
+
+  // Hold exactly one fixture album, so the count must drop by exactly one.
+  const { data: album } = await admin
+    .from('albums')
+    .select('id, title')
+    .eq('mbid', IN_RAINBOWS)
+    .single();
+  if (!album) throw new Error('fixture catalogue is not seeded — run npm run db:seed:fixtures');
+  const { error: entryError } = await admin
+    .from('collection_entries')
+    .insert({ user_id: id, album_id: album.id });
+  if (entryError) throw entryError;
+
+  await page.goto('/login');
+  await page.getByLabel('Email').fill(user.email);
+  await page.getByLabel('Password', { exact: true }).fill(user.password);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page).toHaveURL('/', NAV);
+
+  await page.goto('/albums/all');
+  await expect(page.getByRole('link', { name: album.title })).toBeVisible(NAV);
+
+  await page.getByRole('link', { name: 'Hide albums I already have' }).click();
+
+  // **The held album is gone, and the heading says what it is now counting.**
+  await expect(page).toHaveURL('/albums/all?mine=hide', NAV);
+  await expect(page.getByText('you have not added')).toBeVisible();
+  await expect(page.getByRole('link', { name: album.title })).toHaveCount(0);
+
+  // **The filter survives a sort**, which is the assertion most likely to break
+  // later: changing sort resets the page but must not reset the filter.
+  await page.getByRole('link', { name: 'Title', exact: true }).click();
+  await expect(page).toHaveURL(/mine=hide/, NAV);
+  await expect(page.getByRole('link', { name: album.title })).toHaveCount(0);
+
+  // And it can be turned off again.
+  await page.getByRole('link', { name: 'Show everything' }).click();
+  await expect(page.getByRole('link', { name: album.title })).toBeVisible(NAV);
+});
+
+test('a signed-out visitor is offered no personal filter', async ({ page }) => {
+  // Browse is public and identical for everyone by default — the control is
+  // not rendered at all rather than rendered disabled. §16.13.
+  await page.goto('/albums/all');
+  await expect(page.getByRole('heading', { name: 'All albums' })).toBeVisible(NAV);
+  await expect(page.getByText('Hide albums I already have')).toHaveCount(0);
+  await expect(page.getByText('in the catalogue')).toBeVisible();
+});

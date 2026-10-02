@@ -2498,6 +2498,32 @@ Also excluded: RLS policies of any kind; `auth`, `storage` and other non-`public
 
 ---
 
+### 16.13 A personal filter on a public catalogue surface **[DECIDED 2026-10-02]**
+
+**F-042 asks for a way to see only albums you do not already hold**, and names the interesting part itself: _"It is a different kind of filter from everything else asked for."_ Year, title and artist narrow by facts about the **album**; this narrows by facts about **the reader**.
+
+**Signed-in only, and not rendered at all when signed out.** Browse is public and identical for everyone, so this is the first control there that depends on who is reading. **Not rendered disabled** — a control a signed-out visitor cannot use is an invitation with no door behind it.
+
+**`getCatalogueAlbums` takes a user id, not a boolean.** The service never asks who is reading; the caller knows. **That is what makes a signed-out visitor structurally unable to receive a personal filter** — the parameter simply has nothing to carry — rather than relying on a page-level condition staying correct.
+
+**`?mine=hide`, carried like `?sort=`.** A filter dropped by paging or re-sorting would show the reader albums they had just asked to hide, with nothing on the page admitting it. **Every sort link carries it**, including the inactive ones, because changing sort resets the page and must not reset the filter — they answer different questions.
+
+**Default off**, and omitted from the URL when off, so one state has one address — the rule `cataloguePath` already applies to sort and direction.
+
+### 16.13a An anti-join through a left embed, verified rather than assumed **[DECIDED 2026-10-02]**
+
+**`collection_entries!left(id)` with a `user_id` filter and `is.null` on the embed** returns the albums with no row for that user.
+
+**Checked against a running PostgREST before anything was built on it**: 4 of 7 on the fixture catalogue, **and the exact count respects it** — `Content-Range: 0-0/4` against `0-0/7` unfiltered. That mattered enough to measure because `product-spec.md` §8.10's `referencedTable` note is the standing reminder that **a documented behaviour is not a verified one**, and pagination is wrong without a correct total.
+
+**Chosen over an RPC specifically because the ordering chain is untouched.** The six catalogue sorts live in `catalogueOrderFor`, and an RPC would have had to restate all of them in SQL — the duplication §105 had just finished removing from the pager.
+
+**Two literal `.select()` calls rather than one computed string.** PostgREST's select parser is type-level, and a template literal collapses every row to `ParserError` — **and the cast that silences that would silence a genuinely wrong column too.** That is the mistake §98 fixed as an `as never` and §100 nearly repeated with a computed key; **third occurrence**, and four lines of duplication buys back the whole schema check.
+
+**Coverage is end-to-end, and that is forced rather than chosen.** `getCatalogueAlbums` builds a cookie-bound client and cannot be called without a request scope, so no integration test can reach it. The anti-join is verified by measurement, the parameter plumbing by unit tests, and the seam by two browser cases — **including the negative one, since a toggle rendered for everybody would satisfy the positive assertion alone.**
+
+---
+
 ## 17. Scalability — what breaks first, and when
 
 Honest ordering of what would need attention, rather than premature optimisation:
