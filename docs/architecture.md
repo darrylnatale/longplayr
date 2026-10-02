@@ -15,19 +15,19 @@ Notation: **[DECIDED]** = explicitly chosen. **[INFERRED]** = follows necessaril
 - [3. Backend](#3-backend) · 146 words
 - [4. Code organisation](#4-code-organisation) · 177 words
 - [5. Database](#5-database) · 182 words
-- [6. Authentication](#6-authentication) · 1,895 words
-- [7. Catalogue and ingestion](#7-catalogue-and-ingestion) · 11,415 words
+- [6. Authentication](#6-authentication) · 2,156 words
+- [7. Catalogue and ingestion](#7-catalogue-and-ingestion) · 11,965 words
 - [7a. Upstream payload capture](#7a-upstream-payload-capture) · 465 words
 - [8. Popularity](#8-popularity) · 1,134 words
 - [9. Caching](#9-caching) · 164 words
 - [10. Search](#10-search) · 3,017 words
 - [11. Environments and deployment](#11-environments-and-deployment) · 878 words
-- [12. Testing](#12-testing) · 7,191 words
+- [12. Testing](#12-testing) · 7,859 words
 - [13. Observability](#13-observability) · 88 words
 - [14. Security](#14-security) · 1,773 words
 - [15. Privacy](#15-privacy) · 767 words
-- [16. Data access patterns](#16-data-access-patterns) · 10,982 words
-- [17. Scalability — what breaks first, and when](#17-scalability--what-breaks-first-and-when) · 266 words
+- [16. Data access patterns](#16-data-access-patterns) · 13,668 words
+- [17. Scalability — what breaks first, and when](#17-scalability--what-breaks-first-and-when) · 935 words
 - [17a. A temporary operator surface for the ingestion queue **[DECIDED 2026-09-13]**](#17a-a-temporary-operator-surface-for-the-ingestion-queue-decided-2026-09-13) · 1,407 words
 - [18. Verification required before implementation](#18-verification-required-before-implementation) · 558 words
 - [19. Long-term architectural constraints](#19-long-term-architectural-constraints) · 1,350 words
@@ -2426,6 +2426,53 @@ Honest ordering of what would need attention, rather than premature optimisation
 None of these need addressing before launch. All are listed so that when something slows down, the cause is already understood.
 
 ---
+
+### 17.1 Measured on 2026-10-02 at 50,007 albums **[Phase 7 performance pass]**
+
+**Synthetic volume, local, disposable**: 50,000 generated albums with distinct titles, 2,000 artists, one credit each, `analyze` run. The catalogue holds roughly 1,050 today, so this is a **48× projection** rather than a measurement of production.
+
+**The read paths that serve pages are not what breaks.**
+
+| Query                                           | Plan                                  | Time   |
+| ----------------------------------------------- | ------------------------------------- | ------ |
+| `getRecentAlbums` — `created_at desc limit 750` | Index Scan on `albums_created_at_idx` | 8.1 ms |
+| Catalogue page 1 — `created_at desc, id desc`   | Index Scan + Incremental Sort         | 2.1 ms |
+| Catalogue page 500 — same, `offset 12000`       | Index Scan, 12,025 rows scanned       | 7.6 ms |
+
+**§16.11's index is used, and is now justified by measurement rather than by reading.** It was added in the same session **explicitly claiming no measured improvement**; this is that claim discharged. Deep pagination scans the offset rather than seeking past it, which is the known cost of `offset` and is 7.6 ms at 48× today's catalogue — **not worth a keyset rewrite on this evidence.**
+
+### 17.2 What does break first: slug assignment, and it is quadratic **[MEASURED 2026-10-02]**
+
+**`assign_album_slug` costs O(albums already sharing that title) per insert**, because §89's free-slug search probes upward from the base until it finds an unused counter. That is correct and was written to fix a real collision; **the cost was never measured.**
+
+| Rows inserted | Sharing one title  | All distinct titles |
+| ------------- | ------------------ | ------------------- |
+| 250           | 0.80 s             | 0.19 s              |
+| 500           | 1.02 s             | 0.12 s              |
+| 1,000         | 4.01 s             | 0.14 s              |
+| 2,000         | 11.79 s            | 0.21 s              |
+| 50,000        | **did not finish** | ~2 s (batched)      |
+
+**Distinct titles are flat; a shared title is quadratic.** Doubling 1,000 to 2,000 roughly triples the time, and 50,000 rows sharing one title did not complete in the minutes available.
+
+**This is reachable rather than contrived.** _Greatest Hits_ is one of the most common album titles there is, and the catalogue is **completion-oriented in depth** by non-negotiable — so depth is exactly the direction that accumulates shared titles.
+
+**It is not a problem today and the trigger is stated rather than implied.** Ingestion inserts one album per transaction, so the cost per insert is the number of existing albums with that base — a handful. **The trigger to act is a title reaching the low hundreds of albums**, or any attempt at bulk loading.
+
+### 17.3 A second ceiling: bulk insert cannot exceed ~12,000 distinct titles per transaction **[MEASURED 2026-10-02]**
+
+**`assign_album_slug` takes `pg_advisory_xact_lock` per slug base**, and advisory locks are held to the end of the transaction. With `max_locks_per_transaction` at 64 and `max_connections` at 100, the shared lock table runs out:
+
+| Distinct titles in one transaction | Result                     |
+| ---------------------------------- | -------------------------- |
+| 1,000 · 3,000 · 6,000 · 12,000     | ok                         |
+| 20,000 · 30,000 · 40,000 · 50,000  | **`out of shared memory`** |
+
+**Re-locking the same base is not a new entry**, so the limit is distinct titles rather than rows — which is why the first attempt at 50,000 failed while a 12,000-row probe passed.
+
+**This matters for exactly one thing that is already recorded direction**: `product-feedback.md` **F-039**, MusicBrainz full database dumps. A dump load is precisely a large single-transaction insert, and it would meet both this ceiling and §17.2's quadratic cost. **Anyone taking F-039 should read these two sections first**; batching under 12,000 distinct titles per transaction is the mechanical workaround, and 50,000 loaded in ten batches took about two seconds.
+
+**No fix is proposed here, deliberately.** Both are properties of a trigger written to fix a real defect (§88, §89), the product is at 1/48th of the measured volume, and `CLAUDE.md` forbids using the cycle process to manufacture work. **What was missing was the number, and now there is one.**
 
 ## 17a. A temporary operator surface for the ingestion queue **[DECIDED 2026-09-13]**
 
