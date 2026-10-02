@@ -774,7 +774,7 @@ The status line on an artist page reads _"Fetching the rest of this discography 
 
 ### F-028 — the MusicBrainz rate limiter does not span serverless invocations
 
-**2026-09-07 · ingestion, infrastructure · PROMOTED — DECIDED 2026-10-02, IN FLIGHT**
+**2026-09-07 · ingestion, infrastructure · CLOSED — DELIVERED 2026-10-02 (§107, PR #43)**
 
 > **The framing in this entry is what kept it open, and `architecture.md` §7.3a says so.** It assumed the fix was shared-state rate limiting and called that _"materially larger"_. **Constraining the drainer rather than the request is much smaller** and makes the existing in-process limiter authoritative, because there is then only one process. A lease row with an expiry, not an advisory lock — Supabase's pooler makes session-level locks unreliable.
 > **Also corrected: this is routine rather than theoretical.** `drainJobs` has **four** call sites, two inside `after()` on album and artist pages, against twelve cron runs a day. That no failure had been observed was luck.
@@ -1410,7 +1410,11 @@ The all-albums page sorts by release year **most recent first**, and there is no
 
 ### F-050 — ask the database for one album per artist, instead of scanning for it
 
-**2026-09-17 · browse, performance · NEW**
+**2026-09-17 · browse, performance · TRIAGED 2026-10-02 — STILL DEFERRED ON ITS OWN TRIGGER; THE SEPARABLE INDEX IS DONE**
+
+> **Re-triaged at STEP A on 2026-10-02 and deliberately not built.** This entry sets its own trigger — the catalogue roughly doubling, or Home and Browse appearing in a latency measurement — and **neither held**, so building it would have been manufacturing work against `CLAUDE.md`'s explicit instruction not to.
+> **The separable piece named here has shipped**: there was indeed no index on `albums.created_at`, and `architecture.md` §16.11 records it with an explicit note that it claimed no measured improvement. **§109 then measured it** — an index scan at 8.1 ms over 50,007 albums — so that claim is discharged. **The scan this entry wants to remove is still not the bottleneck**; §17.2 found slug assignment is.
+> **[Status corrected 2026-10-02.]** This re-triage was reported as done during the §104 cycle and **was never written**: the script carrying it raised on an unrelated anchor lookup before reaching this edit, and only the `architecture.md` half was re-applied.
 
 **Filed as the known replacement for a fix that shipped knowingly incomplete.** Recently added renders 11 of 24 cells because ingestion is artist-batched; the immediate fix raised the read depth to a fixed 750, which works today and **is a scan**. This entry is the version that does not scan.
 
