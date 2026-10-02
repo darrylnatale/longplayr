@@ -864,7 +864,10 @@ Raised by the maintainer asking the obvious question: if Cover Art Archive has n
 
 ### F-032 — `verify:full` can pass without ever parsing a cycle's migration
 
-**2026-09-07 · development process, testing · TRIAGED — PREMISE CHANGED 2026-09-15, STILL OPEN**
+**2026-09-07 · development process, testing · CLOSED — THE SURVIVING HALF IS ADDRESSED 2026-10-02 (§112)**
+
+> **The half CI cannot help with now has a check.** `npm run db:drift` compares the **deployed** schema against the migrations — `architecture.md` §12.5 — where CI only ever proves a fresh database and `db:pending` only compares the ledger. **First run found no real drift across 44 migrations**, and found one privilege the project never granted (**F-060**).
+> **The other half is accepted rather than fixed**: `verify:full` still does not reset the database, so a local run can pass without the migration being parsed. That is a **less-travelled path** — `CLAUDE.md` says `verify:full` is not to be run at all without being asked — and the cost of resetting it for everyone exceeds the exposure. Stated so it is not mistaken for an oversight.
 
 **The risk this names has moved rather than gone.** The gate change means a migration is now applied at **STEP J, after CI has passed the exact tree** — so CI _does_ parse it before it reaches the deployed database, which is the opposite of the old order.
 
@@ -1768,6 +1771,24 @@ Running `npm run db:types` with Docker stopped **wrote the CLI's error JSON into
 - **No fix is proposed, deliberately.** Both are properties of a trigger written to fix a real collision defect (§88, §89), and replacing the probe loop with a direct `max(counter)` lookup is a plausible but unexamined idea that would need its own cycle and its own collision tests.
 - **What was missing was the number.** The read paths that serve pages were measured in the same pass and are fine — `architecture.md` §17.1.
 - **Related:** **F-039** database dumps; **F-050**, deferred on its own trigger in the same way.
+
+---
+
+### F-060 — `anon` and `authenticated` hold `UPDATE ON SEQUENCES` by Supabase default
+
+**2026-10-02 · security, database · NEW — NOT URGENT, NEEDS A DECISION**
+
+**Found by the first run of `npm run db:drift`** (§112, `architecture.md` §12.5). The deployed database carries default privileges granting **`UPDATE ON SEQUENCES` in schema `public` to `anon`, `authenticated` and `service_role`** — which **no migration declares.** It is a Supabase project default.
+
+**Same family as §106.** `architecture.md` §16.5's whole point is that the platform's defaults grant what a migration appears to withhold, and this is a grant the project never wrote and has never revoked.
+
+**Context, not a resolution.**
+
+- **Reachability is the open question and it looks low.** `UPDATE` on a sequence permits `nextval` and `setval`. **PostgREST does not expose sequence functions**, so there is no route to `setval` without an RPC that calls it, and none exists. **The grant is real; a path to it is not evident.**
+- **The tables that have sequences are few.** Most identifiers are `gen_random_uuid()`; `ingestion_jobs.id` is a `bigint` and is the clear case.
+- **Revoking is not obviously safe, which is why this is filed rather than fixed.** An insert that draws from a sequence needs `USAGE` **or** `UPDATE` on it, and revoking the default could break `ingestion_jobs` inserts — the drain, the sweeps and the seed runners all do that. **Verifying which privilege each path actually relies on is the work**, and it is a deviation from the platform baseline either way.
+- **It is deliberately allowlisted in the drift check** so the check stays readable, which means **this entry is the only record that it exists.** If the entry is closed without a decision, the knowledge goes with it.
+- **Related:** **§106** is the same shape found by reading migrations; **F-032** is the entry whose surviving half produced the check that found this.
 
 ---
 
