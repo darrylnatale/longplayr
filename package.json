@@ -13,7 +13,7 @@
     "test": "vitest run --project unit --project component",
     "test:watch": "vitest --project unit --project component",
     "test:integration": "node scripts/with-websocket.mjs vitest run --project integration --no-file-parallelism",
-    "test:e2e": "node scripts/with-websocket.mjs playwright test",
+    "test:e2e": "node scripts/preflight-e2e.mjs && node scripts/with-websocket.mjs playwright test",
     "db:start": "supabase start",
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
