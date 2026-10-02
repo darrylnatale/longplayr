@@ -4,10 +4,11 @@ import { notFound } from 'next/navigation';
 import { AlbumGrid } from '@/components/AlbumGrid';
 import { Container } from '@/components/Container';
 import { Pagination } from '@/components/Pagination';
+import { getCurrentUser } from '@/services/profiles';
 import { catalogueReversedFrom, catalogueSortFrom } from '@/services/catalogue/catalogue-sort';
 import { CATALOGUE_PAGE_SIZE, getCatalogueAlbums } from '@/services/catalogue/queries';
 
-import { cataloguePath, pageFrom, sortLinks } from './pagination';
+import { cataloguePath, hideHeldFrom, pageFrom, sortLinks } from './pagination';
 
 export const metadata = { title: 'All albums · longplayr' };
 
@@ -36,12 +37,23 @@ export default async function AllAlbumsPage({ searchParams }: PageProps<'/albums
   const sort = catalogueSortFrom(query.sort);
   const reversed = catalogueReversedFrom(query.dir);
   const page = pageFrom(query.page);
+  const hideHeld = hideHeldFrom(query.mine);
+
+  /*
+   * **The viewer is resolved here, not in the service.** `getCatalogueAlbums`
+   * takes a user id rather than a boolean, so a signed-out visitor cannot
+   * accidentally receive a personal filter — the parameter simply has nothing
+   * to carry. `architecture.md` §16.13, F-042.
+   */
+  const viewer = await getCurrentUser();
+  const excludeHeldBy = hideHeld && viewer ? viewer.id : undefined;
 
   const { albums, total } = await getCatalogueAlbums({
     sort,
     reversed,
     limit: CATALOGUE_PAGE_SIZE,
     offset: (page - 1) * CATALOGUE_PAGE_SIZE,
+    excludeHeldBy,
   });
 
   const totalPages = Math.max(1, Math.ceil(total / CATALOGUE_PAGE_SIZE));
@@ -56,8 +68,30 @@ export default async function AllAlbumsPage({ searchParams }: PageProps<'/albums
         <h1 className="text-2xl font-semibold tracking-tight text-text sm:text-3xl">All albums</h1>
         <p className="mt-2 text-sm text-text-muted">
           <span className="tabular">{total.toLocaleString()}</span>{' '}
-          {total === 1 ? 'album' : 'albums'} in the catalogue
+          {total === 1 ? 'album' : 'albums'}{' '}
+          {excludeHeldBy ? 'you have not added' : 'in the catalogue'}
         </p>
+
+        {/*
+         * **Only for a signed-in reader, and that is the decision rather than a
+         * detail.** This is the first control on a catalogue surface that
+         * depends on who is reading, and Browse is otherwise public and
+         * identical for everyone — so for a signed-out visitor it is not
+         * rendered at all rather than rendered disabled. §16.13.
+         *
+         * A link, not a form: every state stays addressable and the page needs
+         * no client JavaScript, matching the sort control beside it.
+         */}
+        {viewer && (
+          <p className="mt-3 text-sm">
+            <Link
+              href={cataloguePath(sort, 1, reversed, !hideHeld)}
+              className="text-accent hover:underline"
+            >
+              {hideHeld ? 'Show everything' : 'Hide albums I already have'}
+            </Link>
+          </p>
+        )}
 
         {/*
          * Links rather than a form, so every ordering is addressable and the
@@ -72,7 +106,7 @@ export default async function AllAlbumsPage({ searchParams }: PageProps<'/albums
          * does something.
          */}
         <nav aria-label="Sort albums" className="mt-4 flex flex-wrap gap-1">
-          {sortLinks(sort, reversed).map((option) => (
+          {sortLinks(sort, reversed, hideHeld).map((option) => (
             <Link
               key={option.value}
               href={option.href}
@@ -118,7 +152,7 @@ export default async function AllAlbumsPage({ searchParams }: PageProps<'/albums
         <Pagination
           page={page}
           totalPages={totalPages}
-          href={(to) => cataloguePath(sort, to, reversed)}
+          href={(to) => cataloguePath(sort, to, reversed, hideHeld)}
           label="Catalogue pages"
         />
       </div>

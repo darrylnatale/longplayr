@@ -1567,6 +1567,30 @@ A mechanical scan for `.click()` followed within three non-blank lines by `page.
 
 ---
 
+### 12.4 One check says which layer of the local stack is missing **[DECIDED 2026-10-02]**
+
+**F-044 records that the test environment fails more often than the code does** — three of five cycles losing time to the environment and none to a product defect. **The session of 2026-10-02 produced five more instances, and every one named something other than its cause:**
+
+| What was wrong            | What was reported                                                |
+| ------------------------- | ---------------------------------------------------------------- |
+| Docker daemon not running | `Timed out waiting 120000ms from config.webServer`               |
+| Docker daemon not running | `LegacyLocalDbRunningError: failed to connect to the docker API` |
+| Docker half-started       | `docker info` hanging, then a `500` from the API route           |
+| `supabase start` not run  | `No such container: supabase_db_longplayr`                       |
+| `supabase start` not run  | `LegacyResetLocalDbNotRunningError`                              |
+
+**Two were fixed at their own site** — §12.2 for the Playwright timeout, §12.3 for `db:types` destroying its output. **`scripts/check-env.mjs` is the general case**: one check, guarding `db:reset`, `db:types`, `db:seed:fixtures` and `test:integration`, that distinguishes **Docker is not running** from **the stack is not started** from **`.env.local` is missing** from **ready**.
+
+**It reports the first missing layer, not the last, and the ordering is the whole value.** With Docker down, _the stack is not started_ is also true and completely useless — starting it is impossible until Docker is up.
+
+**It diagnoses and never acts.** Starting Docker on somebody's machine is not a check's decision, and `supabase start` takes long enough that doing it implicitly would hide the one fact the reader needs.
+
+**The Docker probe has an eight-second timeout because the daemon hangs rather than failing.** That was observed repeatedly on 2026-10-02: `docker info` did not return at all from a half-started daemon, so a probe without a timeout would make the check itself the thing that appears to be broken. **And the remedy says to quit Docker fully and reopen**, because `open -a Docker` was not enough three times over and a full quit-and-reopen was — a message that only said _start Docker_ would have been true and useless.
+
+**`preflight-e2e.mjs` delegates rather than duplicating.** What stays there is the one thing this cannot tell: **whether Supabase is actually answering.** A container that is up but wedged passes every check here and still fails the suite.
+
+**All four states were verified against a real machine**, not only unit-tested: Docker down, Docker up with the stack down, the stack up with `.env.local` removed, and ready.
+
 ### 12.5 Comparing the deployed schema against the migrations **[DECIDED 2026-10-02]**
 
 **This is the half of F-032 that CI structurally cannot cover.** CI applies migrations to a **fresh** database, so a clean run proves the migrations are internally consistent and says **nothing about the database users are actually served by**. `npm run db:pending` compares the migration _ledger_ — it tells you a file was recorded, not that it did what it should.
@@ -2487,6 +2511,32 @@ Also excluded: RLS policies of any kind; `auth`, `storage` and other non-`public
 - **This closes the other gap**: enumeration without execution. The two together cover what neither does alone, and **neither replaces the other.**
 
 **It is deliberately dependency-free.** A catalogue-level query would be stronger and needs a Postgres driver the project does not have; adding one is a dependency decision rather than a test detail, so it is left to the maintainer. Recorded here so the stronger option is not forgotten.
+
+---
+
+### 16.13 A personal filter on a public catalogue surface **[DECIDED 2026-10-02]**
+
+**F-042 asks for a way to see only albums you do not already hold**, and names the interesting part itself: _"It is a different kind of filter from everything else asked for."_ Year, title and artist narrow by facts about the **album**; this narrows by facts about **the reader**.
+
+**Signed-in only, and not rendered at all when signed out.** Browse is public and identical for everyone, so this is the first control there that depends on who is reading. **Not rendered disabled** — a control a signed-out visitor cannot use is an invitation with no door behind it.
+
+**`getCatalogueAlbums` takes a user id, not a boolean.** The service never asks who is reading; the caller knows. **That is what makes a signed-out visitor structurally unable to receive a personal filter** — the parameter simply has nothing to carry — rather than relying on a page-level condition staying correct.
+
+**`?mine=hide`, carried like `?sort=`.** A filter dropped by paging or re-sorting would show the reader albums they had just asked to hide, with nothing on the page admitting it. **Every sort link carries it**, including the inactive ones, because changing sort resets the page and must not reset the filter — they answer different questions.
+
+**Default off**, and omitted from the URL when off, so one state has one address — the rule `cataloguePath` already applies to sort and direction.
+
+### 16.13a An anti-join through a left embed, verified rather than assumed **[DECIDED 2026-10-02]**
+
+**`collection_entries!left(id)` with a `user_id` filter and `is.null` on the embed** returns the albums with no row for that user.
+
+**Checked against a running PostgREST before anything was built on it**: 4 of 7 on the fixture catalogue, **and the exact count respects it** — `Content-Range: 0-0/4` against `0-0/7` unfiltered. That mattered enough to measure because `product-spec.md` §8.10's `referencedTable` note is the standing reminder that **a documented behaviour is not a verified one**, and pagination is wrong without a correct total.
+
+**Chosen over an RPC specifically because the ordering chain is untouched.** The six catalogue sorts live in `catalogueOrderFor`, and an RPC would have had to restate all of them in SQL — the duplication §105 had just finished removing from the pager.
+
+**Two literal `.select()` calls rather than one computed string.** PostgREST's select parser is type-level, and a template literal collapses every row to `ParserError` — **and the cast that silences that would silence a genuinely wrong column too.** That is the mistake §98 fixed as an `as never` and §100 nearly repeated with a computed key; **third occurrence**, and four lines of duplication buys back the whole schema check.
+
+**Coverage is end-to-end, and that is forced rather than chosen.** `getCatalogueAlbums` builds a cookie-bound client and cannot be called without a request scope, so no integration test can reach it. The anti-join is verified by measurement, the parameter plumbing by unit tests, and the seam by two browser cases — **including the negative one, since a toggle rendered for everybody would satisfy the positive assertion alone.**
 
 ---
 

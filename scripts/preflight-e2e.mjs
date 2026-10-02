@@ -18,7 +18,9 @@
  * then pointed at a server somebody else is running and local Supabase may be
  * irrelevant. That is the same escape hatch `playwright.config.ts` honours.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
+
+import { detect, remedyFor } from './check-env.mjs';
 
 const ENV_FILE = '.env.local';
 
@@ -31,12 +33,19 @@ if (process.env.PLAYWRIGHT_BASE_URL) {
   process.exit(0);
 }
 
-if (!existsSync(ENV_FILE)) {
-  fail(
-    `${ENV_FILE} is missing, so neither the dev server nor the specs can reach Supabase.`,
-    'Run: npm run db:start && npm run db:env',
-  );
-}
+/*
+ * **Delegated rather than duplicated.** `check-env.mjs` distinguishes *Docker
+ * is down* from *the stack is not started* from *`.env.local` is missing* —
+ * three causes this file previously collapsed into one message about Supabase
+ * not answering. `architecture.md` §12.4.
+ *
+ * **What stays here is the one thing it cannot tell**: whether Supabase is
+ * actually answering. A stack whose container is up but wedged passes every
+ * check above and still fails the suite.
+ */
+const layer = detect();
+const remedy = remedyFor(layer);
+if (remedy) fail(remedy.problem, remedy.remedy);
 
 // Read the URL from the file rather than from the environment: the suite is
 // started by npm, which does not load `.env.local` itself.

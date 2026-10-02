@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { cataloguePath, pageFrom, sortLinks } from './pagination';
+import { cataloguePath, hideHeldFrom, pageFrom, sortLinks } from './pagination';
 
 /**
  * Addresses for the catalogue-wide destination (`product-spec.md` §6).
@@ -106,5 +106,51 @@ describe('sortLinks — direction', () => {
 
     expect(links.filter((link) => link.reversed)).toHaveLength(1);
     expect(links.find((link) => link.reversed)?.value).toBe('year');
+  });
+});
+
+/**
+ * `?mine=hide` — F-042, `architecture.md` §16.13.
+ *
+ * **The assertions that matter are the carrying ones.** A filter dropped by
+ * paging or re-sorting would show the reader albums they had just asked to
+ * hide, with nothing on the page admitting it — the same failure the `sort`
+ * parameter's own tests were written for.
+ */
+describe('hiding what you already have', () => {
+  it('is off unless the parameter says exactly "hide"', () => {
+    expect(hideHeldFrom(undefined)).toBe(false);
+    expect(hideHeldFrom('')).toBe(false);
+    expect(hideHeldFrom('yes')).toBe(false);
+    expect(hideHeldFrom('true')).toBe(false);
+    expect(hideHeldFrom('hide')).toBe(true);
+    // Repeated parameters arrive as an array; the first wins, as elsewhere.
+    expect(hideHeldFrom(['hide', 'no'])).toBe(true);
+  });
+
+  it('is omitted from the URL when off, so one state has one address', () => {
+    expect(cataloguePath('added', 1, false, false)).toBe('/albums/all');
+    expect(cataloguePath('added', 1, false, true)).toBe('/albums/all?mine=hide');
+  });
+
+  it('survives paging', () => {
+    expect(cataloguePath('added', 3, false, true)).toBe('/albums/all?mine=hide&page=3');
+  });
+
+  it('survives sorting and reversal together', () => {
+    expect(cataloguePath('title', 2, true, true)).toBe(
+      '/albums/all?sort=title&dir=rev&mine=hide&page=2',
+    );
+  });
+
+  it('is carried by every sort link, not only the active one', () => {
+    // **The one most likely to be missed.** Changing sort resets the page but
+    // must not reset the filter — they answer different questions.
+    for (const link of sortLinks('added', false, true)) {
+      expect(link.href).toContain('mine=hide');
+    }
+    for (const link of sortLinks('added', false, false)) {
+      expect(link.href).not.toContain('mine=');
+    }
   });
 });

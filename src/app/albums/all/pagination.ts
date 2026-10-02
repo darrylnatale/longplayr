@@ -49,10 +49,19 @@ export function pageFrom(value: string | string[] | undefined): number {
  * destinations already apply, extended to the second parameter so that four
  * addresses cannot render the same first page.
  */
-export function cataloguePath(sort: CatalogueSort, page: number, reversed = false): string {
+export function cataloguePath(
+  sort: CatalogueSort,
+  page: number,
+  reversed = false,
+  hideHeld = false,
+): string {
   const params = new URLSearchParams();
   if (sort !== DEFAULT_CATALOGUE_SORT) params.set('sort', sort);
   if (reversed) params.set('dir', REVERSED_PARAM);
+  // **Carried like `sort`, for the same reason.** Paging or re-sorting with the
+  // filter silently dropped would show the reader albums they had just asked to
+  // hide, with nothing on the page admitting it. `product-feedback.md` F-042.
+  if (hideHeld) params.set('mine', HIDE_HELD_PARAM);
   if (page > 1) params.set('page', String(page));
 
   const query = params.toString();
@@ -72,7 +81,22 @@ export function cataloguePath(sort: CatalogueSort, page: number, reversed = fals
  * reader — landing on "title, reversed" because the previous sort happened to
  * be reversed is a state nobody asked for.
  */
-export function sortLinks(current: CatalogueSort, reversed = false) {
+/** `?mine=` is user input; anything but the one recognised value is off. */
+export const HIDE_HELD_PARAM = 'hide';
+
+/**
+ * Whether the reader asked to hide what they already hold.
+ *
+ * **Off unless explicitly asked**, because Browse is public and identical for
+ * everyone by default — this is the first control on a catalogue surface that
+ * depends on who is reading. `architecture.md` §16.13.
+ */
+export function hideHeldFrom(value: string | string[] | undefined): boolean {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw === HIDE_HELD_PARAM;
+}
+
+export function sortLinks(current: CatalogueSort, reversed = false, hideHeld = false) {
   return CATALOGUE_SORT_OPTIONS.map((option) => {
     const isCurrent = option.value === current;
 
@@ -81,7 +105,7 @@ export function sortLinks(current: CatalogueSort, reversed = false) {
       // Changing the sort returns to page one: page 7 of one ordering has no
       // meaningful counterpart in another, and keeping the number would land
       // the reader somewhere arbitrary.
-      href: cataloguePath(option.value, 1, isCurrent ? !reversed : false),
+      href: cataloguePath(option.value, 1, isCurrent ? !reversed : false, hideHeld),
       current: isCurrent,
       // Only the active sort carries a direction, because only there does it
       // mean anything to the reader.
