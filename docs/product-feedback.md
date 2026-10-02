@@ -14,7 +14,7 @@ Notation follows the rest of `docs/`: absolute dates, and **[OPEN]** / **[DECIDE
 - [2. Where this sits in the document hierarchy](#2-where-this-sits-in-the-document-hierarchy) · 187 words
 - [3. Operating rules](#3-operating-rules) · 253 words
 - [4. How to write an entry](#4-how-to-write-an-entry) · 264 words
-- [5. Intake](#5-intake) · 35,325 words
+- [5. Intake](#5-intake) · 36,679 words
 - [6. Triage](#6-triage) · 310 words
 - [7. Promotion — where an item goes when it leaves this file](#7-promotion--where-an-item-goes-when-it-leaves-this-file) · 251 words
 - [8. Relationship to the development cycle](#8-relationship-to-the-development-cycle) · 498 words
@@ -1304,7 +1304,12 @@ Under the rule as approved all four survive, because Tame Impala is the first cr
 
 ### F-045 — what it costs to have moved every slow test to CI
 
-**2026-09-16 · development process, testing · NEW**
+**2026-09-16 · development process, testing · CLOSED — ANSWERED WITH DATA 2026-10-02 (§115)**
+
+> **This entry asked what the arrangement costs, and there was no data then. `architecture.md` §12.6 has it.**
+> **The arrangement works**: 32 of 32 green on attempt 1, zero flaky, **zero failures in 36 completed runs** — against the eight local runs §12 measured that lost 9, 5, 2, 9, 7, 14, 19 and 6 tests to the machine. The latency is real and is **23 minutes** to a verdict.
+> **The cost is ~790 of 2,000 billed minutes in two days, and the runway ends around 5 October.** The slow job is **92–95% of a run** across six measurements, and **half the spend is post-merge runs which F-051 established are not redundant** — so the lever is per-run cost, not run count.
+> **No change is recommended to the gate.** What the entry wanted was the number, and splitting the slow job would reverse what §12.1 deliberately decided — a decision rather than a tweak.
 
 **Filed after the change rather than before it**, so the exposure it creates is visible if it starts to bite. The decision itself is `architecture.md` §12.1 and `CLAUDE.md`'s STEP F; this entry is the part nobody has measured yet.
 

@@ -10,6 +10,7 @@
 
 **Unnumbered entries predate the §-numbering convention.** They sit between §87 and §86 in time.
 
+- [§115 — ✅ What moving every slow test to CI costs, answered](#115---what-moving-every-slow-test-to-ci-costs-answered--ci-skipped-documentation-only-paths-ignore-fires-no-run-confirmed-from-gh-run-list) · 464 words
 - [§114 — ✅ Comparing the deployed schema against the migrations](#114---comparing-the-deployed-schema-against-the-migrations--gate-cleared-ci-37011574887-completedsuccess-on-ff480f6-attempt-1-no-migration-merged-as-pr-50) · 537 words
 - [§113 — ✅ Hiding the albums you already have](#113---hiding-the-albums-you-already-have--gate-cleared-ci-37007523879-completedsuccess-on-8ff6a9b-attempt-1-148-end-to-end-zero-flaky-no-migration-merged-as-pr-49) · 468 words
 - [§112 — ✅ Every environment failure names its own cause](#112---every-environment-failure-names-its-own-cause--gate-cleared-ci-37006264000-completedsuccess-on-af7f606-attempt-1-no-migration-merged-as-pr-48) · 436 words
@@ -142,6 +143,40 @@
 - [§17 — Lessons carried forward](#17--lessons-carried-forward) · 450 words
 
 ---
+
+## §115 — ✅ What moving every slow test to CI costs, answered — **[CI SKIPPED: documentation only, `paths-ignore` fires no run. Confirmed from `gh run list`.]**
+
+**F-045 was filed after the change rather than before it, so the exposure would be visible if it started to bite.** There was no data then. There is now.
+
+### 📄 Measured across the first two days after the budget refresh
+
+**37 runs · 32 success · 4 cancelled · 0 failed · 32 of 32 green on attempt 1 with zero flaky · median 23 minutes to a verdict · ~790 of 2,000 billed minutes, 39% · ~52 runs remaining.**
+
+### 🔎 The arrangement works, and that is the first finding
+
+F-045's worry was that moving slow tests to CI trades reliability for latency. **The reliability is not merely preserved** — 32 of 32 first-attempt green against the eight local runs §12 measured that lost **9, 5, 2, 9, 7, 14, 19 and 6** tests to the machine. **Zero failures in 36 completed runs.** The latency is real and is 23 minutes.
+
+### 🔎 The slow job is the whole cost
+
+**92.3% to 94.6% across six consecutive runs** — 17.7–26.4 minutes against 1.4–1.9. A run _is_ the integration-and-end-to-end job plus rounding, so **nothing else moves the number.**
+
+### 🔎 Half the spend is the post-merge run, and it is not waste
+
+**18 `push` against 19 `pull_request`.** F-051 established post-merge runs are **not** redundant — they test a different tree from the PR run. **So the budget pressure comes from running CI twice per cycle and both runs are meaningful**, which makes the lever **per-run cost, not run count.** That is the uncomfortable shape of it.
+
+### ⚠️ Two avoidable costs this session produced
+
+**Four cancelled runs, ~54 billed minutes** — `concurrency: cancel-in-progress` working, and a cancelled run still bills for what it executed.
+
+**One conflict cost a full run**: §114's two parallel branches added a section at the same anchor, and STEP J requires green on the exact pushed SHA. **~23 minutes for a documentation collision.** The mitigation is sequencing cycles rather than parallelising them — wall time traded for budget, and this batch is being run that way.
+
+### 📄 What it deliberately does not recommend
+
+**No change to the gate.** The evidence says the arrangement is sound; what it establishes is the **runway**, which at this pace ends around **5 October**. Whether that matters is a decision about pace rather than testing, and **splitting the slow job so documentation-adjacent changes skip it would reverse what §12.1 deliberately moved to CI** — a decision, not a tweak, and not taken here.
+
+**The honest summary: the answer to F-045 is a number, not a change.** `architecture.md` §12.6.
+
+**The previous entry, left as written.** Verified at **`a32e3c9`**.
 
 ## §114 — ✅ Comparing the deployed schema against the migrations — **[GATE CLEARED: CI `37011574887` `completed/success` on `ff480f6`, attempt 1. NO MIGRATION. MERGED AS PR #50.]**
 
