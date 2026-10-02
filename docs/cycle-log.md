@@ -10,6 +10,7 @@
 
 **Unnumbered entries predate the §-numbering convention.** They sit between §87 and §86 in time.
 
+- [§110 — ✅ A drain that stops says why](#110---a-drain-that-stops-says-why--gate-cleared-ci-36971605927-completedsuccess-on-7751be5-attempt-1-migration-applied-and-confirmed-merged-as-pr-46) · 542 words
 - [§109 — ✅ What breaks first, measured](#109---what-breaks-first-measured--ci-skipped-documentation-only-paths-ignore-fired-no-run-confirmed-by-gh-run-list-merged-as-pr-45) · 527 words
 - [§108 — ✅ `db:types` no longer destroys the file it generates](#108---dbtypes-no-longer-destroys-the-file-it-generates--gate-cleared-ci-36966164219-completedsuccess-on-95bf1d1-attempt-1-no-migration-merged-as-pr-44) · 323 words
 - [§107 — ✅ One drainer at a time, so the limiter means something](#107---one-drainer-at-a-time-so-the-limiter-means-something--gate-cleared-ci-36963947408-completedsuccess-on-09cecaa-attempt-1-821-integration-and-146-end-to-end-zero-flaky-migration-applied-and-confirmed-merged-as-pr-43) · 662 words
@@ -137,6 +138,46 @@
 - [§17 — Lessons carried forward](#17--lessons-carried-forward) · 450 words
 
 ---
+
+## §110 — ✅ A drain that stops says why — **[GATE CLEARED: CI `36971605927` `completed/success` on `7751be5`, attempt 1. MIGRATION APPLIED AND CONFIRMED. MERGED AS PR #46.]**
+
+**F-033.** `inspectQueue` reported `lastActivityAt`, which is when a job was last **settled** — so it answers _did work happen_, not _did a drain run_. A drain that claimed nothing, or stopped on its budget, left it untouched.
+
+### ⚠️ §107 made this worse before making it better, and that is the honest framing
+
+The lease added **a fourth and entirely legitimate reason for a drain to stop** — somebody else is draining — and **the two `after()` callers on the album and artist pages discard the summary.** So a skipped drain was invisible _by construction_, in a cycle two removed from the one that introduced it.
+
+**Worth carrying: a correctness fix can create an observability gap**, and §107 did not look for one.
+
+### 📄 Recorded on the lease row, not in a log table
+
+It is already the per-concern singleton and already carried `acquired_at` and `acquired_count`. **A log table would need retention, a read path and a privilege decision to answer a question that has one row.**
+
+**The holder records the outcome; a would-be drainer records the skip, and they never share a column.** A skip that overwrote the last real outcome would destroy exactly the information being added.
+
+**The skip counter is monotonic and read against `acquired_count` rather than reset.** The useful reading is a ratio — a high one means page views routinely arrive while a drain is in flight, which is **the lease working rather than a fault** — and a ratio survives a restart where a since-last-drain counter does not.
+
+### 🔎 Two details that were easy to get wrong
+
+**`undefined` rather than `null`** for the optional arguments, so a drain that _threw_ leaves the previous outcome standing instead of erasing it with a blank. The SQL defaults them; omitting them is what makes that true.
+
+**The old single-argument `release_drain_lease` is dropped rather than left alongside.** Postgres treats the three-argument form as a distinct signature, and keeping both would make `release_drain_lease('ingest')` **ambiguous** — a failure that would have appeared at runtime in §107's own tests.
+
+**`queue-view.ts` reads the lease and never writes it**, the same rule that file already states about `claim_ingestion_jobs`: the operator surface observes and must not act.
+
+### 📄 This does not close F-033
+
+**Its unexplained observation — a job sitting `running` for 69 minutes — still has no mechanism.** What changes is that the next occurrence leaves a record, which is the precondition for explaining it. The entry is narrowed again and stays open.
+
+### 📄 F-006 re-triaged and deliberately not built
+
+**Both halves need a decision.** Popularity sorting hits the constraint the entry itself records — `popularity_score` is null on every self-service album, so a naive sort sinks all of them — and _"other metrics"_ is undecided scope.
+
+**Adding `title` alone was considered and rejected**, which is the part worth recording: `product-spec.md` §10 holds that answering an open question by taking the obvious default is **a scope violation rather than a judgement call**, and a single plausible sort is exactly how that happens.
+
+`architecture.md` §7.3c.
+
+**The previous entry, left as written.** Verified at **`04fc15d`**.
 
 ## §109 — ✅ What breaks first, measured — **[CI SKIPPED: documentation only, `paths-ignore` fired no run, confirmed by `gh run list`. MERGED AS PR #45.]**
 

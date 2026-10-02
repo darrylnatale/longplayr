@@ -16,7 +16,13 @@
 
 **The verification gate moved, and `CLAUDE.md` now carries it. [APPLIED 2026-09-15]** Work happens on a branch and reaches `main` only through a green CI run; STEP F runs `npm run verify` plus targeted suites; **the migration gate moved from STEP I to STEP J**, so the order is **CI green → migration applied → merge**. The decision is `architecture.md` §12; the process is `CLAUDE.md`. **The two no longer disagree.** (§68, §69)
 
-**Verified 2026-10-02 against the repository, the remote, CI and production.** `main` is at **`12c3447`**, the merge of PR #45. **43 migrations, 0 unapplied.** **Twenty-three CI runs since the 1 October refresh, every one green on attempt 1 with zero flaky**, and **PR #45 was the first merge under `CI SKIPPED`** — documentation only, `paths-ignore` fired no run, confirmed from `gh run list` rather than from the diff. **Nothing is unmerged and nothing is pending.**
+**Verified 2026-10-02 against the repository, the remote, CI and production.** `main` is at **`04fc15d`**, the merge of PR #46. **44 migrations, 0 unapplied** — §98, §100, §104, §106, §107 and §110 each applied at STEP J and confirmed before their merges. **Twenty-five CI runs since the 1 October refresh, every one green on attempt 1 with zero flaky**, plus one merge under `CI SKIPPED` (PR #45, documentation only). Production: `/`, `/albums/all` and `/moderation` 200; `/debug/queue` 404 for an unauthorised visitor, as designed. **Nothing is unmerged and nothing is pending.**
+
+**Phase 6 is complete. Phase 7 has no work left that does not need a decision** — the security review (§106) and performance pass (§109) are done, and **error tracking and uptime checks both require choosing an external service**, which `CLAUDE.md`'s working agreement sends to the maintainer.
+
+**The largest measured risk is F-059** — slug assignment is quadratic in albums sharing a title, and an advisory lock per slug base caps one transaction at 12,000–20,000 distinct titles. **Not a problem today**, and it is what stands in front of F-039, database dumps.
+
+**Three entries are deliberately parked on a decision rather than on effort**: **F-006** discography sorting (both halves), **F-010** and **F-012** (external terms unverified), and **F-024**'s seed-removal half. **F-033 is narrowed again and still open** — its unexplained 69-minute `running` job has no mechanism, but the next occurrence now leaves a record.
 
 **Phase 7's security review (§106) and performance pass (§109) are both done.** What remains in Phase 7 is **error tracking and uptime checks, and both need an external service chosen** — `CLAUDE.md`'s working agreement sends that to the maintainer. **There is no Phase 7 work left that does not need a decision.**
 
