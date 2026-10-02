@@ -1085,6 +1085,47 @@ The distributions **materially overlap**, so no global threshold separates them.
 
 ---
 
+### 10.4 Phonetic matching is a fallback, never a reranker **[DECIDED 2026-10-02]**
+
+**`search_artists` is already four-tiered** — exact name, prefix, `tsvector`, then trigram similarity above 0.3. So the question F-019 raises is not whether to add fuzziness but **whether phonetics catch anything trigram misses.**
+
+**They do — but not for the reason this section first gave, and the correction is measured.** The first version argued from _smith_ / _smyth_, the entry's own example, asserting that it falls below the 0.3 threshold. **It does not: `similarity('smith','smyth')` is 0.333.** Nine such pairs were tested and **trigram already caught every one**, including `radiohead`/`radiohed`, `beyonce`/`beyonsay` and `bjork`/`bjerk`.
+
+**The real win is consonant substitution that preserves sound**, which is a different class from a dropped or doubled letter. Measured 2026-10-02:
+
+| Query pair             | Trigram | > 0.3 | Same sound |
+| ---------------------- | ------- | ----- | ---------- |
+| `caesar` / `ceasar`    | 0.273   | no    | **yes**    |
+| `cure` / `kure`        | 0.250   | no    | **yes**    |
+| `phoenix` / `feenix`   | 0.250   | no    | **yes**    |
+| `queen` / `kween`      | 0.200   | no    | **yes**    |
+| `fugees` / `foogeez`   | 0.154   | no    | **yes**    |
+| `chemical` / `kemikal` | 0.133   | no    | **yes**    |
+
+**Six of twelve harder pairs are rescued.** The pattern is `c`↔`k`, `ph`↔`f`, `s`↔`z` — substitutions that leave few shared trigrams and no phonetic difference at all.
+
+**Double Metaphone is not uniformly better, which is why this is a fallback rather than a replacement.** `kiss`/`ciss` and `xzibit`/`exhibit` are missed by _both_, and `sade`/`shahday` and `eminem`/`m and m` are not misspellings at all — they are different words, and no fuzzy method should match them.
+
+**It is a fallback, and that bound is the decision rather than a detail.** Phonetic matching runs **only when the four existing tiers return nothing**, so:
+
+- **no query that works today can change**, which makes the blast radius exactly zero on anything already good;
+- Double Metaphone is coarse and collides freely, so as an `or` inside the main predicate it would scatter loose matches **alongside** exact ones — the failure mode that made `search_artists('the wall')` return The Wake, The Weeknd, The Who and The xx before the prefix-stripping fix;
+- a result set that was empty cannot be made worse by adding to it.
+
+**One function, one round trip.** `search_artists` becomes `plpgsql`: it returns the existing query's rows, and only if that is empty runs the phonetic pass. **Not the service layer**, which would make two calls for every miss and put a search rule outside `src/services/` — `CLAUDE.md`'s domain-logic test puts it in the database here because the rule is _which rows_, not _what the web renders_.
+
+**Artists only.** The entry's claim is that phonetics _"suit names well"_, and that is what the algorithm is for; an album title is not a name, and `Kid A` against `Kid B` is the kind of collision a title would produce.
+
+### 10.4a The alias half of F-019 is deferred, on a finding the entry does not contain **[DECIDED 2026-10-02]**
+
+**Artists only ever arrive embedded in `artist-credits`** on a release-group or release response. **There is no direct `artist/{mbid}` lookup anywhere in the codebase**, and `inc=artist-credits` does not carry aliases.
+
+**So ingesting aliases needs a new upstream request per artist** — against a budget of **one request per second, where exceeding it returns `503` for every request from the address** — plus a new job kind to carry it. At roughly 2,000 artists that is around 33 minutes of budget, spread across twelve cron runs a day.
+
+**That is materially more than the entry implies.** F-019 says aliases would arrive _"without touching the search engine"_, which is true and was never the hard part. **What it does not say is that nothing currently fetches them.**
+
+**It is not refused, only re-scoped.** The alias half is a queue-and-ingest cycle with a new job kind, and it should be taken as one — **not folded into a search change**, which is what the entry's framing invites. **And it cannot be verified on the maintainer's machine**: `MUSICBRAINZ_CONTACT` is a placeholder locally and the client refuses live requests while it looks like one, which is enforced in code.
+
 ## 11. Environments and deployment
 
 **Decision: local → shared staging → production.** **[DECIDED — E7]**
