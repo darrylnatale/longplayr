@@ -1237,7 +1237,10 @@ When someone follows you, the notification should let you **follow them back the
 
 ### F-044 — the test environment fails more often than the code does
 
-**2026-09-16 · development process, testing · NEW**
+**2026-09-16 · development process, testing · PARTLY ADDRESSED 2026-10-02 — THREE INSTANCES FIXED, THE PATTERN STANDS**
+
+> **This entry was right, and 2026-10-02 produced five more instances in a single session** — each naming something other than its cause. **Three are now fixed**: `architecture.md` §12.2 (a stopped Docker daemon reported as a Playwright `webServer` timeout, and `npx playwright test` reported as a missing WebSocket), §12.3 (`db:types` writing its own error into the file it generates), and **§12.4** — one check guarding `db:reset`, `db:types`, `db:seed:fixtures` and `test:integration` that says which layer is missing.
+> **The pattern is not closed.** What is fixed is the _reporting_, not the fragility: Docker still needs a full quit-and-reopen on this machine rather than `open -a Docker`, which cost time across four cycles before the right remedy was found. **That is an environment problem the repository cannot fix**, and the check now names it.
 
 **A pattern rather than an incident**, filed because three of the last five cycles lost time to the environment and none of them to a product defect.
 

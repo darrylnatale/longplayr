@@ -1567,6 +1567,30 @@ A mechanical scan for `.click()` followed within three non-blank lines by `page.
 
 ---
 
+### 12.4 One check says which layer of the local stack is missing **[DECIDED 2026-10-02]**
+
+**F-044 records that the test environment fails more often than the code does** — three of five cycles losing time to the environment and none to a product defect. **The session of 2026-10-02 produced five more instances, and every one named something other than its cause:**
+
+| What was wrong            | What was reported                                                |
+| ------------------------- | ---------------------------------------------------------------- |
+| Docker daemon not running | `Timed out waiting 120000ms from config.webServer`               |
+| Docker daemon not running | `LegacyLocalDbRunningError: failed to connect to the docker API` |
+| Docker half-started       | `docker info` hanging, then a `500` from the API route           |
+| `supabase start` not run  | `No such container: supabase_db_longplayr`                       |
+| `supabase start` not run  | `LegacyResetLocalDbNotRunningError`                              |
+
+**Two were fixed at their own site** — §12.2 for the Playwright timeout, §12.3 for `db:types` destroying its output. **`scripts/check-env.mjs` is the general case**: one check, guarding `db:reset`, `db:types`, `db:seed:fixtures` and `test:integration`, that distinguishes **Docker is not running** from **the stack is not started** from **`.env.local` is missing** from **ready**.
+
+**It reports the first missing layer, not the last, and the ordering is the whole value.** With Docker down, _the stack is not started_ is also true and completely useless — starting it is impossible until Docker is up.
+
+**It diagnoses and never acts.** Starting Docker on somebody's machine is not a check's decision, and `supabase start` takes long enough that doing it implicitly would hide the one fact the reader needs.
+
+**The Docker probe has an eight-second timeout because the daemon hangs rather than failing.** That was observed repeatedly on 2026-10-02: `docker info` did not return at all from a half-started daemon, so a probe without a timeout would make the check itself the thing that appears to be broken. **And the remedy says to quit Docker fully and reopen**, because `open -a Docker` was not enough three times over and a full quit-and-reopen was — a message that only said _start Docker_ would have been true and useless.
+
+**`preflight-e2e.mjs` delegates rather than duplicating.** What stays there is the one thing this cannot tell: **whether Supabase is actually answering.** A container that is up but wedged passes every check here and still fails the suite.
+
+**All four states were verified against a real machine**, not only unit-tested: Docker down, Docker up with the stack down, the stack up with `.env.local` removed, and ready.
+
 ### 12.3 A generator writes nothing rather than writing its own error **[DECIDED 2026-10-02]**
 
 **`db:types` was `supabase gen types typescript --local > src/lib/supabase/database.types.ts`, and the shell is what broke it.** A `>` redirect **truncates the target before the command runs**, so with the database unreachable the file was already empty when the CLI wrote its error JSON into it. Every later `tsc` run then failed with `TS1005: ';' expected` **on line 1** — pointing at the file rather than at the missing database. `product-feedback.md` F-058, hit during §107.
