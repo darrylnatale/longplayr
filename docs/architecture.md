@@ -749,6 +749,26 @@ The upstream panel asks MusicBrainz for **25** release groups and displays up to
 
 **No holder identity is stored**, deliberately. It would invite a release-by-owner check, and a crashed holder can never release — the expiry is what recovers, so the expiry is what is stored.
 
+### 7.3c A drain that stops says why, where somebody can see it **[DECIDED 2026-10-02]**
+
+**`inspectQueue` reported `lastActivityAt`, which is when a job was last _settled_.** That answers _did work happen_, not _did a drain run_ — a drain that claimed nothing, or stopped on its budget, leaves it untouched. `product-feedback.md` F-033: a background drain that does not run leaves no trace.
+
+**§7.3 made this worse before making it better.** The lease gave the drain a fourth and entirely legitimate reason to stop — somebody else is draining — and **the two `after()` callers on the album and artist pages discard the summary**, so a skipped drain was invisible by construction.
+
+**The outcome is recorded on the lease row.** It is already the per-concern singleton and already carried `acquired_at` and `acquired_count`. A log table would need retention, a read path and a privilege decision to answer a question that has one row.
+
+**The holder records the outcome; a would-be drainer records the skip, and they never share a column.** A skip that overwrote the last real outcome would destroy exactly the information being added.
+
+**The skip counter is monotonic and is read against `acquired_count` rather than reset.** The useful reading is a ratio — a high one means page views routinely arrive while a drain is already in flight, which is **the lease working rather than a fault** — and a ratio survives a restart where a since-last-drain counter does not.
+
+**`undefined` rather than `null` for the optional arguments**, so a drain that _threw_ leaves the previous outcome standing instead of erasing it with a blank. The SQL defaults them, and omitting them is what makes that true.
+
+**The old single-argument `release_drain_lease` is dropped rather than left alongside.** Postgres treats the three-argument form as a distinct signature, and keeping both would make `release_drain_lease('ingest')` ambiguous.
+
+**`queue-view.ts` reads the lease and never writes it**, which is the same rule that file already states about `claim_ingestion_jobs`: the operator surface observes and must not act. **A missing row renders as "nothing yet" rather than throwing** — failing to draw the page because one observability field is absent would be the worse outcome.
+
+**This does not close F-033.** That entry's unexplained observation — a job that sat `running` for 69 minutes — had no established mechanism and still has none. **What changes is that the next occurrence leaves a record**, which is the precondition for explaining it.
+
 ## 7a. Upstream payload capture
 
 **Decision: keep every upstream response verbatim, beside the columns mapped out of it. [DECIDED 2026-08-21]**

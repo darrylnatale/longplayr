@@ -201,6 +201,41 @@ export default async function QueueViewPage({ searchParams }: PageProps<'/debug/
               : 'never'}
           </span>
         </p>
+
+        {/*
+         * **The drain's own last word, which "last activity" does not give.**
+         * A drain that claimed nothing, stopped on its budget, or skipped
+         * because another process held the lease leaves `lastActivityAt`
+         * untouched — F-033, `architecture.md` §7.3c.
+         *
+         * `skipped` is monotonic and is shown against `ran` on purpose: the
+         * useful reading is a ratio, and a high one means page views are
+         * routinely arriving while a drain is already in flight, which is the
+         * lease working rather than a fault.
+         */}
+        <p className="mt-1 text-sm text-text-muted">
+          Last drain:{' '}
+          <span className="tabular text-text">
+            {snapshot.lastDrain.outcome
+              ? `${snapshot.lastDrain.outcome}, ${snapshot.lastDrain.claimed ?? 0} claimed`
+              : 'never'}
+          </span>
+          {snapshot.lastDrain.at && (
+            <>
+              {' at '}
+              <span className="tabular text-text">
+                {snapshot.lastDrain.at.slice(0, 19).replace('T', ' ')}Z
+              </span>
+            </>
+          )}
+          {snapshot.lastDrain.heldNow && <span className="ml-2 text-accent">running now</span>}
+        </p>
+        <p className="mt-1 text-sm text-text-muted">
+          Drains: <span className="tabular text-text">{snapshot.lastDrain.ran} ran</span>,{' '}
+          <span className="tabular text-text">{snapshot.lastDrain.skipped} skipped</span>{' '}
+          <span className="text-text-faint">(another process already draining)</span>
+        </p>
+
         <p className="mt-3 text-xs text-text-faint">
           <strong>Temporary.</strong> Remove this page when the ingestion queue is no longer under
           active investigation, or when longplayr takes its first real users — whichever comes

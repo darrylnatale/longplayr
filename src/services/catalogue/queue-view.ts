@@ -92,8 +92,30 @@ export type QueueSnapshot = {
   artwork: Record<string, number>;
   worklist: ArtworkWorklist;
   dateCapture: DateCaptureReport;
-  /** When a job was last settled — the practical answer to "did a drain run?" */
+  /** When a job was last settled — the practical answer to "did work happen?" */
   lastActivityAt: string | null;
+  /**
+   * What the drain itself last did.
+   *
+   * **`lastActivityAt` answers a different question**, and the gap is the whole
+   * reason this exists: a drain that claimed nothing, stopped on its budget, or
+   * skipped because another process held the lease leaves `lastActivityAt`
+   * untouched. F-033, `architecture.md` §7.3c.
+   */
+  lastDrain: LastDrain;
+};
+
+export type LastDrain = {
+  /** Why the last drain that held the lease stopped. Null before any ran. */
+  outcome: string | null;
+  at: string | null;
+  claimed: number | null;
+  /** Drains taken by another process. Monotonic — read against `ran`. */
+  skipped: number;
+  /** Times the lease was taken, so `skipped` has a denominator. */
+  ran: number;
+  /** Whether a drain is holding the lease right now. */
+  heldNow: boolean;
 };
 
 export async function inspectQueue(
@@ -174,6 +196,7 @@ export async function inspectQueue(
   });
 
   const dateCapture = await checkDateCapture(admin);
+  const lastDrain = await readLastDrain(admin, now);
 
   return {
     takenAt: now.toISOString(),
@@ -186,6 +209,38 @@ export async function inspectQueue(
     worklist,
     dateCapture,
     lastActivityAt: latest?.[0]?.updated_at ?? null,
+    lastDrain,
+  };
+}
+
+/**
+ * The drain's own last word, from the lease row.
+ *
+ * **Read, never written, by this module.** `inspectQueue` is a read-only
+ * surface and `queue-view.ts` already states that it must not call
+ * `claim_ingestion_jobs`; taking or releasing the lease here would be the same
+ * category of mistake.
+ *
+ * **A missing row is reported as "nothing yet" rather than thrown.** The
+ * operator view exists to say what is happening, and failing to render it
+ * because one observability field is absent would be the worse outcome.
+ */
+async function readLastDrain(admin: Admin, now: Date): Promise<LastDrain> {
+  const { data } = await admin
+    .from('drain_leases')
+    .select(
+      'last_outcome, last_outcome_at, last_claimed, skipped_count, acquired_count, held_until',
+    )
+    .eq('id', 'ingest')
+    .maybeSingle();
+
+  return {
+    outcome: data?.last_outcome ?? null,
+    at: data?.last_outcome_at ?? null,
+    claimed: data?.last_claimed ?? null,
+    skipped: data?.skipped_count ?? 0,
+    ran: data?.acquired_count ?? 0,
+    heldNow: data ? new Date(data.held_until).getTime() > now.getTime() : false,
   };
 }
 

@@ -212,7 +212,9 @@ Whether a catalogue-wide sort reuses the six decided collection sort modes or ne
 
 ### F-006 — sort an artist's discography by more than date
 
-**2026-08-30 · artist page · TRIAGED 2026-09-26 — STILL OPEN, BUT THE MACHINERY NOW EXISTS**
+**2026-08-30 · artist page · TRIAGED 2026-10-02 — BOTH HALVES NEED A DECISION; NOT AGENT WORK**
+
+> **Re-triaged at STEP A on 2026-10-02 and deliberately not built.** Each half is blocked on a decision rather than on effort. **The popularity half** hits the constraint this entry itself records — `popularity_score` is null on every self-service album, so a naive popularity sort sinks all of them — and how to handle that is a product question. **The open-ended half**, "other metrics", is undecided scope, and `product-spec.md` §10 is explicit that answering an open question by taking the obvious default is a scope violation rather than a judgement call. **Adding `title` alone was considered and rejected on exactly that ground.**
 
 > **Re-triaged at STEP 00 on 2026-09-26.** The ask — sort by something other than date — is **unmet**: `DiscographySort` in `src/services/catalogue/queries.ts` offers `newest | oldest`, which is two directions of one field. **But a sort control, a URL parameter, a tested pure comparator and a rendering component all now exist on the artist page**, where none did when this was filed. The entry is unchanged in substance and materially cheaper to build.
 
@@ -882,7 +884,9 @@ Found during the queue-fairness cycle, and hand-closed there. **`npm run verify:
 
 ### F-033 — a page view's background drain sometimes does not run at all, and leaves no trace
 
-**2026-09-07 · ingestion, infrastructure · TRIAGED — STILL OPEN, AND THE RECOVERY PATH IS NOW OBSERVED** — _measured 2026-09-07, filed 2026-09-12, corrected 2026-09-12, evidence added 2026-09-15_
+**2026-09-07 · ingestion, infrastructure · TRIAGED — STILL OPEN, AND THE RECOVERY PATH IS NOW OBSERVED**
+
+> **Narrowed again on 2026-10-02, and still not closed.** A drain now records why it stopped and how much it claimed, and a drain that could not take the lease is counted — all three visible on `/debug/queue`. `architecture.md` §7.3c. **The unexplained observation in this entry still has no mechanism**; what changed is that the next occurrence leaves a record, which is the precondition for explaining it. **§107's lease also added a legitimate reason for a drain to do nothing**, which would otherwise have made this entry harder to reason about rather than easier. — _measured 2026-09-07, filed 2026-09-12, corrected 2026-09-12, evidence added 2026-09-15_
 
 **[2026-09-15.] A lost attempt was observed and recovered, which narrows this without closing it.** Radiohead's sweep-queued job `#1630` sat `running` for 69 minutes on 13 September and completed as `succeeded` with **`attempts = 2`** — **the second attempt is the 90-minute stale reclaim doing its job.** So a job was plausibly killed mid-run and the recovery path caught it.
 
