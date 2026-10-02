@@ -110,7 +110,49 @@ test('a suspended account is told why, and can reach the policy from the notice'
   await page.getByRole('link', { name: 'how moderation works' }).click();
   await expect(page).toHaveURL('/moderation', NAV);
 
-  // **Reading clears it.** The banner exists to deliver the person here once.
+  // **Going through the banner clears it**, and `/notices/read` is what records
+  // that — the page itself writes nothing (§16.10h).
+  await page.goto('/');
+  await expect(page.getByRole('status').filter({ hasText: 'moderation decision' })).toHaveCount(0);
+});
+
+test('arriving at /notices directly does not clear the banner', async ({ page }) => {
+  /*
+   * **The behaviour §16.10h chose, asserted so it is not "tidied" away later.**
+   * The page performs no write — only `/notices/read` does — so a reader who
+   * lands on `/notices` by any other route still has the banner waiting.
+   *
+   * **This is the point of the change rather than a side effect.** With the
+   * write inside the page, every future link to it had to remember
+   * `prefetch={false}`; now none does. The cost is exactly this: a direct visit
+   * leaves the badge up, which is the easier of the two failures to notice.
+   */
+  const admin = adminClient();
+  const moderator = await createAccount(admin, true);
+  const subject = await createAccount(admin);
+
+  const { error } = await admin.rpc('moderate_account', {
+    p_actor_id: moderator.id,
+    p_target_id: subject.id,
+    p_status: 'suspended',
+    p_ground: 'a ground',
+    p_statement: 'A statement they have not read yet.',
+  });
+  expect(error).toBeNull();
+
+  await signIn(page, subject);
+  await page.goto('/notices');
+  await expect(page.getByText('A statement they have not read yet.')).toBeVisible(NAV);
+
+  // Still there, because the page wrote nothing.
+  await page.goto('/');
+  await expect(page.getByRole('status').filter({ hasText: 'moderation decision' })).toBeVisible(
+    NAV,
+  );
+
+  // And the hop does clear it.
+  await page.goto('/notices/read');
+  await expect(page).toHaveURL('/notices', NAV);
   await page.goto('/');
   await expect(page.getByRole('status').filter({ hasText: 'moderation decision' })).toHaveCount(0);
 });

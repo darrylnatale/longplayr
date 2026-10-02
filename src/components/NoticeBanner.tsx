@@ -28,21 +28,18 @@ export function NoticeBanner({ count }: { count: number }) {
             ? 'A moderation decision affects your content or your account.'
             : `${count} moderation decisions affect your content or your account.`}{' '}
           {/*
-           * **`prefetch={false}` is load-bearing, not a performance choice.**
-           * `/notices` marks everything read as it renders, and a prefetch
-           * renders it on the server — so prefetching this link could clear the
-           * banner for somebody who never clicked it, which is the one thing it
+           * **Points at the hop, and `prefetch={false}` is load-bearing here.**
+           * `/notices/read` marks everything seen and redirects, so prefetching
+           * *this* link would clear the banner on hover — the one thing it
            * exists not to do.
            *
-           * **It narrows the hazard rather than removing it**, and that is
-           * recorded rather than glossed: any future link to `/notices` has the
-           * same problem, and the durable fix is to stop writing during render.
-           * Nothing is lost when it happens — the statement is retained and the
-           * page is permanent — so this weakens discovery rather than breaking
-           * the obligation.
+           * **The flag now lives in exactly one place**, which is the whole
+           * point of §16.10h: when the write was inside `/notices`, every
+           * future link to that page carried this responsibility. A link to
+           * `/notices` may now prefetch freely.
            */}
           <Link
-            href="/notices"
+            href="/notices/read"
             prefetch={false}
             className="font-medium underline underline-offset-4"
           >
