@@ -1476,6 +1476,24 @@ A mechanical scan for `.click()` followed within three non-blank lines by `page.
 
 ---
 
+### 12.2 The suite refuses to start rather than reporting an environment problem as a test failure **[DECIDED 2026-10-02]**
+
+**Two failures with one cause, and both cost real time on 2026-10-02** — the second twice in one session, by the agent that had already read the entry describing it.
+
+**A stopped Docker daemon reported as `Timed out waiting 120000ms from config.webServer`.** `playwright.config.ts` waits for `baseURL` to return a success status, `/` calls Supabase, and the call fails with `connect ECONNREFUSED 127.0.0.1:54321`. **The message points at the Next dev server, which is working perfectly**, and the first two remedies it suggests — killing stale servers, clearing port 3000 — are both wrong. F-036.
+
+**`npx playwright test` reported as a missing WebSocket inside a test hook.** That path bypasses `scripts/with-websocket.mjs`, so under Node 20 every spec constructing an admin client dies in `beforeAll` with a `getWebSocketConstructor` stack. **The failure names `@supabase/realtime-js` and looks like a product fault.**
+
+**Both are now refused up front, and the mechanism differs because the detection point differs.**
+
+**A preflight script**, `scripts/preflight-e2e.mjs`, runs before Playwright and checks the two things whose absence masquerades as a server timeout: `.env.local` exists, and the Supabase REST endpoint answers. **It names the remedy rather than the symptom.** Skipped entirely when `PLAYWRIGHT_BASE_URL` is set, because then the suite is pointed at a server somebody else is running and local Supabase may be irrelevant.
+
+**A guard in `playwright.config.ts`**, because **that file is the one thing both entry points load.** If `globalThis.WebSocket` is undefined the config throws, naming `npm run test:e2e`. It cannot false-positive on CI, which pins Node 22 and has the global natively, and it cannot fire under the shim, whose entire job is to provide it.
+
+**Why the guard is not in the preflight.** A preflight only runs on the supported path — which is precisely the path that was never broken. **The guard has to live where the unsupported path also passes through**, and that is the config.
+
+**This does not make the suite less willing to fail.** It makes it fail about the thing that is actually wrong, which is the distinction `architecture.md` §12 already draws between a red run that means something and one that wastes a cycle.
+
 ### 12.1 The local gate is now `verify` alone **[DECIDED 2026-09-16]**
 
 **§12 moved the full suite to CI on measurement.** This moves the targeted suites too, on the same measurement and one further argument.

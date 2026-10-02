@@ -976,7 +976,9 @@ So two things follow, neither decided here:
 
 ### F-036 — a stopped Docker daemon is reported as a Playwright server-start timeout
 
-**2026-09-15 · development process, testing · NEW**
+**2026-09-15 · development process, testing · PROMOTED — DECIDED 2026-10-02, IN FLIGHT**
+
+> **Decision: `architecture.md` §12.2.** A preflight script checks `.env.local` and the Supabase endpoint before Playwright starts, and `playwright.config.ts` refuses to run when the WebSocket global is missing — the config being the one file both entry points load. **Promoted on fresh evidence**: the `npx playwright test` half cost this session time twice on 2026-10-02, after the agent had already read this entry.
 
 **[Filed as `F-035` and renumbered 2026-09-15.]** The ID collided with the artist-links entry above, which was filed two days earlier and keeps `F-035`. No content changed.
 

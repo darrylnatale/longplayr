@@ -1,5 +1,29 @@
 import { defineConfig, devices } from '@playwright/test';
 
+/*
+ * **Refuses the unsupported entry point, here rather than in the preflight.**
+ *
+ * `npx playwright test` bypasses `scripts/with-websocket.mjs`, so under Node 20
+ * every spec constructing a Supabase admin client dies in `beforeAll` with a
+ * `getWebSocketConstructor` stack that names `@supabase/realtime-js` and looks
+ * like a product fault. It cost this session time twice in one night.
+ *
+ * **This file is the one thing both entry points load**, which is why the check
+ * lives here: a preflight only runs on the supported path, and that path was
+ * never the broken one. `architecture.md` §12.2.
+ *
+ * **It cannot false-positive.** CI pins Node 22, which has the global natively,
+ * and the shim's entire job is to provide it on runtimes that do not.
+ */
+if (typeof globalThis.WebSocket === 'undefined') {
+  throw new Error(
+    'No global WebSocket, which @supabase/supabase-js needs — every spec that ' +
+      'builds an admin client would fail in its hook.\n' +
+      'Run the suite as: npm run test:e2e\n' +
+      '(that path adds --experimental-websocket on Node 20; this one does not)',
+  );
+}
+
 const PORT = process.env.PORT ?? '3000';
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${PORT}`;
 
