@@ -367,6 +367,27 @@ export type Database = {
           },
         ]
       }
+      drain_leases: {
+        Row: {
+          acquired_at: string | null
+          acquired_count: number
+          held_until: string
+          id: string
+        }
+        Insert: {
+          acquired_at?: string | null
+          acquired_count?: number
+          held_until?: string
+          id: string
+        }
+        Update: {
+          acquired_at?: string | null
+          acquired_count?: number
+          held_until?: string
+          id?: string
+        }
+        Relationships: []
+      }
       favourite_albums: {
         Row: {
           album_id: string
@@ -1239,6 +1260,7 @@ export type Database = {
         Returns: string
       }
       refresh_popular_this_week: { Args: never; Returns: number }
+      release_drain_lease: { Args: { p_id: string }; Returns: undefined }
       remove_list_item: {
         Args: { p_album_id: string; p_list_id: string }
         Returns: undefined
@@ -1280,6 +1302,10 @@ export type Database = {
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       slugify: { Args: { value: string }; Returns: string }
+      try_acquire_drain_lease: {
+        Args: { p_id: string; p_ttl_seconds: number }
+        Returns: boolean
+      }
     }
     Enums: {
       activity_type:

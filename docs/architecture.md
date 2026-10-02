@@ -719,6 +719,36 @@ The upstream panel asks MusicBrainz for **25** release groups and displays up to
 
 ---
 
+### 7.3 At most one drainer, so the rate limiter means something **[DECIDED 2026-10-02]**
+
+**`RateLimiter` is a module-level object**, so it serialises MusicBrainz requests within one Node process. **On Vercel, concurrent requests run in separate lambda instances, each with its own limiter** — so the one-per-second budget can be exceeded by exactly the number of concurrent drainers. `product-feedback.md` F-028.
+
+**The consequence is a total catalogue outage rather than a slow ingest.** MusicBrainz returns `503` for **every** request from the address once the limit is passed, not merely the excess — a `CLAUDE.md` non-negotiable.
+
+**This is routine, not theoretical, and that is what moved it.** `drainJobs` is called from **four** places, two of them inside `after()` on the album and artist pages, against **twelve cron runs a day**. Two people browsing two artist pages, or one browsing while the cron fires, is enough. The entry had recorded that no failure had been _observed_; the four call sites are why that is luck rather than design.
+
+### 7.3a A distributed rate limiter is not needed — one drainer is **[DECIDED 2026-10-02]**
+
+**F-028 assumed the fix was shared-state rate limiting and called it _"a materially larger change than anything in this area so far"_.** That framing is what kept it open.
+
+**Constraining the drainer rather than the request makes the in-process limiter authoritative again**, because there is then only ever one process for it to be authoritative for. The limiter is unchanged; nothing about request scheduling moved into the database.
+
+**`drainJobs` takes a lease, and returns `stoppedBecause: 'lease_held'` when it cannot.** A caller must read that as _somebody else is draining_ rather than as an empty queue, and **must not retry** — a second drainer is the thing being prevented.
+
+### 7.3b A lease row, not `pg_advisory_lock` **[DECIDED 2026-10-02]**
+
+**Session-level advisory locks are held until the session ends, and Supabase's pooler hands a different connection to each request.** A lock taken through PostgREST may therefore outlive its holder and is not reliably releasable — the opposite of what mutual exclusion needs.
+
+**A lease with an expiry is pooler-safe and self-healing**, which is the same reasoning `jobs.ts` already applies to a `running` row abandoned after 90 minutes, asked over a much shorter horizon.
+
+**Acquire is one statement.** A read followed by a write would let two callers both see a lapsed lease and both take it — the same split §16.10d refused between a status change and its statement.
+
+**The TTL is crash recovery, not a schedule. 75 seconds**: the longest-lived drainer is the cron route at `maxDuration` 60s, plus teardown and clock skew. **Deliberately far shorter than the 90-minute stale reclaim** — a lease outliving its holder for 90 minutes would stop ingestion for 90 minutes, where a `running` row doing the same stops one job. **The drain releases in a `finally`**, so a two-second drain does not hold the lease to term and block the cron behind it.
+
+**Failure to read the lease is treated as held, not as free.** Failing open would restore exactly the concurrency this prevents; failing closed costs one skipped drain out of twelve a day.
+
+**No holder identity is stored**, deliberately. It would invite a release-by-owner check, and a crashed holder can never release — the expiry is what recovers, so the expiry is what is stored.
+
 ## 7a. Upstream payload capture
 
 **Decision: keep every upstream response verbatim, beside the columns mapped out of it. [DECIDED 2026-08-21]**
