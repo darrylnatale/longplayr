@@ -373,18 +373,30 @@ export type Database = {
           acquired_count: number
           held_until: string
           id: string
+          last_claimed: number | null
+          last_outcome: string | null
+          last_outcome_at: string | null
+          skipped_count: number
         }
         Insert: {
           acquired_at?: string | null
           acquired_count?: number
           held_until?: string
           id: string
+          last_claimed?: number | null
+          last_outcome?: string | null
+          last_outcome_at?: string | null
+          skipped_count?: number
         }
         Update: {
           acquired_at?: string | null
           acquired_count?: number
           held_until?: string
           id?: string
+          last_claimed?: number | null
+          last_outcome?: string | null
+          last_outcome_at?: string | null
+          skipped_count?: number
         }
         Relationships: []
       }
@@ -1260,7 +1272,10 @@ export type Database = {
         Returns: string
       }
       refresh_popular_this_week: { Args: never; Returns: number }
-      release_drain_lease: { Args: { p_id: string }; Returns: undefined }
+      release_drain_lease: {
+        Args: { p_claimed?: number; p_id: string; p_outcome?: string }
+        Returns: undefined
+      }
       remove_list_item: {
         Args: { p_album_id: string; p_list_id: string }
         Returns: undefined

@@ -792,13 +792,21 @@ export async function drainJobs(
     };
   }
 
+  let outcome: DrainSummary | null = null;
   try {
-    return await drainWithLease(maxJobs, admin, options, startedAt);
+    outcome = await drainWithLease(maxJobs, admin, options, startedAt);
+    return outcome;
   } finally {
     // **Released early, deliberately.** A drain finishing in two seconds must
     // not hold a 75-second lease, or one page view would block the cron behind
     // it. The TTL is crash recovery, not a schedule.
-    await releaseDrainLease(admin);
+    //
+    // **The outcome is recorded here because here is the only place that has
+    // it.** Two of the four callers are `after()` drains that discard the
+    // summary, so a drain they ran was previously invisible — F-033,
+    // `architecture.md` §7.3c. `null` when the drain threw, which leaves the
+    // previous outcome standing rather than erasing it with a blank.
+    await releaseDrainLease(admin, outcome);
   }
 }
 
@@ -831,10 +839,17 @@ async function acquireDrainLease(admin: Admin): Promise<boolean> {
   return data === true;
 }
 
-async function releaseDrainLease(admin: Admin): Promise<void> {
+async function releaseDrainLease(admin: Admin, summary: DrainSummary | null): Promise<void> {
   // Swallowed: the TTL recovers a lease nobody released, so a failed release
   // costs at most 75 seconds and must not mask the drain's own outcome.
-  await admin.rpc('release_drain_lease', { p_id: LEASE_ID });
+  await admin.rpc('release_drain_lease', {
+    p_id: LEASE_ID,
+    // **`undefined`, not `null`.** The generated signature marks both optional,
+    // and the SQL defaults them to `null` — so omitting them is what leaves the
+    // previous outcome standing after a drain that threw.
+    p_outcome: summary?.stoppedBecause,
+    p_claimed: summary?.claimed,
+  });
 }
 
 async function drainWithLease(

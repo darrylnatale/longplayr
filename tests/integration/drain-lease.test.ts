@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Database } from '@/lib/supabase/database.types';
 import { drainJobs } from '@/services/catalogue/jobs';
+import { inspectQueue } from '@/services/catalogue/queue-view';
 
 /**
  * At most one drainer — F-028, `architecture.md` §7.3.
@@ -107,6 +108,60 @@ describe('the lease itself', () => {
 
     const { error: readError } = await asAnon.from('drain_leases').select('id');
     expect(readError).not.toBeNull();
+  });
+});
+
+describe('the drain records what it did — F-033', () => {
+  it('writes the outcome and the claimed count on release', async () => {
+    // **`lastActivityAt` cannot answer this**, which is the gap being closed: a
+    // drain over an empty queue settles no job, so the only trace it leaves is
+    // the one written here.
+    await drainJobs(1, admin);
+
+    const { data } = await admin
+      .from('drain_leases')
+      .select('last_outcome, last_outcome_at, last_claimed')
+      .eq('id', 'ingest')
+      .single();
+
+    expect(data!.last_outcome).toBe('drained');
+    expect(data!.last_claimed).toBe(0);
+    expect(data!.last_outcome_at).not.toBeNull();
+  });
+
+  it('counts a skip without overwriting the last real outcome', async () => {
+    // **The two facts must not share a column.** A skip that clobbered the last
+    // outcome would destroy the information this cycle adds.
+    await drainJobs(1, admin);
+    const { data: before } = await admin
+      .from('drain_leases')
+      .select('last_outcome, skipped_count')
+      .eq('id', 'ingest')
+      .single();
+
+    await admin.rpc('try_acquire_drain_lease', { p_id: 'ingest', p_ttl_seconds: 75 });
+    const skipped = await drainJobs(1, admin);
+    expect(skipped.stoppedBecause).toBe('lease_held');
+
+    const { data: after } = await admin
+      .from('drain_leases')
+      .select('last_outcome, skipped_count')
+      .eq('id', 'ingest')
+      .single();
+
+    expect(after!.skipped_count).toBe(Number(before!.skipped_count) + 1);
+    expect(after!.last_outcome).toBe(before!.last_outcome);
+  });
+
+  it('exposes it all through the operator view', async () => {
+    await drainJobs(1, admin);
+
+    const snapshot = await inspectQueue({ admin });
+
+    expect(snapshot.lastDrain.outcome).toBe('drained');
+    expect(snapshot.lastDrain.ran).toBeGreaterThan(0);
+    // Released, so nothing is holding it by the time the view is read.
+    expect(snapshot.lastDrain.heldNow).toBe(false);
   });
 });
 
