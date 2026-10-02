@@ -14,7 +14,7 @@ Notation follows the rest of `docs/`: absolute dates, and **[OPEN]** / **[DECIDE
 - [2. Where this sits in the document hierarchy](#2-where-this-sits-in-the-document-hierarchy) · 187 words
 - [3. Operating rules](#3-operating-rules) · 253 words
 - [4. How to write an entry](#4-how-to-write-an-entry) · 264 words
-- [5. Intake](#5-intake) · 36,679 words
+- [5. Intake](#5-intake) · 36,984 words
 - [6. Triage](#6-triage) · 310 words
 - [7. Promotion — where an item goes when it leaves this file](#7-promotion--where-an-item-goes-when-it-leaves-this-file) · 251 words
 - [8. Relationship to the development cycle](#8-relationship-to-the-development-cycle) · 498 words
@@ -812,7 +812,12 @@ Once an artist's discography has been expanded, it is never expanded again. A ne
 
 ### F-030 — each successful expansion queues more work than a page view can drain
 
-**2026-09-07 · catalogue, ingestion, performance · TRIAGED — CONTENTION FIXED, THROUGHPUT NOW CLEARING**
+**2026-09-07 · catalogue, ingestion, performance · CLOSED — BACKLOG CLEARED, MEASURED 2026-10-02 (§116)**
+
+> **Measured on production on 2026-10-02 through the public REST API** — the same read the site performs on every page load. **`artwork_status`: pending 0 · found 990 · absent 85 · failed 0, of 1,075 albums.**
+> **This entry is about work queueing faster than a page view can drain it. There is nothing queued.** `pending` is **0** and `failed` is **0** — not falling, finished. The entry's own trajectory was 289 albums without a cover on 13 September to 161 on 15 September; seventeen days later the queue is empty.
+> **The 85 `absent` are not a backlog.** They are albums Cover Art Archive has no cover for — a fact about the world rather than work outstanding, and `architecture.md` §7 records that there is no fallback source. They are the population the cover-art prompt (F-014) exists to serve.
+> **Closed on evidence rather than on age.** The throughput work this entry asked for would now relieve nothing.
 
 **[MEASURED 2026-09-15.] The backlog has turned and is falling without further work.** Albums without a cover: **289 on 13 September → 161 on 15 September**, with **145 covers fetched in two days** and outstanding artwork jobs down from 290 to 162. Nothing is stuck in `running`.
 
@@ -839,7 +844,12 @@ Once an artist's discography has been expanded, it is never expanded again. A ne
 
 ### F-031 — an artwork job spends ten seconds on six serial round trips, and nothing forces them to be serial
 
-**2026-09-07 · artwork, ingestion, performance · TRIAGED — MECHANISM LIVE, URGENCY GONE**
+**2026-09-07 · artwork, ingestion, performance · CLOSED — THE BACKLOG IT WOULD RELIEVE NO LONGER EXISTS (§116)**
+
+> **Measured on production on 2026-10-02 through the public REST API** — the same read the site performs on every page load. **`artwork_status`: pending 0 · found 990 · absent 85 · failed 0, of 1,075 albums.**
+> **This entry proposes parallelising six serial round trips inside an artwork job.** The case for it was always the backlog, and **the backlog is gone**: `pending` 0, `failed` 0.
+> **The optimisation is still correct and is no longer worth doing.** Nothing forces those requests to be serial, and if a future bulk load creates a backlog again this is the entry to reopen — **F-039 database dumps is the realistic trigger**, and F-059 records the two limits standing in front of it.
+> **Closing an idea that is right but unneeded is the point of this file having a triage step.**
 
 **[MEASURED 2026-09-15.] The case for building this has weakened, not strengthened.** The backlog this entry was meant to relieve is **clearing on its own** — 289 → 161 in two days — because cadence did the work per-job cost was being asked to do. **Optimising a queue that is currently draining would be tuning against a moving number.**
 
