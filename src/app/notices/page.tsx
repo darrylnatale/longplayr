@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 
 import { Container } from '@/components/Container';
 import { SectionHeader } from '@/components/SectionHeader';
-import { acknowledgeOwnStatements, listOwnStatements, type Statement } from '@/services/moderation';
+import { listOwnStatements, type Statement } from '@/services/moderation';
 import { getCurrentProfile, getCurrentUser } from '@/services/profiles';
 
 /**
@@ -24,9 +24,16 @@ import { getCurrentProfile, getCurrentUser } from '@/services/profiles';
  * is a per-person view rather than user-generated content, so it is not an
  * exception to the all-public rule.
  *
- * **Visiting marks everything seen.** The badge exists to get the person here;
- * once they have read it, it has done its work. No per-item dismissal, because
- * a statement is not a task.
+ * **This page performs no write.** Marking notices seen is `/notices/read`, a
+ * route handler that writes and redirects here — `architecture.md` §16.10h.
+ * **The earlier version wrote during render**, which made every future link to
+ * this page responsible for remembering `prefetch={false}`. Now only the hop
+ * is, and a link here may prefetch freely.
+ *
+ * **So arriving directly leaves the banner up.** That is the correct trade: the
+ * banner's job is to deliver somebody once, and a badge that cleared on any
+ * direct visit would be the harder failure to notice. No per-item dismissal
+ * either, because a statement is not a task.
  */
 
 const INLINE_LINK =
@@ -82,9 +89,6 @@ export default async function NoticesPage() {
   if (!profile) redirect('/onboarding');
 
   const items = await listOwnStatements();
-
-  // After reading, not before: the count is what brought them here.
-  await acknowledgeOwnStatements();
 
   return (
     <Container variant="content">

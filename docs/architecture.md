@@ -2283,6 +2283,20 @@ Also excluded: RLS policies of any kind; `auth`, `storage` and other non-`public
 
 **Resolving a report that results in a removal writes a moderation action**; dismissing one writes nothing but marks the report. `moderation_actions` gains a nullable `report_id`, nullable because **an administrator may act without a report** and the Art 17 statement is owed either way.
 
+### 16.10h Marking a notice read is a navigation hop, not a render **[DECIDED 2026-10-02, correcting §98]**
+
+**§98 shipped `/notices` marking statements read as it rendered**, with `prefetch={false}` on the banner link as the control, and recorded the arrangement as a known limitation whose durable fix was to stop writing during render.
+
+**STEP A found the repo had already solved this, and the earlier slice simply did not look.** `src/app/notifications/[id]/route.ts` says it outright: _"`prefetch={false}` on the link is what keeps this honest. A prefetched route would mark notifications read on hover."_ It handles the identical problem with a **route handler that writes and redirects**.
+
+**So `/notices` follows that precedent.** `/notices/read` marks everything seen and redirects; the page becomes a pure read.
+
+**What that buys is not tidiness.** With the write in the page, **every future link to `/notices` had to remember `prefetch={false}`** — a correctness property maintained by memory, in a surface that discharges DSA Art 17. With the write in a hop, **only the hop needs the flag**, and a link to the page can prefetch freely.
+
+**The page keeps no write at all**, so there is nothing left to get wrong there. **A reader who arrives at `/notices` directly sees their notices and the banner stays** until they come through the banner's own link — which is the correct trade, because the banner's job is to deliver them once and an unread badge that clears on a direct visit would be the lesser failure to debug.
+
+**Navigation never depends on the write**, matching §16.3 and the notifications route: the update is awaited inside `try`/`catch` and the redirect runs either way. A lost write costs one stale banner; a failed redirect would cost the person the explanation they are owed.
+
 ### 16.10d A status change and its statement are one database statement, because two client calls cannot be **[DECIDED 2026-10-01]**
 
 **Found at STEP D by reading `src/services/admin/index.ts`.** Every admin write there is a single `update` through the service-role client, and `supabase-js` has no multi-statement transaction.
