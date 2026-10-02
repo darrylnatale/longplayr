@@ -16,11 +16,11 @@ Notation: **[DECIDED]** = explicitly chosen. **[INFERRED]** = follows necessaril
 - [4. Code organisation](#4-code-organisation) · 177 words
 - [5. Database](#5-database) · 182 words
 - [6. Authentication](#6-authentication) · 2,156 words
-- [7. Catalogue and ingestion](#7-catalogue-and-ingestion) · 11,965 words
+- [7. Catalogue and ingestion](#7-catalogue-and-ingestion) · 12,367 words
 - [7a. Upstream payload capture](#7a-upstream-payload-capture) · 465 words
 - [8. Popularity](#8-popularity) · 1,134 words
 - [9. Caching](#9-caching) · 164 words
-- [10. Search](#10-search) · 3,017 words
+- [10. Search](#10-search) · 3,725 words
 - [11. Environments and deployment](#11-environments-and-deployment) · 878 words
 - [12. Testing](#12-testing) · 7,859 words
 - [13. Observability](#13-observability) · 88 words

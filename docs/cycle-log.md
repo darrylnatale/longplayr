@@ -10,6 +10,7 @@
 
 **Unnumbered entries predate the §-numbering convention.** They sit between §87 and §86 in time.
 
+- [§111 — ✅ A phonetic fallback for artist search](#111---a-phonetic-fallback-for-artist-search--gate-cleared-ci-36989393662-completedsuccess-on-37ac891-attempt-1-146-end-to-end-zero-flaky-migration-applied-and-confirmed-deployed-and-probed-live) · 701 words
 - [§110 — ✅ A drain that stops says why](#110---a-drain-that-stops-says-why--gate-cleared-ci-36971605927-completedsuccess-on-7751be5-attempt-1-migration-applied-and-confirmed-merged-as-pr-46) · 542 words
 - [§109 — ✅ What breaks first, measured](#109---what-breaks-first-measured--ci-skipped-documentation-only-paths-ignore-fired-no-run-confirmed-by-gh-run-list-merged-as-pr-45) · 527 words
 - [§108 — ✅ `db:types` no longer destroys the file it generates](#108---dbtypes-no-longer-destroys-the-file-it-generates--gate-cleared-ci-36966164219-completedsuccess-on-95bf1d1-attempt-1-no-migration-merged-as-pr-44) · 323 words
@@ -138,6 +139,50 @@
 - [§17 — Lessons carried forward](#17--lessons-carried-forward) · 450 words
 
 ---
+
+## §111 — ✅ A phonetic fallback for artist search — **[GATE CLEARED: CI `36989393662` `completed/success` on `37ac891`, attempt 1, 146 end-to-end, **zero flaky**. MIGRATION APPLIED AND CONFIRMED. DEPLOYED AND PROBED LIVE.]**
+
+**F-019's second lever.** `search_artists` was already four-tiered — exact name, prefix, `tsvector`, trigram above 0.3 — so the question was never whether to add fuzziness but **whether phonetics catch anything trigram misses.**
+
+### ⚠️ They do, and the measurement corrected this cycle's own STEP B
+
+**The decision was first argued from the entry's example, `smith` / `smyth`, asserting it falls below the 0.3 threshold. It does not — `similarity('smith','smyth')` is 0.333.** Nine such pairs were tested and **trigram already caught every one**, including `radiohead`/`radiohed`, `beyonce`/`beyonsay` and `bjork`/`bjerk`.
+
+**The real win is consonant substitution that preserves sound**, which is a different class from a dropped or doubled letter: `caesar`/`ceasar` 0.273 · `cure`/`kure` 0.250 · `phoenix`/`feenix` 0.250 · `queen`/`kween` 0.200 · `fugees`/`foogeez` 0.154 · `chemical`/`kemikal` 0.133. **Six of twelve harder pairs**, all missed by trigram, all phonetically identical. The pattern is `c`↔`k`, `ph`↔`f`, `s`↔`z`.
+
+**`architecture.md` §10.4 carries the table rather than the assertion**, and says plainly that the first version of the section was wrong. **This is the third time in two days that a premise held only until it was measured** — §95's lesson, recurring.
+
+### 📄 A fallback, and that bound is the decision
+
+The phonetic pass runs **only when the four existing tiers return nothing**, so **no query that works today can change.** Double Metaphone collides freely, and as an `or` inside the main predicate it would scatter loose matches **alongside** exact ones — the failure that made `search_artists('the wall')` return The Wake, The Weeknd, The Who and The xx before the prefix-stripping fix.
+
+**It is also not uniformly better**, which is the other reason it is a fallback: `kiss`/`ciss` and `xzibit`/`exhibit` are missed by trigram _and_ phonetics, and `sade`/`shahday` and `eminem`/`m and m` are not misspellings at all.
+
+**`plpgsql`, so the two passes are one round trip and the rule stays in the database.** **`dmetaphone` is IMMUTABLE — checked rather than assumed, because §89 records that `unaccent` is not** — so there is an expression index, and the plan confirms the fallback uses it.
+
+### 📄 Evidence, including a live probe
+
+**Six integration tests, and the load-bearing one is negative**: any query reaching tiers 1–4 must come back with **no tier-5 row at all**, not merely with tier 5 ranked last. 48 integration tests across search and privileges.
+
+**Probed on production after deploy**: `Radeeohed` returns Radiohead, a query that returned nothing before — its trigram similarity is 0.250.
+
+### ⚠️ One gap stated rather than implied
+
+**The three-character guard is reasoned and not demonstrated.** The eight fixture artists produce **no** short-string phonetic collision, so the test asserts the guard's effect rather than observing it rescue-then-stop. A catalogue where `zq` matched something would make it a real test.
+
+### 🔎 The alias half is deferred, on a finding the entry does not contain
+
+**Artists only ever arrive embedded in `artist-credits`**, there is **no direct `artist/{mbid}` lookup anywhere**, and that include carries no aliases. So ingesting aliases needs **a new upstream request per artist** — against a budget where exceeding one per second returns `503` for every request from the address — plus a new job kind. Roughly 33 minutes of budget at ~2,000 artists.
+
+**F-019 says aliases would arrive _"without touching the search engine"_**, which is true and was never the hard part. **What it does not say is that nothing currently fetches them.** §10.4a — it is a queue-and-ingest cycle, and should be taken as one rather than folded into a search change.
+
+### 📄 Two statuses corrected at intake, one of them this session's own
+
+**F-028 still read `PROMOTED — IN FLIGHT`** after shipping as §107.
+
+**F-050 read plain `NEW` because its re-triage was never written.** During the §104 cycle one script carried both an `architecture.md` edit and that one; **the architecture anchor lookup raised first, aborting before the F-050 edit**, and only the architecture half was re-applied. **The re-triage was reported as done and was not**, and the entry now says so in its own text.
+
+**The previous entry, left as written.** Verified at **`66d2ecd`**.
 
 ## §110 — ✅ A drain that stops says why — **[GATE CLEARED: CI `36971605927` `completed/success` on `7751be5`, attempt 1. MIGRATION APPLIED AND CONFIRMED. MERGED AS PR #46.]**
 
