@@ -10,6 +10,8 @@
 
 **Unnumbered entries predate the §-numbering convention.** They sit between §87 and §86 in time.
 
+- [§113 — ✅ Hiding the albums you already have](#113---hiding-the-albums-you-already-have--gate-cleared-ci-37007523879-completedsuccess-on-8ff6a9b-attempt-1-148-end-to-end-zero-flaky-no-migration-merged-as-pr-49) · 468 words
+- [§112 — ✅ Every environment failure names its own cause](#112---every-environment-failure-names-its-own-cause--gate-cleared-ci-37006264000-completedsuccess-on-af7f606-attempt-1-no-migration-merged-as-pr-48) · 436 words
 - [§111 — ✅ A phonetic fallback for artist search](#111---a-phonetic-fallback-for-artist-search--gate-cleared-ci-36989393662-completedsuccess-on-37ac891-attempt-1-146-end-to-end-zero-flaky-migration-applied-and-confirmed-deployed-and-probed-live) · 701 words
 - [§110 — ✅ A drain that stops says why](#110---a-drain-that-stops-says-why--gate-cleared-ci-36971605927-completedsuccess-on-7751be5-attempt-1-migration-applied-and-confirmed-merged-as-pr-46) · 542 words
 - [§109 — ✅ What breaks first, measured](#109---what-breaks-first-measured--ci-skipped-documentation-only-paths-ignore-fired-no-run-confirmed-by-gh-run-list-merged-as-pr-45) · 527 words
@@ -139,6 +141,74 @@
 - [§17 — Lessons carried forward](#17--lessons-carried-forward) · 450 words
 
 ---
+
+## §113 — ✅ Hiding the albums you already have — **[GATE CLEARED: CI `37007523879` `completed/success` on `8ff6a9b`, attempt 1, 148 end-to-end, **zero flaky**. NO MIGRATION. MERGED AS PR #49.]**
+
+**F-042**, and the entry names the interesting part itself: _"It is a different kind of filter from everything else asked for."_ Year, title and artist narrow by facts about the **album**; this narrows by facts about **the reader**.
+
+### 📄 Signed-in only, and not rendered at all when signed out
+
+**Not rendered disabled** — a control a signed-out visitor cannot use is an invitation with no door behind it. Browse is otherwise public and identical for everyone, which is what makes this **the first control there that depends on who is reading.**
+
+**`getCatalogueAlbums` takes a user id, not a boolean.** The service never asks who is reading; the caller knows. **That is what makes a signed-out visitor structurally unable to receive a personal filter** — the parameter has nothing to carry — rather than relying on a page-level condition staying correct.
+
+**`?mine=hide`, carried like `?sort=`**, including by the _inactive_ sort links: changing sort resets the page and must not reset the filter, because they answer different questions.
+
+### 🔎 The anti-join was verified before anything was built on it
+
+`collection_entries!left(id)` with a `user_id` filter and `is.null` on the embed. **Measured against a running PostgREST: 4 of 7 on the fixture catalogue, and the exact count respects it** — `Content-Range: 0-0/4` against `0-0/7`. **Pagination is wrong without a correct total**, and `product-spec.md` §8.10's `referencedTable` note is the standing reminder that a documented behaviour is not a verified one.
+
+**Chosen over an RPC because the ordering chain stays untouched** — the six catalogue sorts live in `catalogueOrderFor`, and an RPC would have restated all of them in SQL: the duplication §105 had just finished removing from the pager.
+
+### ⚠️ The same mistake, a third time
+
+**A computed select string defeats PostgREST's type-level parser**, collapsing every row to `ParserError` — **and the cast that silences it would silence a genuinely wrong column too.** §98 fixed it as an `as never`; §100 nearly repeated it with a computed key; this is the third. Two literal selects instead, four lines of duplication, whole schema check retained.
+
+**Three occurrences in two days is a pattern rather than three slips.** The shape is always the same: _build the argument dynamically, then cast away the complaint._
+
+### 📄 Coverage is end-to-end, and that is forced
+
+`getCatalogueAlbums` builds a cookie-bound client and **cannot be called without a request scope**, so no integration test can reach it. Six unit tests on the parameter plumbing, two browser cases — **including the negative one, since a toggle rendered for everybody would satisfy the positive assertion alone.**
+
+`architecture.md` §16.13 and §16.13a.
+
+**The previous entry, left as written.** Verified at **`0c34665`**.
+
+## §112 — ✅ Every environment failure names its own cause — **[GATE CLEARED: CI `37006264000` `completed/success` on `af7f606`, attempt 1. NO MIGRATION. MERGED AS PR #48.]**
+
+**F-044** records that the test environment fails more often than the code does — three of five cycles losing time to the environment and **none to a product defect.**
+
+### 🔎 This session produced five more instances, each naming something else
+
+| What was wrong            | What was reported                                                |
+| ------------------------- | ---------------------------------------------------------------- |
+| Docker daemon not running | `Timed out waiting 120000ms from config.webServer`               |
+| Docker daemon not running | `LegacyLocalDbRunningError: failed to connect to the docker API` |
+| Docker half-started       | `docker info` hanging, then a `500` from the API route           |
+| `supabase start` not run  | `No such container: supabase_db_longplayr`                       |
+| `supabase start` not run  | `LegacyResetLocalDbNotRunningError`                              |
+
+**Two were fixed at their own site** — §103 and §108. **This is the general case**: one check guarding `db:reset`, `db:types`, `db:seed:fixtures` and `test:integration`.
+
+### 📄 Three details that came from the failures rather than from design
+
+**It reports the first missing layer, not the last.** With Docker down, _the stack is not started_ is also true and **completely useless** — starting it is impossible until Docker is up.
+
+**An eight-second timeout on the Docker probe, because the daemon hangs rather than failing.** Observed repeatedly; without it **the check itself becomes the thing that looks broken.**
+
+**The remedy says to quit Docker fully and reopen**, because `open -a Docker` was not enough **three times over** and a full quit-and-reopen was. A message saying only _start Docker_ would have been true and useless.
+
+**It diagnoses and never acts.** Starting Docker on somebody's machine is not a check's decision, and `supabase start` takes long enough that doing it implicitly would hide the one fact the reader needs.
+
+**`preflight-e2e.mjs` delegates rather than duplicating.** What stays there is the one thing this cannot tell: **whether Supabase is actually answering** — a container that is up but wedged passes every check here.
+
+### 📄 Evidence
+
+**All four states verified against a real machine**, not only unit-tested: Docker down, Docker up with the stack down, the stack up with `.env.local` removed, and ready. Five unit tests cover the ordering with injected probes, including that **a stale container listing cannot mask a dead daemon.**
+
+**F-044 is partly addressed, not closed.** What is fixed is the _reporting_, not the fragility: Docker still needs a full restart on this machine, which the repository cannot fix and the check now names. `architecture.md` §12.4.
+
+**The previous entry, left as written.** Verified at **`0c34665`**.
 
 ## §111 — ✅ A phonetic fallback for artist search — **[GATE CLEARED: CI `36989393662` `completed/success` on `37ac891`, attempt 1, 146 end-to-end, **zero flaky**. MIGRATION APPLIED AND CONFIRMED. DEPLOYED AND PROBED LIVE.]**
 
