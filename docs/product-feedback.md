@@ -1144,7 +1144,10 @@ Eventually I want to filter and sort what a grid shows, and exclude things from 
 
 ### F-042 — filtering a grid by what is already in my collection
 
-**2026-09-16 · browse, collection · NEW**
+**2026-09-16 · browse, collection · CLOSED — DELIVERED 2026-10-02**
+
+> **Decision and evidence: `architecture.md` §16.13 and §16.13a.** `?mine=hide` on `/albums/all`, signed-in only and **not rendered at all when signed out** — this entry's own observation that it is a different kind of filter is what drove that. **The service takes a user id rather than a boolean**, so a signed-out visitor is structurally unable to receive a personal filter.
+> **The anti-join was verified against a running PostgREST before anything was built on it** — 4 of 7, with the exact count respecting the filter, which pagination needs. **Scope is `/albums/all` only**: Home's Recently added has no controls at all and adding one there is a different decision.
 
 A way to see only albums I do **not** already have. A filter, or a toggle on a grid.
 
