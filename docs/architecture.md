@@ -2351,6 +2351,24 @@ Also excluded: RLS policies of any kind; `auth`, `storage` and other non-`public
 
 ---
 
+### 16.12 A completeness check for privileges, which is not a correctness check **[DECIDED 2026-10-02]**
+
+**Phase 7's security review ran on 2026-10-02 and found no confirmed hole.** Recorded as a result rather than as an absence of work: 25 tables all with RLS enabled, **zero write grants to `anon`**, all 20 project functions with `EXECUTE` explicitly revoked from `PUBLIC`, and no route unguarded that should be guarded — `/api/export` returns 401 from a service-layer `Result` and sets `no-store, private`, `/debug/queue` answers `notFound()` for an unauthorised visitor.
+
+**The review's first two findings were artefacts of the review itself, and that is the reason this check exists.** A grep matching only `revoke all on function` reported **seven functions unprotected**; the actual form in `20260904130000` is `revoke execute on function`. A second pass, reading ten lines past each `create function`, attributed a neighbouring function's `security definer` to `remove_list_item` and promoted it to a serious authorisation hole. **Both were false. Both were produced by a hand-rolled pattern at the moment of wanting to find something.**
+
+**So the deliverable is the sweep made repeatable rather than a fix.** `scripts/check-privileges.mjs` enumerates every `create table` and `create function` in the migrations and asserts each one has what the Phase 0 conventions require. It runs in `npm run verify`, so **a table added without RLS, or a function added without a revoke, fails before review.**
+
+**What it checks is whether somebody remembered, not whether the database is locked down**, and the distinction is the whole point:
+
+- **§16.5 measured the database** and found seven of eight functions `anon`-executable **against migrations that appeared to withhold it.** A static check cannot see that, and would have passed.
+- **`tests/integration/privileges.test.ts` is the correctness check**, asserting real behaviour against a real database — but **against a hardcoded list**, so an object added tomorrow is outside it.
+- **This closes the other gap**: enumeration without execution. The two together cover what neither does alone, and **neither replaces the other.**
+
+**It is deliberately dependency-free.** A catalogue-level query would be stronger and needs a Postgres driver the project does not have; adding one is a dependency decision rather than a test detail, so it is left to the maintainer. Recorded here so the stronger option is not forgotten.
+
+---
+
 ## 17. Scalability — what breaks first, and when
 
 Honest ordering of what would need attention, rather than premature optimisation:
