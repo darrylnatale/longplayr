@@ -94,12 +94,18 @@ export type DrainSummary = {
    * queue, and this cycle exists precisely because work that stops quietly is
    * the failure mode nobody notices.
    *
+   * **`lease_held` means somebody else is draining**, and a caller must treat
+   * it as success rather than as an empty queue: the work is being done, by
+   * another process. **It is also not a reason to retry** — the point of the
+   * lease is that a second drainer would spend the same one-per-second budget
+   * twice. `architecture.md` §7.3.
+   *
    * **A caller that supplies a budget must not loop on `claimed === 0`**: a
    * budget stop can claim nothing and still leave the queue full. Loop on
    * `stoppedBecause !== 'drained'` instead. The seed runners supply no budget,
    * so their existing `claimed === 0` check remains correct.
    */
-  stoppedBecause: 'drained' | 'budget' | 'max_jobs';
+  stoppedBecause: 'drained' | 'budget' | 'max_jobs' | 'lease_held';
 };
 
 /**
@@ -755,6 +761,88 @@ export async function drainJobs(
 ): Promise<DrainSummary> {
   const startedAt = Date.now();
 
+  /*
+   * **At most one drainer, so the rate limiter means something.**
+   *
+   * `RateLimiter` is a module-level object and serialises within one Node
+   * process. On Vercel, concurrent requests run in separate lambdas **each with
+   * its own limiter**, so MusicBrainz's one-per-second budget can be exceeded
+   * by exactly the number of concurrent drainers — and it returns `503` for
+   * *every* request from the address once passed, not merely the excess.
+   * F-028, `architecture.md` §7.3.
+   *
+   * **This is routine.** `drainJobs` is called from four places, two inside
+   * `after()` on the album and artist pages, against twelve cron runs a day.
+   *
+   * **F-028 assumed a shared-state rate limiter and called it materially
+   * larger. It is not needed.** Constraining the drainer rather than the
+   * request makes the in-process limiter authoritative again, because there is
+   * only ever one process for it to be authoritative for.
+   */
+  const acquired = await acquireDrainLease(admin);
+  if (!acquired) {
+    return {
+      claimed: 0,
+      succeeded: 0,
+      failed: 0,
+      exhausted: 0,
+      reclaimed: 0,
+      superseded: 0,
+      stoppedBecause: 'lease_held',
+    };
+  }
+
+  try {
+    return await drainWithLease(maxJobs, admin, options, startedAt);
+  } finally {
+    // **Released early, deliberately.** A drain finishing in two seconds must
+    // not hold a 75-second lease, or one page view would block the cron behind
+    // it. The TTL is crash recovery, not a schedule.
+    await releaseDrainLease(admin);
+  }
+}
+
+/**
+ * How long a lease is held if its holder never releases it.
+ *
+ * **Bounded by worker lifetime, not by drain duration** — the same question
+ * `STALE_AFTER_MINUTES` answers for a `running` row, asked over a much shorter
+ * horizon. The longest-lived drainer is the cron route at `maxDuration` 60s;
+ * 75 seconds is that plus teardown and clock skew.
+ *
+ * **Shorter than the 90-minute stale reclaim on purpose.** A lease that
+ * outlived its holder for 90 minutes would stop ingestion for 90 minutes; a
+ * `running` row that does the same stops one job.
+ */
+const LEASE_TTL_SECONDS = 75;
+const LEASE_ID = 'ingest';
+
+async function acquireDrainLease(admin: Admin): Promise<boolean> {
+  const { data, error } = await admin.rpc('try_acquire_drain_lease', {
+    p_id: LEASE_ID,
+    p_ttl_seconds: LEASE_TTL_SECONDS,
+  });
+
+  // **A lease that cannot be read is treated as held, not as free.** Failing
+  // open here would restore exactly the concurrency this exists to prevent,
+  // and the cost of failing closed is one skipped drain out of twelve a day.
+  if (error) return false;
+
+  return data === true;
+}
+
+async function releaseDrainLease(admin: Admin): Promise<void> {
+  // Swallowed: the TTL recovers a lease nobody released, so a failed release
+  // costs at most 75 seconds and must not mask the drain's own outcome.
+  await admin.rpc('release_drain_lease', { p_id: LEASE_ID });
+}
+
+async function drainWithLease(
+  maxJobs: number,
+  admin: Admin,
+  options: { budgetMs?: number },
+  startedAt: number,
+): Promise<DrainSummary> {
   // Before claiming anything, return abandoned rows to the pool. A drain that
   // skipped this would claim around them forever: nothing else in the system
   // moves a row out of `running`. Once per invocation, not per job — reclaim is

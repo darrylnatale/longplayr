@@ -772,7 +772,10 @@ The status line on an artist page reads _"Fetching the rest of this discography 
 
 ### F-028 — the MusicBrainz rate limiter does not span serverless invocations
 
-**2026-09-07 · ingestion, infrastructure · NEW**
+**2026-09-07 · ingestion, infrastructure · PROMOTED — DECIDED 2026-10-02, IN FLIGHT**
+
+> **The framing in this entry is what kept it open, and `architecture.md` §7.3a says so.** It assumed the fix was shared-state rate limiting and called that _"materially larger"_. **Constraining the drainer rather than the request is much smaller** and makes the existing in-process limiter authoritative, because there is then only one process. A lease row with an expiry, not an advisory lock — Supabase's pooler makes session-level locks unreliable.
+> **Also corrected: this is routine rather than theoretical.** `drainJobs` has **four** call sites, two inside `after()` on album and artist pages, against twelve cron runs a day. That no failure had been observed was luck.
 
 `musicbrainz.ts:84` creates the limiter as a **module-level** object, so it serialises requests within one Node process. On Vercel, concurrent requests run in **separate lambda instances, each with its own limiter** — so simultaneous page views can collectively exceed one request per second to MusicBrainz.
 
