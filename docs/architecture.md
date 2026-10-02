@@ -1591,6 +1591,20 @@ A mechanical scan for `.click()` followed within three non-blank lines by `page.
 
 **All four states were verified against a real machine**, not only unit-tested: Docker down, Docker up with the stack down, the stack up with `.env.local` removed, and ready.
 
+### 12.7 Branch protection replaces the path filter, and enforces the gate **[DECIDED 2026-10-02]**
+
+**The repository went public on 2026-10-02**, at the maintainer's instruction, after a history scan found no key material in any commit. **Actions minutes are now unmetered**, which voids F-056 entirely and with it the reason `paths-ignore` existed — §12.6 measured the constraint at ~790 of 2,000 minutes in two days, and there is no longer a denominator.
+
+**It also makes branch protection free**, which `CLAUDE.md` had wanted and could not have: it records that GitHub gated protection behind a paid plan for private repositories, and that **"branch protection would _enforce_ this; its absence does not prevent it."** It can now enforce it.
+
+**The two are incompatible, and that is what forced the removal rather than merely permitting it.** GitHub documents that a workflow skipped by a path filter leaves its checks **pending**, and a pull request requiring them is **blocked from merging**. So a documentation-only PR under both would never be mergeable. **Protection is the stronger of the two** and the filter went.
+
+**What this gives up, stated rather than glossed.** A documentation-only change now waits for the full suite — roughly 23 minutes — rather than merging immediately. **§115, §116 and §117 each cost zero runs under the filter and would each have cost one now.** That is the trade: wall time for a gate that holds without being remembered.
+
+**And it ends something worth ending.** `CLAUDE.md`'s STEP H has always said to commit on a working branch rather than on `main`, and documentation has gone straight to `main` repeatedly — `6c3dff5`, `788328c`, §112's checkpoints and others. **Protection blocks direct pushes to a branch with required checks**, so the rule now holds mechanically instead of by my remembering it.
+
+**`enforce_admins` is deliberately off.** A solo maintainer locked out of their own `main` by a stuck check has no second person to appeal to, and the escape hatch is worth more than the extra rigour. **Required reviews are off for the same reason** — GitHub will not let an author approve their own pull request, so requiring one would deadlock every cycle.
+
 ### 12.6 What moving every slow test to CI actually costs **[MEASURED 2026-10-02]**
 
 **F-045 was filed after the change rather than before it**, so the exposure would be visible if it started to bite. There was no data then. There is now, and the entry can be answered.
