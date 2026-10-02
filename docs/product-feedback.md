@@ -1702,7 +1702,9 @@ Get your password wrong and **both fields empty**, so you retype your address as
 
 ### F-058 — `npm run db:types` destroys the file it generates when the database is unreachable
 
-**2026-10-02 · development process, build tooling · NEW**
+**2026-10-02 · development process, build tooling · CLOSED — FIXED 2026-10-02, SAME DAY (§108)**
+
+> **The mechanism was worse than this entry first described, and `architecture.md` §12.3 records the correction.** It is not that a failing command wrote to the file — **the shell `>` truncated the file before the command ran**, so an exit-code check could never have helped. `db:types` now captures the output and writes only on success, with a content guard for a CLI that fails while exiting zero. **Verified by stopping the stack and confirming the file stays byte-identical to the committed version.**
 
 Running `npm run db:types` with Docker stopped **wrote the CLI's error JSON into `src/lib/supabase/database.types.ts`**, replacing the generated types with `{"_tag":"Error","error":{"code":"UnknownError",...}}`. Every subsequent `tsc` run then failed with `TS1005: ';' expected` on line 1, which points at the file rather than at the missing database.
 

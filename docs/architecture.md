@@ -1506,6 +1506,20 @@ A mechanical scan for `.click()` followed within three non-blank lines by `page.
 
 ---
 
+### 12.3 A generator writes nothing rather than writing its own error **[DECIDED 2026-10-02]**
+
+**`db:types` was `supabase gen types typescript --local > src/lib/supabase/database.types.ts`, and the shell is what broke it.** A `>` redirect **truncates the target before the command runs**, so with the database unreachable the file was already empty when the CLI wrote its error JSON into it. Every later `tsc` run then failed with `TS1005: ';' expected` **on line 1** — pointing at the file rather than at the missing database. `product-feedback.md` F-058, hit during §107.
+
+**`CLAUDE.md` forbids hand-editing that file**, so the only correct repair is regeneration or `git` — and the next person to meet it is looking at a TypeScript error two steps from the cause.
+
+**An exit-code check could not have fixed this, which is why the shape changed rather than gaining a guard.** The CLI _does_ exit non-zero; the truncation had already happened. **Capture first, write only on success** is the whole fix.
+
+**The content guard is the second half and is not redundant.** A CLI version that printed a warning, or succeeded while emitting something that is not a module, would pass an exit-code check. `looksLikeGeneratedTypes` requires the `Json` alias **and** that the output is not a JSON object — two conditions, because an error payload quoting the file's own text back would otherwise pass one.
+
+**It reports a no-op**, so a run that changes nothing says so rather than leaving the reader to check `git status`.
+
+**Verified by causing the failure, not by reasoning.** With the stack stopped, `db:types` refuses, names `npm run db:start`, and leaves the file **byte-identical to the committed version**. With the stack up it reports the schema already matches. **The same discipline §12.2 used**: a fix to a failure path is tested by taking the path.
+
 ### 12.2 The suite refuses to start rather than reporting an environment problem as a test failure **[DECIDED 2026-10-02]**
 
 **Two failures with one cause, and both cost real time on 2026-10-02** — the second twice in one session, by the agent that had already read the entry describing it.
