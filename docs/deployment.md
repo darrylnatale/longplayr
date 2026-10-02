@@ -195,6 +195,19 @@ ingestion cannot run against the real API by accident. Anything that needs real
 MusicBrainz data must run in a deployed environment, or with the variable set
 explicitly and knowingly.
 
+**A deliberately-set value now survives `db:env`. [2026-10-02]** The contact used
+to be hard-coded in `scripts/write-local-env.mjs`, so setting it locally lasted
+exactly until the next `npm run db:start` — the placeholder protected against
+accident _and_ against intent. `db:env` now carries forward a real value found in
+`.env.local` or exported in the environment, and **a fresh clone still gets the
+placeholder**, which is the part worth keeping. It prints which one it chose.
+
+**Set locally on 2026-10-02 at the maintainer's instruction**, so live MusicBrainz
+requests are now possible from the development machine. The one-per-second
+per-IP ceiling applies, and exceeding it returns `503` for _every_ request from
+that address — `architecture.md` §7.3 and the drain lease are what keep
+concurrent drainers from doing so.
+
 ---
 
 ## 5. Google sign-in
