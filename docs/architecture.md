@@ -1567,6 +1567,22 @@ A mechanical scan for `.click()` followed within three non-blank lines by `page.
 
 ---
 
+### 12.5 Comparing the deployed schema against the migrations **[DECIDED 2026-10-02]**
+
+**This is the half of F-032 that CI structurally cannot cover.** CI applies migrations to a **fresh** database, so a clean run proves the migrations are internally consistent and says **nothing about the database users are actually served by**. `npm run db:pending` compares the migration _ledger_ — it tells you a file was recorded, not that it did what it should.
+
+**`npm run db:drift`** runs `supabase db diff --linked` and fails on anything the migrations do not account for.
+
+**Not in `npm run verify`, deliberately.** The CLI applies every migration to a shadow database first; it took minutes on 44. **A check that slow in the fast loop is a check that gets turned off.**
+
+**The allowlist is Supabase's baseline, not this project's**, and it is the reason the check is usable at all. A new Supabase project ships **`pg_net`** and **default privileges granting `UPDATE ON SEQUENCES` to `anon`, `authenticated` and `service_role`**. No migration declares either, so the diff proposes removing them **on every run** — and a check that always fails is a check nobody reads. They are matched by exact statement so that a _change_ to the baseline still surfaces: a revoke on `TABLES` rather than `SEQUENCES` reports.
+
+**First run against the linked project found no real drift**, which is worth recording as a result: 44 migrations, and the deployed schema matches them.
+
+**It also surfaced a privilege the project never granted** — the sequence default privileges above. **That is not fixed here**, and the reason is honest rather than lazy: revoking a Supabase default could break any insert that draws from a sequence, `ingestion_jobs.id` among them, and whether to deviate from the platform baseline is a decision with breakage risk. Filed rather than taken — `product-feedback.md` F-060.
+
+**What this does not do.** It compares _structure_, not data or behaviour. A migration that creates the right objects and the wrong policy passes, and §106's finding — a column grant with no revoke — is invisible to it. `scripts/check-privileges.mjs` is the companion for that, and neither replaces the other.
+
 ### 12.3 A generator writes nothing rather than writing its own error **[DECIDED 2026-10-02]**
 
 **`db:types` was `supabase gen types typescript --local > src/lib/supabase/database.types.ts`, and the shell is what broke it.** A `>` redirect **truncates the target before the command runs**, so with the database unreachable the file was already empty when the CLI wrote its error JSON into it. Every later `tsc` run then failed with `TS1005: ';' expected` **on line 1** — pointing at the file rather than at the missing database. `product-feedback.md` F-058, hit during §107.
