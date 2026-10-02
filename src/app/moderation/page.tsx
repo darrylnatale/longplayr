@@ -11,8 +11,11 @@ import { Container } from '@/components/Container';
  * intelligible language. It applies to every intermediary service with **no
  * micro-enterprise exclusion**. `docs/legal-obligations.md` §2.1.
  *
- * **It describes only what the product actually does.** Every sentence here is
- * checkable against the code: the statuses in `20260818120000`, the enforcement
+ * **It describes only what the product actually does, and that has to be
+ * re-checked every time moderation changes.** It once said reporting was not
+ * built, which was true when written and false the moment slice 3b shipped —
+ * `architecture.md` §16.10b now makes this page a deliverable of any moderation
+ * slice. Every sentence here is checkable against the code: the statuses in `20260818120000`, the enforcement
  * in `architecture.md` §16.9, the admin surface from §92, the deletion cascade
  * from §87. **Nothing describes a process that does not exist**, which is the
  * failure this kind of page usually has — and which would be worse than having
@@ -70,14 +73,48 @@ export default function ModerationPage() {
             <li>Illegal content</li>
             <li>Something else, with a short explanation</li>
           </ul>
+          {/*
+           * **This paragraph replaced one reading "Reporting is not built yet."**
+           * That was true when written and was made false by the slice that
+           * built reporting — on the page whose whole value is being checkable.
+           * `architecture.md` §16.10b now records that this page is a
+           * deliverable of any moderation slice rather than a neighbour of one.
+           */}
+          <p>
+            The control is on the review, the list, or the profile itself. You need an account to
+            use it. <span className="text-text">Anyone without one can use the address below</span>{' '}
+            — it reaches the same person and carries the same weight.
+          </p>
+          <p>
+            Filing a report changes nothing straight away. It joins a queue, and the content stays
+            visible until somebody has looked at it.{' '}
+            <span className="text-text">
+              You will not be told the outcome of a report you file.
+            </span>{' '}
+            That is deliberate: it would reveal whether a particular account was acted on, and the
+            person acted on is the one with the right to know.
+          </p>
+        </Section>
+
+        <Section title="If something of yours is removed, you are told why">
+          <p>
+            When a review or list of yours is removed, or your account is suspended, you get a
+            notice saying <span className="text-text">what was acted on, and on what ground</span>.
+            It appears as a banner and lives at{' '}
+            <Link href="/notices" className="text-accent hover:underline">
+              your notices
+            </Link>
+            .
+          </p>
           <p>
             {/*
-             * Stated plainly because it is true today, and a page that implied a
-             * working mechanism would be a published falsehood. This paragraph
-             * is removed by the slice that builds reporting.
+             * Art 17 does not require naming the individual moderator, and with
+             * one admin it would expose a named person to everybody they
+             * moderate. `architecture.md` §16.10a — and the column grant, not
+             * this page, is what enforces it.
              */}
-            <span className="text-text">Reporting is not built yet.</span> Until it is, use the
-            contact address below — it reaches the same person.
+            It does not say which administrator made the decision. It does tell you how to dispute
+            it, which is the address below.
           </p>
         </Section>
 
@@ -108,6 +145,21 @@ export default function ModerationPage() {
           <p>
             A person does. longplayr runs no automated moderation, no filtering and no algorithmic
             decisions about content. It is one maintainer reading reports.
+          </p>
+          {/*
+           * **Added 2026-10-02, after reading this page against the product.**
+           * The sentence above was literally true and materially incomplete:
+           * four ceilings exist — follows, review likes, list likes and reports
+           * — and none was disclosed. **Art 14 asks for the restrictions a
+           * service imposes on its use, not only the ones about content**, so
+           * silence about a real automated restriction is a gap even when every
+           * sentence present is accurate. `architecture.md` §14.4 and §16.10f.
+           */}
+          <p>
+            There is one automated restriction, and it is about pace rather than content: following,
+            liking and reporting are capped per hour and per day.{' '}
+            <span className="text-text">Nothing is judged automatically</span> — a cap only stops
+            the same action being repeated very fast, and it never looks at what you wrote.
           </p>
           <p>
             That means decisions can be slow, and it means they are made by someone who can be
