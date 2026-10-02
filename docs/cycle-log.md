@@ -10,6 +10,7 @@
 
 **Unnumbered entries predate the §-numbering convention.** They sit between §87 and §86 in time.
 
+- [§107 — ✅ One drainer at a time, so the limiter means something](#107---one-drainer-at-a-time-so-the-limiter-means-something--gate-cleared-ci-36963947408-completedsuccess-on-09cecaa-attempt-1-821-integration-and-146-end-to-end-zero-flaky-migration-applied-and-confirmed-merged-as-pr-43) · 662 words
 - [§106 — ✅ The one table the privilege rule was never applied to](#106---the-one-table-the-privilege-rule-was-never-applied-to--gate-cleared-ci-36960897875-completedsuccess-on-6f94e1f-attempt-1-migration-applied-and-confirmed-merged-as-pr-42) · 543 words
 - [§105 — ✅ A way to jump to a page, and two copies of the pager retired](#105---a-way-to-jump-to-a-page-and-two-copies-of-the-pager-retired--gate-cleared-ci-36958456572-completedsuccess-on-f062c15-attempt-1-146-end-to-end-zero-flaky-no-migration-merged-as-pr-41) · 408 words
 - [§104 — ✅ An index for the column two pages sort on](#104---an-index-for-the-column-two-pages-sort-on--gate-cleared-ci-36954956432-completedsuccess-on-0119a44-attempt-1-migration-applied-and-confirmed-merged-as-pr-40) · 394 words
@@ -134,6 +135,46 @@
 - [§17 — Lessons carried forward](#17--lessons-carried-forward) · 450 words
 
 ---
+
+## §107 — ✅ One drainer at a time, so the limiter means something — **[GATE CLEARED: CI `36963947408` `completed/success` on `09cecaa`, attempt 1, 821 integration and 146 end-to-end, **zero flaky**. MIGRATION APPLIED AND CONFIRMED. MERGED AS PR #43.]**
+
+**F-028.** `RateLimiter` is a module-level object, so it serialises within one Node process. **On Vercel, concurrent requests run in separate lambdas each with its own limiter** — so MusicBrainz's one-per-second budget can be exceeded by exactly the number of concurrent drainers, and it returns `503` for **every** request from the address once passed. A `CLAUDE.md` non-negotiable, and a total catalogue outage rather than a slow ingest.
+
+### 🔎 What moved it is that the condition is routine
+
+**`drainJobs` has four call sites**, two inside `after()` on the album and artist pages, against **twelve cron runs a day.** Two people browsing two artist pages, or one browsing while the cron fires, is enough. **The entry recorded that no failure had been observed; the four call sites are why that was luck rather than design.**
+
+### 🔎 The entry's own framing is what kept it open
+
+F-028 assumed the fix was shared-state rate limiting and called it _"a materially larger change than anything in this area so far"_. **Constraining the drainer rather than the request makes the in-process limiter authoritative again**, because there is then only one process for it to be authoritative for. **The limiter is unchanged and nothing about request scheduling moved into the database.** §7.3a.
+
+**Worth carrying forward as a pattern**: a backlog entry's own proposed mechanism can be the thing blocking it. STEP A's job includes re-reading the problem, not only the suggestion.
+
+### 📄 A lease row, not `pg_advisory_lock`
+
+**Session-level advisory locks are held until the session ends, and Supabase's pooler hands a different connection to each request** — so a lock taken through PostgREST may outlive its holder and is not reliably releasable, which is the opposite of what mutual exclusion needs.
+
+**Acquire is one statement**, because a read then a write would let two callers both see a lapsed lease and both take it — the same split §16.10d refused between a status change and its statement.
+
+**TTL 75 seconds, bounded by worker lifetime rather than drain duration**, and far shorter than the 90-minute stale reclaim: a lease outliving its holder for 90 minutes would stop ingestion for 90 minutes, where a `running` row doing the same stops one job. **Released in a `finally`**, so a two-second drain does not block the cron behind it. **A lease that cannot be read is treated as held** — failing open would restore the exact concurrency this prevents. §7.3b.
+
+### 📄 Evidence
+
+**Seven lease behaviours exercised against the database before anything was built on them**, including the crash path — expiry with no release — and an unknown lease id. No bugs this time.
+
+**8 new integration tests**, including that a client token can neither execute the functions nor read the table, and that the drain releases so the next one is not blocked. **The existing 68-test jobs suite still passes.** CI: 821 integration, 146 end-to-end, zero flaky.
+
+### ⚠️ Two environment problems that cost real time
+
+**`npm run db:types` wrote its own error message into `src/lib/supabase/database.types.ts`** when the database was unreachable — corrupting a generated file that `CLAUDE.md` forbids hand-editing. Restored from git. **Same family as F-036**: a tool reporting an environment failure as something else, here by destroying its own output.
+
+**Docker needed a full kill-and-restart**, not `open -a Docker`: its daemon was returning `500` from a half-started state, and `docker info` simply hung. **That cost time across three cycles before the right thing was tried.**
+
+### 📄 The previous cycle's checker earned its keep immediately
+
+`scripts/check-privileges.mjs` picked up the new table and two functions with no change — **26 tables, 22 functions** — and would have failed the build had the revokes been forgotten. First cycle after it shipped.
+
+**The previous entry, left as written.** Verified at **`060cee3`**.
 
 ## §106 — ✅ The one table the privilege rule was never applied to — **[GATE CLEARED: CI `36960897875` `completed/success` on `6f94e1f`, attempt 1. MIGRATION APPLIED AND CONFIRMED. MERGED AS PR #42.]**
 

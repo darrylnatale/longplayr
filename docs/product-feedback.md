@@ -14,7 +14,7 @@ Notation follows the rest of `docs/`: absolute dates, and **[OPEN]** / **[DECIDE
 - [2. Where this sits in the document hierarchy](#2-where-this-sits-in-the-document-hierarchy) · 187 words
 - [3. Operating rules](#3-operating-rules) · 253 words
 - [4. How to write an entry](#4-how-to-write-an-entry) · 264 words
-- [5. Intake](#5-intake) · 33,917 words
+- [5. Intake](#5-intake) · 34,689 words
 - [6. Triage](#6-triage) · 310 words
 - [7. Promotion — where an item goes when it leaves this file](#7-promotion--where-an-item-goes-when-it-leaves-this-file) · 251 words
 - [8. Relationship to the development cycle](#8-relationship-to-the-development-cycle) · 498 words
@@ -1697,6 +1697,24 @@ Get your password wrong and **both fields empty**, so you retype your address as
 **5. The append-only checkpoint model is at war with the file's stated purpose.** `current-state.md` says it records _where we are right now_; it is structurally a chronological log of 86 numbered checkpoints. Both are useful. They are not the same document, and `CLAUDE.md`'s own current-state paragraph was **fifteen pull requests out of date** at one point, which is the same duplication failing.
 
 **What this entry does not do.** It proposes nothing and decides nothing — per this file's standing rules it is an observation. **A restructuring of the governing documents is a material change** and belongs to a deliberate cycle with the maintainer deciding the shape. The obvious hazard to weigh there: **the verbosity is partly deliberate and partly effective.** Dense rationale demonstrably stops an agent reverting hard-won decisions, and several passages exist because exactly that happened. **Cutting for brevity could cost more than it saves**, and any proposal should say which parts are load-bearing and why.
+
+---
+
+### F-058 — `npm run db:types` destroys the file it generates when the database is unreachable
+
+**2026-10-02 · development process, build tooling · NEW**
+
+Running `npm run db:types` with Docker stopped **wrote the CLI's error JSON into `src/lib/supabase/database.types.ts`**, replacing the generated types with `{"_tag":"Error","error":{"code":"UnknownError",...}}`. Every subsequent `tsc` run then failed with `TS1005: ';' expected` on line 1, which points at the file rather than at the missing database.
+
+**Observed on 2026-10-02 during §107** and recovered with `git checkout --`, so nothing was lost. **The reason it matters is that `CLAUDE.md` forbids hand-editing this file**: the only correct repair is regeneration or `git`, and somebody who does not realise what happened may try to fix the syntax error.
+
+**Context, not a resolution.**
+
+- **The script redirects stdout into the file**, so a failure that still exits writing to stdout overwrites it. The fix is to generate to a temporary file and move it into place only on success — the ordinary shape for this.
+- **Same family as F-036**, which this session closed: a tool reporting an environment problem as something else. **This one is worse than a confusing message**, because it damages a tracked file and the real cause is two steps back.
+- **A guard would be cheap and is worth weighing against the fix**: if the output does not begin with `export type Json`, do not write it.
+- **Not urgent.** `git checkout --` is a complete recovery and the file is always committed. **Filed because the next person to hit it will be looking at a TypeScript error, not at Docker.**
+- **Related:** **F-036** is the closed entry on environment failures reported as test failures; `architecture.md` §12.2 is the pattern it established.
 
 ---
 

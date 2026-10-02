@@ -16,7 +16,7 @@
 
 **The verification gate moved, and `CLAUDE.md` now carries it. [APPLIED 2026-09-15]** Work happens on a branch and reaches `main` only through a green CI run; STEP F runs `npm run verify` plus targeted suites; **the migration gate moved from STEP I to STEP J**, so the order is **CI green → migration applied → merge**. The decision is `architecture.md` §12; the process is `CLAUDE.md`. **The two no longer disagree.** (§68, §69)
 
-**Verified 2026-10-02 against the repository, the remote, CI and production.** `main` is at **`ec883d5`**, the merge of PR #42. **42 migrations, 0 unapplied** — §98's, §100's, §104's and §106's were each applied at STEP J and confirmed before their merges. **Eighteen CI runs since the 1 October refresh, every one green on attempt 1 with zero flaky**, and five documentation pushes fired no run. Production: `/`, `/albums/all` and `/moderation` 200, `/notifications` and `/notices` 307 signed out. **Nothing is unmerged and nothing is pending.**
+**Verified 2026-10-02 against the repository, the remote, CI and production.** `main` is at **`060cee3`**, the merge of PR #43. **43 migrations, 0 unapplied** — §98, §100, §104, §106 and §107 each applied at STEP J and confirmed before their merges. **Twenty-one CI runs since the 1 October refresh, every one green on attempt 1 with zero flaky.** Production: `/`, `/albums/all`, `/search` and `/moderation` 200. **Nothing is unmerged and nothing is pending.**
 
 **`npm run verify` now includes `scripts/check-privileges.mjs`** (§106) — a table added without RLS, or a function added without an `EXECUTE` revoke, fails before review. **It is a completeness check, not a correctness check**, and §16.12 records why both are needed.
 
