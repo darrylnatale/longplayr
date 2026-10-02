@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { Avatar } from '@/components/Avatar';
 import { CollectionGrid } from '@/components/CollectionGrid';
 import { Container } from '@/components/Container';
+import { Pagination } from '@/components/Pagination';
 import { SectionHeader } from '@/components/SectionHeader';
 import {
   COLLECTION_PAGE_SIZE,
@@ -144,20 +145,22 @@ function SortLinks({ handle, sort }: { handle: string; sort: CollectionSort }) {
 }
 
 /**
- * Newer and Older rather than Previous and Next.
+ * The collection pager.
  *
- * The collection is ordered by when albums were added, so the axis is time and
- * the labels should say so. "Previous" is ambiguous about which direction it
- * moves through a reverse-chronological list.
+ * **Retired into `@/components/Pagination` on 2026-10-02.** This page carried
+ * its own copy of the markup, and the stated reason was the Newer/Older label
+ * pair — which made supporting the labels the right answer rather than
+ * duplicating forty lines. `design-reference.md` §13.
  *
- * Renders nothing at all when everything fits on one page — a lone disabled
- * "Page 1 of 1" is furniture.
+ * **The sort still rides along**, and that is the part worth keeping local:
+ * paging under Title must stay under Title, and dropping the parameter would
+ * silently return the reader to Added one page in with nothing admitting it.
  *
- * **The active sort rides along.** Paging under Title must stay under Title;
- * dropping the parameter would silently return the reader to Added one page in,
- * with nothing on the page admitting it had happened.
+ * Newer / Older only where the leading key is a date running newest first —
+ * added, listened and release year. Under Rating, Title or Artist the axis is
+ * not time and those words are simply untrue.
  */
-function Pagination({
+function CollectionPagination({
   handle,
   page,
   totalPages,
@@ -168,43 +171,21 @@ function Pagination({
   totalPages: number;
   sort: CollectionSort;
 }) {
-  if (totalPages <= 1) return null;
-
-  const href = (n: number) => collectionPath(handle, { sort, page: n });
-  const link = 'rounded-sm px-3 py-1.5 text-xs text-text-muted transition-colors hover:text-text';
-
-  // Newer / Older only where the leading key is a date running newest first —
-  // added, listened and release year. Under Rating, Title or Artist the axis is
-  // not time and those words are simply untrue, so they give way to the neutral
-  // pair rather than describing an ordering the page is no longer using.
   const chronological = sort === 'added' || sort === 'listened' || sort === 'year';
-  const [backward, forward] = chronological ? ['Newer', 'Older'] : ['Previous', 'Next'];
 
   return (
-    <nav
-      aria-label="Collection pages"
-      className="mt-8 flex items-center justify-between border-t border-border pt-4"
-    >
-      <div className="flex-1">
-        {page > 1 && (
-          <Link href={href(page - 1)} rel="prev" className={link}>
-            <span aria-hidden>←</span> {backward}
-          </Link>
-        )}
-      </div>
-
-      <p className="tabular text-xs text-text-faint">
-        Page {page} of {totalPages}
-      </p>
-
-      <div className="flex flex-1 justify-end">
-        {page < totalPages && (
-          <Link href={href(page + 1)} rel="next" className={link}>
-            {forward} <span aria-hidden>→</span>
-          </Link>
-        )}
-      </div>
-    </nav>
+    <Pagination
+      page={page}
+      totalPages={totalPages}
+      href={(n) => collectionPath(handle, { sort, page: n })}
+      // **"Collection pages", not "Collection".** Callers pass the complete nav
+      // label, and three end-to-end specs assert that a nav with this exact
+      // name is absent on a single-page collection — a shortened label would
+      // have made all three pass for the wrong reason.
+      label="Collection pages"
+      backward={chronological ? 'Newer' : 'Previous'}
+      forward={chronological ? 'Older' : 'Next'}
+    />
   );
 }
 
@@ -277,7 +258,12 @@ export default async function CollectionPage({
              */}
             {total > 1 && <SortLinks handle={profile.handle} sort={sort} />}
             <CollectionGrid albums={items} />
-            <Pagination handle={profile.handle} page={page} totalPages={totalPages} sort={sort} />
+            <CollectionPagination
+              handle={profile.handle}
+              page={page}
+              totalPages={totalPages}
+              sort={sort}
+            />
           </>
         )}
       </section>
