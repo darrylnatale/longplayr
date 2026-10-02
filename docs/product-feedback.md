@@ -976,7 +976,7 @@ So two things follow, neither decided here:
 
 ### F-036 — a stopped Docker daemon is reported as a Playwright server-start timeout
 
-**2026-09-15 · development process, testing · PROMOTED — DECIDED 2026-10-02, IN FLIGHT**
+**2026-09-15 · development process, testing · CLOSED — DELIVERED 2026-10-02 (§103, PR #39)**
 
 > **Decision: `architecture.md` §12.2.** A preflight script checks `.env.local` and the Supabase endpoint before Playwright starts, and `playwright.config.ts` refuses to run when the WebSocket global is missing — the config being the one file both entry points load. **Promoted on fresh evidence**: the `npx playwright test` half cost this session time twice on 2026-10-02, after the agent had already read this entry.
 
@@ -1303,7 +1303,7 @@ Under the rule as approved all four survive, because Tame Impala is the first cr
 
 ### F-046 — pagination offers only Previous and Next, with no way to jump to a page
 
-**2026-09-16 · browse, pagination · PROMOTED — DECIDED 2026-10-02, IN FLIGHT**
+**2026-09-16 · browse, pagination · CLOSED — DELIVERED 2026-10-02 (§105, PR #41)**
 
 > **Decision: `design-reference.md` §13.** One windowed control for all three surfaces rather than a per-surface variant — first and last always shown, a span around the current page, runs collapsed to an ellipsis. **It answers this entry's scale question by degrading rather than by branching.** A run of exactly one page never collapses, because an ellipsis the same width as the number it replaces is strictly worse.
 

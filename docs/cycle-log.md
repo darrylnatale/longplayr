@@ -10,6 +10,8 @@
 
 **Unnumbered entries predate the §-numbering convention.** They sit between §87 and §86 in time.
 
+- [§106 — ✅ The one table the privilege rule was never applied to](#106---the-one-table-the-privilege-rule-was-never-applied-to--gate-cleared-ci-36960897875-completedsuccess-on-6f94e1f-attempt-1-migration-applied-and-confirmed-merged-as-pr-42) · 543 words
+- [§105 — ✅ A way to jump to a page, and two copies of the pager retired](#105---a-way-to-jump-to-a-page-and-two-copies-of-the-pager-retired--gate-cleared-ci-36958456572-completedsuccess-on-f062c15-attempt-1-146-end-to-end-zero-flaky-no-migration-merged-as-pr-41) · 408 words
 - [§104 — ✅ An index for the column two pages sort on](#104---an-index-for-the-column-two-pages-sort-on--gate-cleared-ci-36954956432-completedsuccess-on-0119a44-attempt-1-migration-applied-and-confirmed-merged-as-pr-40) · 394 words
 - [§103 — ✅ The test suite fails about what is actually wrong](#103---the-test-suite-fails-about-what-is-actually-wrong--gate-cleared-ci-36953900325-completedsuccess-on-499c8b8-attempt-1-145-end-to-end-zero-flaky-no-migration-merged-as-pr-39) · 318 words
 - [§102 — ✅ The notice write moved out of the page and into a hop](#102---the-notice-write-moved-out-of-the-page-and-into-a-hop--gate-cleared-ci-36953136826-completedsuccess-on-7036bf2-attempt-1-146-end-to-end-zero-flaky-no-migration-merged-as-pr-38) · 447 words
@@ -132,6 +134,76 @@
 - [§17 — Lessons carried forward](#17--lessons-carried-forward) · 450 words
 
 ---
+
+## §106 — ✅ The one table the privilege rule was never applied to — **[GATE CLEARED: CI `36960897875` `completed/success` on `6f94e1f`, attempt 1. MIGRATION APPLIED AND CONFIRMED. MERGED AS PR #42.]**
+
+**Phase 7's security review** — the available Phase 7 work, since error tracking and uptime checks both need an external service chosen.
+
+### 📄 The substantive result is that almost nothing was wrong
+
+**25 tables, all with RLS enabled. Zero write grants to `anon`. All 20 project functions with `EXECUTE` explicitly revoked from `PUBLIC`.** No route unguarded that should be guarded: `/api/export` returns 401 from a service-layer `Result` and sets `no-store, private`; `/debug/queue` answers `notFound()` for an unauthorised visitor.
+
+**Recorded as a result rather than as an absence of work.** A review that finds little is evidence, not a wasted cycle.
+
+### 🔎 One genuine finding, at the table that taught the rule
+
+**`notifications` granted `update (read_at)` to `authenticated` and never revoked table-level `update` first**, so the column list narrowed nothing and a recipient could rewrite **any** column of their own notification.
+
+**Severity is low and is stated rather than leaned on** — RLS scopes the rows to their recipient and nothing downstream trusts them.
+
+**The detail worth keeping**: `20260924120000_grant_and_policy_audit.sql` is the deliberate sweep of this exact rule, and **its own header quotes this table as where the rule came from.** It then revoked on `collection_entries`, `list_items` and `favourite_albums` — and never on `notifications`.
+
+### ⚠️ Two of the review's findings were artefacts of the review
+
+A grep matching only `revoke all on function` reported **seven functions unprotected**; the real form is `revoke execute on function`. Reading ten lines past each `create function` then attributed a neighbouring function's `security definer` to `remove_list_item` and promoted it to a serious authorisation hole.
+
+**Both false. Both produced by a hand-rolled pattern at the moment of wanting to find something** — which is the honest hazard of an audit cycle and the reason the deliverable is a script rather than a report.
+
+### 📄 A rule written, tested and deleted
+
+A broader _any grant needs a revoke_ rule reported **seven tables** and was removed. **It cannot distinguish _no revoke needed_ from _revoke missing_**, because the baseline lives in the database's default privileges rather than in the migration files. **A check that cannot tell is worse than no check**: it trains people to ignore it.
+
+### 📄 Completeness, not correctness, and the distinction is the point
+
+`scripts/check-privileges.mjs` runs in `npm run verify` and **would have caught the notifications gap.** But §16.5 **measured the database** and found seven of eight functions `anon`-executable _against migrations that appeared to withhold it_ — **this check would have passed.** `tests/integration/privileges.test.ts` is the correctness half and works from a hardcoded list, so an object added tomorrow is outside it. **Neither replaces the other.** §16.12.
+
+**One of its two unit tests asserts it examined ≥25 tables and ≥20 functions**, so it cannot pass by matching nothing — the failure mode of every pattern-based check, and the one that produced the two false findings above.
+
+**A catalogue-level query would be stronger and needs a Postgres driver the project does not have.** Adding a dependency is the maintainer's decision, so it is recorded rather than taken.
+
+**The previous entry, left as written.** Verified at **`ec883d5`**.
+
+## §105 — ✅ A way to jump to a page, and two copies of the pager retired — **[GATE CLEARED: CI `36958456572` `completed/success` on `f062c15`, attempt 1, 146 end-to-end, **zero flaky**. NO MIGRATION. MERGED AS PR #41.]**
+
+**F-046.** Next and Previous existed; page 5 did not, without clicking through to it.
+
+### 📄 One windowed control, which answers the entry's real question
+
+First and last always shown, a span around the current page, runs collapsed to an ellipsis. The entry's actual question was whether one control can serve a catalogue of hundreds of pages, a collection of a few and a follower list of two — **answered by degrading rather than by branching.**
+
+**A run of exactly one page never collapses**, because an ellipsis the same width as the number it replaces is strictly worse.
+
+**The window is a pure function and deliberately not in `src/services/`.** `CLAUDE.md`'s test is whether a native client would need the rule to behave correctly — it would not. Being pure, it is unit-tested directly rather than through a browser.
+
+### 🔎 A test failed and the expectation was wrong, not the code
+
+At span 2 on page 5, only page 2 separates 1 from 3 — and the single-page rule says show it. **The two rules compose, which is easier to get wrong by hand than to implement.**
+
+### ⚠️ STEP G found the decision could not hold as written
+
+**`Pagination` was imported by two places, not three.** The collection and lists destinations each carried **their own copy of the markup**, which F-046's own entry had not noticed.
+
+**The collection's stated reason was the Newer/Older label pair** — an argument for the shared component taking two labels, not for duplicating forty lines. **The lists copy had no stated reason at all** and had drifted in type size and spacing. Both now use the shared component.
+
+**Shipping without consolidating would have left the documentation claiming one control served every surface while two did not use it** — §101's failure, one cycle later.
+
+### 🔎 A false pass avoided
+
+**Every caller passes the complete nav label**, ending in _pages_. Three end-to-end specs assert a nav named exactly `Collection pages` is absent on a single-page collection, so a shortened label would have made **all three pass for the wrong reason.** The list's own derived label also went, since it read _"Catalogue pages pages"_.
+
+`design-reference.md` §13.
+
+**The previous entry, left as written.** Verified at **`ec883d5`**.
 
 ## §104 — ✅ An index for the column two pages sort on — **[GATE CLEARED: CI `36954956432` `completed/success` on `0119a44`, attempt 1. MIGRATION APPLIED AND CONFIRMED. MERGED AS PR #40.]**
 
