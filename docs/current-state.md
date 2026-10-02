@@ -16,7 +16,13 @@
 
 **The verification gate moved, and `CLAUDE.md` now carries it. [APPLIED 2026-09-15]** Work happens on a branch and reaches `main` only through a green CI run; STEP F runs `npm run verify` plus targeted suites; **the migration gate moved from STEP I to STEP J**, so the order is **CI green → migration applied → merge**. The decision is `architecture.md` §12; the process is `CLAUDE.md`. **The two no longer disagree.** (§68, §69)
 
-**Verified 2026-10-02 against the repository, the remote, CI and production.** `main` is at **`66d2ecd`**, the merge of PR #47. **44 migrations, 0 unapplied** — §98, §100, §104, §106, §107, §110 and §111 each applied at STEP J and confirmed before their merges. **Twenty-seven CI runs since the 1 October refresh, every one green on attempt 1 with zero flaky**, plus one merge under `CI SKIPPED`. Production: `/`, `/search` and `/albums/all` 200, **and the phonetic fallback probed live** — `Radeeohed` returns Radiohead. **Nothing is unmerged and nothing is pending.**
+**Verified 2026-10-02 against the repository, the remote, CI and production.** `main` is at **`113cff7`**, the merge of PR #50. **44 migrations, 0 unapplied**, and **`npm run db:drift` reports no real drift across all 44** (§114). **Nothing is unmerged and nothing is pending.**
+
+**Three checkpoints were owed and are now written** — §112 the environment check, §113 the collection filter, §114 the drift check. **This line read `66d2ecd` while `main` was at `6906b15`**, which is the staleness §101 and the documentation split were about, recurring because three cycles ran in parallel without closing.
+
+**CI budget is the live constraint. [MEASURED 2026-10-02]** **34 runs since the 1 October refresh, roughly 713 of 2,000 billed minutes, in under two days** — 27 green on attempt 1 with **zero failures**, so the arrangement works. **At this pace the month's budget ends around 5 October.** The slow job is **94% of a run** (22.1 minutes against 1.4), and **16 of 34 events are post-merge `main` runs** which F-051 established are _not_ redundant — **so the lever is per-run cost, not run count.** F-045 is the entry that asked, and now has the data.
+
+**Phase 6 is complete. Phase 7 has no work left that does not need a decision** — error tracking and uptime checks both require choosing an external service.
 
 **Phase 6 is complete. Phase 7 has no work left that does not need a decision** — error tracking and uptime checks both require choosing an external service, which `CLAUDE.md`'s working agreement sends to the maintainer.
 

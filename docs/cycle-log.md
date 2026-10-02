@@ -10,6 +10,7 @@
 
 **Unnumbered entries predate the §-numbering convention.** They sit between §87 and §86 in time.
 
+- [§114 — ✅ Comparing the deployed schema against the migrations](#114---comparing-the-deployed-schema-against-the-migrations--gate-cleared-ci-37011574887-completedsuccess-on-ff480f6-attempt-1-no-migration-merged-as-pr-50) · 537 words
 - [§113 — ✅ Hiding the albums you already have](#113---hiding-the-albums-you-already-have--gate-cleared-ci-37007523879-completedsuccess-on-8ff6a9b-attempt-1-148-end-to-end-zero-flaky-no-migration-merged-as-pr-49) · 468 words
 - [§112 — ✅ Every environment failure names its own cause](#112---every-environment-failure-names-its-own-cause--gate-cleared-ci-37006264000-completedsuccess-on-af7f606-attempt-1-no-migration-merged-as-pr-48) · 436 words
 - [§111 — ✅ A phonetic fallback for artist search](#111---a-phonetic-fallback-for-artist-search--gate-cleared-ci-36989393662-completedsuccess-on-37ac891-attempt-1-146-end-to-end-zero-flaky-migration-applied-and-confirmed-deployed-and-probed-live) · 701 words
@@ -141,6 +142,38 @@
 - [§17 — Lessons carried forward](#17--lessons-carried-forward) · 450 words
 
 ---
+
+## §114 — ✅ Comparing the deployed schema against the migrations — **[GATE CLEARED: CI `37011574887` `completed/success` on `ff480f6`, attempt 1. NO MIGRATION. MERGED AS PR #50.]**
+
+**F-032's surviving half, which CI structurally cannot cover.** CI applies migrations to a **fresh** database, so a clean run proves the migrations are internally consistent and says **nothing about the database users are served by**. `npm run db:pending` compares the migration _ledger_ — it tells you a file was recorded, not that it did what it should.
+
+### 📄 `npm run db:drift`, and why it is not in `verify`
+
+`supabase db diff --linked` applies every migration to a shadow database first; **it took minutes on 44.** A check that slow in the fast loop is a check that gets turned off.
+
+**The allowlist is Supabase's baseline, not this project's, and it is the reason the check is usable at all.** A new project ships **`pg_net`** and **default privileges granting `UPDATE ON SEQUENCES`** to `anon`, `authenticated` and `service_role`. No migration declares either, so the diff proposes removing them **on every run** — and **a check that always fails is a check nobody reads.** Matched by exact statement, so a revoke on `TABLES` rather than `SEQUENCES` still reports.
+
+### 📄 Two results, and the second is a finding
+
+**No real drift across 44 migrations.** Recorded as a result rather than as silence.
+
+**And a privilege the project never granted** — those sequence defaults. **Filed as F-060 rather than fixed**, and the reason is honest rather than lazy: an insert drawing from a sequence needs `USAGE` **or** `UPDATE`, so revoking the platform default could break `ingestion_jobs` inserts — the drain, the sweeps and the seed runners all do that. **Reachability looks low** since PostgREST exposes no sequence functions, **but the grant is real.** Whether to deviate from the platform baseline is a decision with breakage risk.
+
+### 📄 What it does not do
+
+**It compares structure, not behaviour.** A migration that creates the right objects and the wrong policy passes, and **§106's column grant with no revoke is invisible to it.** `scripts/check-privileges.mjs` is the companion; neither replaces the other.
+
+**F-032's other half is accepted rather than fixed**: `verify:full` still does not reset the database, so a local run can pass without the migration being parsed. **A less-travelled path** — `CLAUDE.md` says `verify:full` is not to be run without being asked — and stated so it is not mistaken for an oversight.
+
+### ⚠️ The merge cost a second full CI run, and that is the cycle's own lesson
+
+**This branch and §112's both added a `###` section at the same anchor in `architecture.md`.** Resolved by keeping both in numerical order — neither supersedes the other — but **STEP J requires green on the exact pushed SHA**, so the earlier green on `4cb9d9d` did not carry to `ff480f6`.
+
+**That is ~23 billed minutes spent on nothing but a documentation collision**, and it is the clearest instance yet of what STEP A measured in the same session: **parallel branches touching the same documents are now the likeliest way to spend CI on no change at all.** Worth weighing before running cycles in parallel again.
+
+`architecture.md` §12.5.
+
+**The previous entry, left as written.** Verified at **`113cff7`**.
 
 ## §113 — ✅ Hiding the albums you already have — **[GATE CLEARED: CI `37007523879` `completed/success` on `8ff6a9b`, attempt 1, 148 end-to-end, **zero flaky**. NO MIGRATION. MERGED AS PR #49.]**
 
