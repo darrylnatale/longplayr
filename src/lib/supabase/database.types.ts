@@ -1196,6 +1196,9 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      daitch_mokotoff: { Args: { "": string }; Returns: string[] }
+      dmetaphone: { Args: { "": string }; Returns: string }
+      dmetaphone_alt: { Args: { "": string }; Returns: string }
       ensure_collection_entry: {
         Args: { p_album_id: string; p_listened_on?: string; p_user_id: string }
         Returns: {
@@ -1317,6 +1320,8 @@ export type Database = {
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       slugify: { Args: { value: string }; Returns: string }
+      soundex: { Args: { "": string }; Returns: string }
+      text_soundex: { Args: { "": string }; Returns: string }
       try_acquire_drain_lease: {
         Args: { p_id: string; p_ttl_seconds: number }
         Returns: boolean

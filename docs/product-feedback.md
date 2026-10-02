@@ -543,7 +543,10 @@ When adding an album that longplayr does not already hold, the MusicBrainz panel
 
 ### F-019 — MusicBrainz aliases are not ingested, and they are the cheapest unused lever on search quality
 
-**2026-09-05 · search, catalogue, ingestion · NEW**
+**2026-09-05 · search, catalogue, ingestion · SPLIT 2026-10-02 — PHONETIC HALF IN FLIGHT, ALIAS HALF DEFERRED**
+
+> **Split at STEP B on a finding this entry does not contain.** **Artists only ever arrive embedded in `artist-credits`**, there is no direct `artist/{mbid}` lookup anywhere, and that include does not carry aliases — so **ingesting aliases needs a new upstream request per artist** against the one-per-second budget, plus a new job kind. This entry says aliases would arrive _"without touching the search engine"_, which is true and was never the hard part; what it does not say is that **nothing currently fetches them.** `architecture.md` §10.4a.
+> **The second lever named here — phonetic matching — needs no upstream request and is being built.** §10.4: Double Metaphone as a **fallback only when the four existing tiers return nothing**, so no query that works today can change. Artists only.
 
 From asking how Spotify, Discogs and Letterboxd tolerate badly misspelled queries. **The answer appears to be mostly data rather than algorithm** — and two of those data sources are available to longplayr and currently unused.
 

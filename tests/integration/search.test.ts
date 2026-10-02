@@ -411,3 +411,73 @@ describe('search_albums — credited artists', () => {
     expect(Object.keys(fromRpc.artists).sort()).toEqual(Object.keys(fromEmbed.artists).sort());
   });
 });
+
+/**
+ * The phonetic fallback — F-019's second lever, `architecture.md` §10.4.
+ *
+ * **The load-bearing assertion is the negative one.** Adding a tier that only
+ * fires on an empty result set is only safe if it genuinely cannot touch a
+ * non-empty one, and that is a property of the `if not found` branch rather
+ * than of the phonetic predicate.
+ *
+ * **The measurement that justified this is in §10.4 and corrected the
+ * entry's premise.** F-019 argues from `smith`/`smyth`, whose trigram
+ * similarity is 0.333 — already above the threshold. The real win is consonant
+ * substitution: `radiohead`/`radeeohed` is 0.250 and phonetically identical.
+ */
+describe('phonetic fallback for artist search', () => {
+  it('leaves an exact match alone', async () => {
+    const { data, error } = await admin.rpc('search_artists', { query: 'Radiohead' });
+    expect(error).toBeNull();
+    expect(data![0].name).toBe('Radiohead');
+    expect(data![0].tier).toBe(1);
+  });
+
+  it('leaves a typo the existing tiers already reach alone', async () => {
+    // Trigram similarity 0.583, so this was always tier 4 and must stay there.
+    const { data } = await admin.rpc('search_artists', { query: 'Radiohed' });
+    expect(data!.length).toBeGreaterThan(0);
+    expect(data!.every((row) => row.tier < 5)).toBe(true);
+  });
+
+  it('rescues a query the existing tiers miss, at tier 5', async () => {
+    // **Trigram 0.250 — below the 0.3 threshold — and phonetically identical.**
+    // This returned nothing before the fallback existed.
+    const { data, error } = await admin.rpc('search_artists', { query: 'Radeeohed' });
+    expect(error).toBeNull();
+    expect(data!.map((row) => row.name)).toContain('Radiohead');
+    expect(data!.find((row) => row.name === 'Radiohead')!.tier).toBe(5);
+  });
+
+  it('never mixes a phonetic match into a result set that already had rows', async () => {
+    // **The guarantee, asserted directly.** Any query reaching tiers 1–4 must
+    // come back with no tier-5 row at all — not merely with tier 5 ranked last.
+    // **The suite's own fixtures, not the global ones.** This file seeds its
+    // artists in `beforeAll` and an earlier draft used names from the fixture
+    // catalogue instead — which returned zero rows and failed on the wrong
+    // assertion.
+    for (const query of ['Radiohead', 'Radiohed', 'Pink Floyd', 'The Who']) {
+      const { data } = await admin.rpc('search_artists', { query });
+      expect(data!.length).toBeGreaterThan(0);
+      expect(data!.some((row) => row.tier === 5)).toBe(false);
+    }
+  });
+
+  it('still returns nothing for a query that is not a misspelling of anything', async () => {
+    const { data } = await admin.rpc('search_artists', { query: 'zzzqqqxxx' });
+    expect(data).toEqual([]);
+  });
+
+  it('does not rescue a one or two character query', async () => {
+    /*
+     * **Reasoned, and not demonstrable on this catalogue** — stated rather than
+     * implied. `dmetaphone` of a very short string matches a great many names,
+     * so the fallback is guarded at three characters; but the eight fixture
+     * artists produce **no** short-string phonetic collision, so this asserts
+     * the guard's effect rather than observing it rescue-then-stop. A catalogue
+     * where `zq` matched something would make it a real test.
+     */
+    const { data } = await admin.rpc('search_artists', { query: 'zq' });
+    expect(data).toEqual([]);
+  });
+});
