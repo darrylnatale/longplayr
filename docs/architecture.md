@@ -22,11 +22,11 @@ Notation: **[DECIDED]** = explicitly chosen. **[INFERRED]** = follows necessaril
 - [9. Caching](#9-caching) · 164 words
 - [10. Search](#10-search) · 3,725 words
 - [11. Environments and deployment](#11-environments-and-deployment) · 878 words
-- [12. Testing](#12-testing) · 7,859 words
+- [12. Testing](#12-testing) · 9,194 words
 - [13. Observability](#13-observability) · 88 words
 - [14. Security](#14-security) · 1,773 words
 - [15. Privacy](#15-privacy) · 767 words
-- [16. Data access patterns](#16-data-access-patterns) · 13,668 words
+- [16. Data access patterns](#16-data-access-patterns) · 14,179 words
 - [17. Scalability — what breaks first, and when](#17-scalability--what-breaks-first-and-when) · 935 words
 - [17a. A temporary operator surface for the ingestion queue **[DECIDED 2026-09-13]**](#17a-a-temporary-operator-surface-for-the-ingestion-queue-decided-2026-09-13) · 1,407 words
 - [18. Verification required before implementation](#18-verification-required-before-implementation) · 558 words
@@ -1590,6 +1590,53 @@ A mechanical scan for `.click()` followed within three non-blank lines by `page.
 **`preflight-e2e.mjs` delegates rather than duplicating.** What stays there is the one thing this cannot tell: **whether Supabase is actually answering.** A container that is up but wedged passes every check here and still fails the suite.
 
 **All four states were verified against a real machine**, not only unit-tested: Docker down, Docker up with the stack down, the stack up with `.env.local` removed, and ready.
+
+### 12.6 What moving every slow test to CI actually costs **[MEASURED 2026-10-02]**
+
+**F-045 was filed after the change rather than before it**, so the exposure would be visible if it started to bite. There was no data then. There is now, and the entry can be answered.
+
+**Measured across 1–2 October, the first two days after the budget refresh.**
+
+|                               |                                         |
+| ----------------------------- | --------------------------------------- |
+| Runs                          | **37** (36 completed, 1 in flight)      |
+| Conclusions                   | **32 success · 4 cancelled · 0 failed** |
+| Attempt 1, zero flaky         | **32 of 32**                            |
+| Median wall time to a verdict | **23 minutes**                          |
+| Billed estimate               | **~790 of 2,000 minutes — 39%**         |
+| Remaining at 23 min a run     | **~52 runs**                            |
+
+### 📄 The arrangement works, and that is the first finding
+
+**F-045's worry was that moving slow tests to CI trades reliability for latency.** The reliability is not merely preserved — **32 of 32 green on first attempt with zero flaky**, against the eight local runs §12 measured that lost **9, 5, 2, 9, 7, 14, 19 and 6** tests to the machine. **Zero failures in 36 completed runs.**
+
+**The latency is real and is 23 minutes to a verdict.** That is the price, and it is being paid for something that demonstrably works.
+
+### 🔎 The slow job is the whole cost, measured rather than assumed
+
+|                      | slow job   | fast job | slow share      |
+| -------------------- | ---------- | -------- | --------------- |
+| six consecutive runs | 17.7–26.4m | 1.4–1.9m | **92.3%–94.6%** |
+
+**So a run is the integration-and-end-to-end job plus rounding.** Any change to per-run cost is a change to that job, and nothing else moves the number.
+
+### 🔎 Half the spend is the post-merge run, and it is not waste
+
+**18 `push` events against 19 `pull_request`** — so roughly **half the billed minutes are post-merge runs on `main`**. **F-051 established those are not redundant**: they test a different tree from the pull-request run, which tests the merge _result_ rather than `main` itself.
+
+**That is the uncomfortable shape of this.** The budget pressure comes from running CI twice per cycle, and **both runs are meaningful** — so the lever is **per-run cost, not run count.**
+
+### ⚠️ Two avoidable costs this session produced
+
+**Four cancelled runs, ~54 billed minutes.** These are `concurrency: cancel-in-progress` doing its job, and **a cancelled run still bills for what it executed.**
+
+**One conflict cost a full run.** §114: two parallel branches added a section at the same anchor in this file, and STEP J requires green on the exact pushed SHA, so the earlier green did not carry. **~23 minutes for a documentation collision.** The mitigation is sequencing cycles rather than parallelising them, which costs wall time and saves budget.
+
+### 📄 What this does not recommend
+
+**No change to the gate.** The evidence says the arrangement is sound; what it establishes is **the runway**, which at this pace ends around **5 October**. Whether that matters is a decision about pace rather than about testing, and **splitting the slow job so documentation-adjacent changes skip it would reverse what §12.1 deliberately moved to CI** — a decision, not a tweak, and not taken here.
+
+**F-045 is closed as answered.** The number it asked for exists, and §12.1's decision stands on better evidence than it had when it was made.
 
 ### 12.5 Comparing the deployed schema against the migrations **[DECIDED 2026-10-02]**
 
