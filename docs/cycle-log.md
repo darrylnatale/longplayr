@@ -10,6 +10,7 @@
 
 **Unnumbered entries predate the §-numbering convention.** They sit between §87 and §86 in time.
 
+- [§116 — ✅ The artwork backlog is not clearing, it is cleared](#116---the-artwork-backlog-is-not-clearing-it-is-cleared--ci-skipped-documentation-only-paths-ignore-fires-no-run-confirmed-from-gh-run-list) · 399 words
 - [§115 — ✅ What moving every slow test to CI costs, answered](#115---what-moving-every-slow-test-to-ci-costs-answered--ci-skipped-documentation-only-paths-ignore-fires-no-run-confirmed-from-gh-run-list) · 464 words
 - [§114 — ✅ Comparing the deployed schema against the migrations](#114---comparing-the-deployed-schema-against-the-migrations--gate-cleared-ci-37011574887-completedsuccess-on-ff480f6-attempt-1-no-migration-merged-as-pr-50) · 537 words
 - [§113 — ✅ Hiding the albums you already have](#113---hiding-the-albums-you-already-have--gate-cleared-ci-37007523879-completedsuccess-on-8ff6a9b-attempt-1-148-end-to-end-zero-flaky-no-migration-merged-as-pr-49) · 468 words
@@ -143,6 +144,34 @@
 - [§17 — Lessons carried forward](#17--lessons-carried-forward) · 450 words
 
 ---
+
+## §116 — ✅ The artwork backlog is not clearing, it is cleared — **[CI SKIPPED: documentation only, `paths-ignore` fires no run. Confirmed from `gh run list`.]**
+
+**F-030 and F-031 both rest on a backlog**, and both were last triaged as _clearing on its own_ / _urgency gone_. **Seventeen days later there is nothing left to clear.**
+
+### 📄 Measured on production, through the public API
+
+**`artwork_status`: pending 0 · found 990 · absent 85 · failed 0, of 1,075 albums.**
+
+**Read through the public REST API with the anon key** — the same read the site performs on every page load — because the CLI offers no way to run SQL against the linked project and `ingestion_jobs` is correctly not `anon`-readable. **`artwork_status` is the artwork queue's own signal, so the public read answers the question completely.**
+
+### 🔎 What the numbers settle
+
+**F-030 asks about work queueing faster than a page view can drain it. `pending` is 0.** Not falling — finished. The entry's own trajectory was 289 albums without a cover on 13 September to 161 on 15 September.
+
+**F-031 proposes parallelising six serial round trips inside an artwork job.** The case was always the backlog. **The optimisation is still correct and is no longer worth doing**, and that distinction is worth keeping: closing an idea that is _right but unneeded_ is what a triage step is for.
+
+**`failed` is 0**, which is the other half — nothing is stuck, so the clearance is not an artefact of jobs giving up.
+
+### 📄 The 85 `absent` are not a backlog, and saying so matters
+
+They are albums **Cover Art Archive has no cover for** — a fact about the world rather than work outstanding, and `architecture.md` §7 records that there is **no fallback source**. **They are the population the cover-art prompt exists to serve** (F-014), and reading them as a queue would make this entry look permanently open.
+
+### 📄 If it comes back
+
+**F-039, MusicBrainz database dumps, is the realistic trigger** — a bulk load is exactly what would recreate a backlog, and **F-059 records the two limits standing in front of it**: slug assignment is quadratic in albums sharing a title, and an advisory lock per slug base caps one transaction at 12,000–20,000 distinct titles. **F-031 is the entry to reopen then**, not a new one.
+
+**The previous entry, left as written.** Verified at **`3ea84d2`**.
 
 ## §115 — ✅ What moving every slow test to CI costs, answered — **[CI SKIPPED: documentation only, `paths-ignore` fires no run. Confirmed from `gh run list`.]**
 
