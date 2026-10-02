@@ -16,7 +16,11 @@
 
 **The verification gate moved, and `CLAUDE.md` now carries it. [APPLIED 2026-09-15]** Work happens on a branch and reaches `main` only through a green CI run; STEP F runs `npm run verify` plus targeted suites; **the migration gate moved from STEP I to STEP J**, so the order is **CI green → migration applied → merge**. The decision is `architecture.md` §12; the process is `CLAUDE.md`. **The two no longer disagree.** (§68, §69)
 
-**Verified 2026-10-02 against the repository, the remote, CI and production.** `main` is at **`060cee3`**, the merge of PR #43. **43 migrations, 0 unapplied** — §98, §100, §104, §106 and §107 each applied at STEP J and confirmed before their merges. **Twenty-one CI runs since the 1 October refresh, every one green on attempt 1 with zero flaky.** Production: `/`, `/albums/all`, `/search` and `/moderation` 200. **Nothing is unmerged and nothing is pending.**
+**Verified 2026-10-02 against the repository, the remote, CI and production.** `main` is at **`12c3447`**, the merge of PR #45. **43 migrations, 0 unapplied.** **Twenty-three CI runs since the 1 October refresh, every one green on attempt 1 with zero flaky**, and **PR #45 was the first merge under `CI SKIPPED`** — documentation only, `paths-ignore` fired no run, confirmed from `gh run list` rather than from the diff. **Nothing is unmerged and nothing is pending.**
+
+**Phase 7's security review (§106) and performance pass (§109) are both done.** What remains in Phase 7 is **error tracking and uptime checks, and both need an external service chosen** — `CLAUDE.md`'s working agreement sends that to the maintainer. **There is no Phase 7 work left that does not need a decision.**
+
+**The largest measured risk is F-059**: slug assignment is quadratic in albums sharing a title, and an advisory lock per slug base caps a single transaction at 12,000–20,000 distinct titles. **Not a problem today** — ingestion inserts one album per transaction — but it is what stands in front of F-039, database dumps.
 
 **`npm run verify` now includes `scripts/check-privileges.mjs`** (§106) — a table added without RLS, or a function added without an `EXECUTE` revoke, fails before review. **It is a completeness check, not a correctness check**, and §16.12 records why both are needed.
 

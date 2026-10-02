@@ -10,6 +10,8 @@
 
 **Unnumbered entries predate the §-numbering convention.** They sit between §87 and §86 in time.
 
+- [§109 — ✅ What breaks first, measured](#109---what-breaks-first-measured--ci-skipped-documentation-only-paths-ignore-fired-no-run-confirmed-by-gh-run-list-merged-as-pr-45) · 527 words
+- [§108 — ✅ `db:types` no longer destroys the file it generates](#108---dbtypes-no-longer-destroys-the-file-it-generates--gate-cleared-ci-36966164219-completedsuccess-on-95bf1d1-attempt-1-no-migration-merged-as-pr-44) · 323 words
 - [§107 — ✅ One drainer at a time, so the limiter means something](#107---one-drainer-at-a-time-so-the-limiter-means-something--gate-cleared-ci-36963947408-completedsuccess-on-09cecaa-attempt-1-821-integration-and-146-end-to-end-zero-flaky-migration-applied-and-confirmed-merged-as-pr-43) · 662 words
 - [§106 — ✅ The one table the privilege rule was never applied to](#106---the-one-table-the-privilege-rule-was-never-applied-to--gate-cleared-ci-36960897875-completedsuccess-on-6f94e1f-attempt-1-migration-applied-and-confirmed-merged-as-pr-42) · 543 words
 - [§105 — ✅ A way to jump to a page, and two copies of the pager retired](#105---a-way-to-jump-to-a-page-and-two-copies-of-the-pager-retired--gate-cleared-ci-36958456572-completedsuccess-on-f062c15-attempt-1-146-end-to-end-zero-flaky-no-migration-merged-as-pr-41) · 408 words
@@ -135,6 +137,60 @@
 - [§17 — Lessons carried forward](#17--lessons-carried-forward) · 450 words
 
 ---
+
+## §109 — ✅ What breaks first, measured — **[CI SKIPPED: documentation only, `paths-ignore` fired no run, confirmed by `gh run list`. MERGED AS PR #45.]**
+
+**Phase 7's performance pass**, at **50,007 synthetic albums** locally — roughly **48× the live catalogue**, and recorded as a projection rather than a measurement of production. `architecture.md` §17.1 to §17.3, filed as F-059.
+
+### 📄 The read paths that serve pages are not what breaks
+
+`getRecentAlbums` 8.1 ms on an index scan · catalogue page 1 2.1 ms · page 500 with a 12,000-row offset 7.6 ms. **Deep pagination scans the offset rather than seeking past it** — the known cost, and not worth a keyset rewrite on this evidence.
+
+**This discharged a claim made earlier the same session.** §16.11 added the `created_at` index while explicitly stating it claimed **no measured improvement.** It is used, and now there is a number. **A cycle closing a loop it opened eight hours earlier is the process working.**
+
+### 🔎 What breaks is slug assignment, and it is quadratic
+
+**250 rows sharing one title 0.80 s · 1,000 → 4.01 s · 2,000 → 11.79 s · 50,000 did not finish**, against a flat ~0.15 s for distinct titles. §89's free-slug probe loop is correct and was written to fix a real collision; **its cost had never been measured.**
+
+**A second ceiling, from the same trigger**: `assign_album_slug` takes `pg_advisory_xact_lock` **per slug base**, held to the end of the transaction, so one transaction cannot exceed **between 12,000 and 20,000 distinct titles** before `out of shared memory`. **Re-locking the same base is not a new lock entry**, which is why the limit is distinct titles rather than rows — and why a first attempt at 50,000 failed while a 12,000-row probe passed.
+
+**Both are reachable rather than contrived.** _Greatest Hits_ is among the most common album titles there is, and `CLAUDE.md` makes the catalogue **completion-oriented in depth** — which is the direction that accumulates shared titles. **Neither is a problem today**, because ingestion inserts one album per transaction.
+
+**This is what stands in front of F-039**, MusicBrainz database dumps, which is precisely a large single-transaction insert.
+
+### 📄 No fix proposed, and the restraint is the decision
+
+Both are properties of a trigger written to fix a real defect. Replacing the probe with a direct `max(counter)` lookup is plausible, **unexamined**, and would need its own cycle and its own collision tests. `CLAUDE.md` forbids using the cycle process to manufacture work. **What was missing was the number.**
+
+### ⚠️ Two probes that produced nothing, recorded so they are not mistaken for findings
+
+**A bare `title ilike '%night%'` over 50,000 rows did not complete** in the time available — but that is **not the search path**. `search_albums` uses the trigram and tsvector indexes, and the probe was simply the wrong query. **No number is claimed from it.**
+
+**An attempt to quantify the index by dropping it in a rolled-back transaction also hung**, so the without-index comparison is absent. The index's _use_ is established from the plan; **its benefit is not quantified, and that gap is stated rather than estimated.**
+
+**The previous entry, left as written.** Verified at **`12c3447`**.
+
+## §108 — ✅ `db:types` no longer destroys the file it generates — **[GATE CLEARED: CI `36966164219` `completed/success` on `95bf1d1`, attempt 1. NO MIGRATION. MERGED AS PR #44.]**
+
+**F-058, filed and fixed the same day** — found while §107 was in flight.
+
+### 🔎 The shell was the bug, not the command
+
+`db:types` was `supabase gen types typescript --local > src/lib/supabase/database.types.ts`. **A `>` redirect truncates the target before the command runs**, so with the database unreachable the file was already empty when the CLI wrote its error JSON into it. Every later `tsc` run failed with `TS1005: ';' expected` **on line 1** — pointing at the file rather than at the missing database.
+
+**`CLAUDE.md` forbids hand-editing that file**, so the only correct repair is regeneration or `git`, and the next person to meet it is looking at a TypeScript error two steps from the cause.
+
+**An exit-code check could not have fixed this**, which is why the shape changed rather than gaining a guard: the CLI _does_ exit non-zero, and the truncation had already happened. **Capture first, write only on success.**
+
+### 📄 The content guard is the second half and is not redundant
+
+A CLI version that printed a warning, or succeeded while emitting something that is not a module, would pass an exit-code check. The guard requires the `Json` alias **and** that the output is not a JSON object — **two conditions, because an error payload quoting the file's own text back would pass one.**
+
+### 📄 Verified by causing the failure
+
+With the stack stopped it refuses, names `npm run db:start`, and leaves the file **byte-identical to the committed version**. With the stack up it reports the schema already matches. **Five unit tests on the guard, including the exact payload from F-058.** `architecture.md` §12.3 — the discipline §12.2 established: a fix to a failure path is tested by taking the path.
+
+**The previous entry, left as written.** Verified at **`4144562`**.
 
 ## §107 — ✅ One drainer at a time, so the limiter means something — **[GATE CLEARED: CI `36963947408` `completed/success` on `09cecaa`, attempt 1, 821 integration and 146 end-to-end, **zero flaky**. MIGRATION APPLIED AND CONFIRMED. MERGED AS PR #43.]**
 
