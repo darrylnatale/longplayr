@@ -2,6 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { createAdminClient } from '@/lib/supabase/admin';
 
+import { fetchAndStoreArtistAliases } from './aliases';
+
 import { countRows, COUNT_ONLY } from '../count';
 import type { Database } from '@/lib/supabase/database.types';
 
@@ -446,6 +448,69 @@ export async function enqueueMissingTracklists(
   return { candidates: mbids.length, queued };
 }
 
+/** Alias states that warrant another attempt. `stored` and `absent` are settled. */
+const ALIAS_RETRYABLE: Database['public']['Enums']['alias_status'][] = ['pending', 'failed'];
+
+/**
+ * Queues alias fetches for artists that have never had one answered.
+ *
+ * **Reads the status column rather than the alias rows**, which is the whole
+ * reason that column exists. An artist with no aliases is indistinguishable
+ * from an unfetched one by looking at `artist_aliases`, so an anti-join there
+ * would re-request the same artists on every sweep forever - the reasoning is
+ * recorded in `20261002150000_artist_alias_status.sql`.
+ *
+ * **One request per artist, not per album**, and that ratio is why this is
+ * affordable at all: `inc=aliases` costs one call against the 1 req/sec budget
+ * and widens search for the artist's whole discography at once.
+ */
+export async function enqueueMissingArtistAliases(
+  options: { limit?: number; priority?: number; admin?: Admin } = {},
+): Promise<{ candidates: number; queued: number }> {
+  const admin = options.admin ?? createAdminClient();
+  const limit = options.limit ?? 500;
+
+  /*
+   * **Oldest first, and the ordering is load-bearing rather than cosmetic.**
+   * The filter is on the retryable statuses, so settled artists are excluded by
+   * the `where` clause instead of by paging - which is what keeps a bounded read
+   * from stalling once most of the catalogue is done. `created_at` only decides
+   * *which* of the outstanding artists this batch takes, and it must be stable
+   * so repeated sweeps make forward progress rather than re-drawing the same
+   * page. Artists carry no popularity score, so there is no better key.
+   */
+  const { data: artists, error } = await admin
+    .from('artists')
+    .select('mbid')
+    .in('alias_status', ALIAS_RETRYABLE)
+    .order('created_at', { ascending: true })
+    .limit(limit);
+
+  if (error) throw error;
+
+  const mbids = (artists ?? []).map((row) => row.mbid);
+  if (mbids.length === 0) return { candidates: 0, queued: 0 };
+
+  const { data: existing, error: jobsError } = await admin
+    .from('ingestion_jobs')
+    .select('target_mbid')
+    .eq('kind', 'fetch_artist_aliases')
+    .in('status', ['pending', 'running'])
+    .in('target_mbid', mbids);
+
+  if (jobsError) throw jobsError;
+  const outstanding = new Set((existing ?? []).map((job) => job.target_mbid));
+
+  let queued = 0;
+  for (const mbid of mbids) {
+    if (outstanding.has(mbid)) continue;
+    await enqueueJob('fetch_artist_aliases', mbid, { admin, priority: options.priority });
+    queued += 1;
+  }
+
+  return { candidates: mbids.length, queued };
+}
+
 async function runJob(job: Job, admin: Admin): Promise<void> {
   switch (job.kind) {
     case 'ingest_release_group': {
@@ -507,6 +572,24 @@ async function runJob(job: Job, admin: Admin): Promise<void> {
       // back to pending behind 30s/5min/30min, then terminally failed and
       // visible. Nothing about this artist is written on failure.
       await discoverAndIngestArtist(job.target_mbid, admin);
+      return;
+    }
+    case 'fetch_artist_aliases': {
+      const result = await fetchAndStoreArtistAliases(job.target_mbid, admin);
+
+      /*
+       * Same shape as artwork and tracklist, and for the same reason.
+       * 'absent' means MusicBrainz answered and there was nothing usable - an
+       * artist with no alias, or an alias set that is all Legal name and
+       * untyped, which section 10.5 drops deliberately. That is a settled fact,
+       * not a retry.
+       *
+       * 'failed' means we never got an answer, and the job must go back into
+       * the queue rather than report success.
+       */
+      if (result.status === 'failed') {
+        throw new Error(`Artist aliases unavailable: ${result.reason}`);
+      }
       return;
     }
     case 'fetch_releases':

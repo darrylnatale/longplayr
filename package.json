@@ -29,6 +29,7 @@
     "db:seed:curated:dryrun": "node scripts/with-websocket.mjs vitest run --project seed tests/seed/curated-dry-run.test.ts",
     "db:backfill:artwork": "node scripts/with-websocket.mjs vitest run --project seed tests/seed/backfill-artwork.test.ts",
     "db:backfill:tracklists": "node scripts/with-websocket.mjs vitest run --project seed tests/seed/backfill-tracklists.test.ts",
+    "db:backfill:aliases": "node scripts/with-websocket.mjs vitest run --project seed tests/seed/backfill-aliases.test.ts",
     "db:backfill:payloads": "node scripts/with-websocket.mjs vitest run --project seed tests/seed/backfill-payloads.test.ts",
     "db:drift": "node scripts/check-schema-drift.mjs"
   },

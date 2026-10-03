@@ -22,6 +22,17 @@ const admin: SupabaseClient<Database> = createClient<Database>(
   { auth: { autoRefreshToken: false, persistSession: false } },
 );
 
+/**
+ * A signed-out client. Used only by the alias tests at the foot of this file,
+ * where the question is whether `anon` can read `artist_aliases` at all - the
+ * rest of this file reads through `admin` because ranking is the subject.
+ */
+const anon: SupabaseClient<Database> = createClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  { auth: { autoRefreshToken: false, persistSession: false } },
+);
+
 const A = (n: number) => `0b0e4f1e-5555-4000-8000-${String(n).padStart(12, '0')}`;
 
 const ALBUMS = [
@@ -479,5 +490,90 @@ describe('phonetic fallback for artist search', () => {
      */
     const { data } = await admin.rpc('search_artists', { query: 'zq' });
     expect(data).toEqual([]);
+  });
+});
+
+/**
+ * Alias matching - F-019, `architecture.md` 10.5.
+ *
+ * **The assertion that matters is the count.** An artist with several matching
+ * aliases must appear once, with its real `album_count` - a naive join
+ * multiplies both, and that reads as a ranking problem rather than a counting
+ * one.
+ */
+describe('artist aliases widen search', () => {
+  const RADIOHEAD = A(106);
+  let artistId = '';
+
+  beforeAll(async () => {
+    const { data } = await admin.from('artists').select('id').eq('mbid', RADIOHEAD).single();
+    artistId = data!.id;
+
+    await admin.from('artist_aliases').delete().eq('artist_id', artistId);
+    const { error } = await admin.from('artist_aliases').insert([
+      { artist_id: artistId, name: 'On a Friday', kind: 'artist_name', locale: 'en' },
+      { artist_id: artistId, name: 'Radio Head', kind: 'search_hint' },
+      { artist_id: artistId, name: 'Radiohed', kind: 'search_hint' },
+    ]);
+    if (error) throw error;
+  });
+
+  afterAll(async () => {
+    if (artistId) await admin.from('artist_aliases').delete().eq('artist_id', artistId);
+  });
+
+  it('reaches an artist by a former name it never held in `name`', async () => {
+    const { data, error } = await admin.rpc('search_artists', { query: 'On a Friday' });
+    expect(error).toBeNull();
+    expect(data!.map((row) => row.name)).toContain('Radiohead');
+  });
+
+  it('ranks an exact alias at tier 2, below an exact name and above the fuzzy tiers', async () => {
+    const { data } = await admin.rpc('search_artists', { query: 'On a Friday' });
+    expect(data!.find((row) => row.name === 'Radiohead')!.tier).toBe(2);
+  });
+
+  it('reaches it by a curated misspelling', async () => {
+    // `Radiohed` stands in for `Kayne West` - a Search hint that exists because
+    // somebody typed it wrong often enough to be worth recording upstream.
+    const { data } = await admin.rpc('search_artists', { query: 'Radiohed' });
+    expect(data!.map((row) => row.name)).toContain('Radiohead');
+  });
+
+  it('does not multiply album_count by the number of matching aliases', async () => {
+    // **The bug the CTE exists to prevent.** Three aliases match `Radio`; a
+    // naive join would report three times the albums and three rows.
+    const { count: real } = await admin
+      .from('album_artists')
+      .select('album_id', { count: 'exact', head: true })
+      .eq('artist_id', artistId);
+
+    const { data } = await admin.rpc('search_artists', { query: 'Radio' });
+    const rows = data!.filter((row) => row.name === 'Radiohead');
+
+    expect(rows).toHaveLength(1);
+    expect(Number(rows[0].album_count)).toBe(real);
+  });
+
+  it('still gives the canonical name tier 1 when it matches exactly', async () => {
+    // Aliases must never outrank the real thing.
+    const { data } = await admin.rpc('search_artists', { query: 'Radiohead' });
+    expect(data![0].name).toBe('Radiohead');
+    expect(data![0].tier).toBe(1);
+  });
+
+  it('matches nothing for a query unlike every name and alias', async () => {
+    const { data } = await admin.rpc('search_artists', { query: 'zzqqxx' });
+    expect(data).toEqual([]);
+  });
+
+  it('lets a signed-out visitor match on an alias', async () => {
+    // Search is a signed-out surface, and the function is `stable` so it runs
+    // as its caller - without the `anon` select grant on `artist_aliases` an
+    // alias match would silently return nothing for exactly the visitors most
+    // likely to be guessing at a spelling.
+    const { data, error } = await anon.rpc('search_artists', { query: 'On a Friday' });
+    expect(error).toBeNull();
+    expect(data!.map((row) => row.name)).toContain('Radiohead');
   });
 });
