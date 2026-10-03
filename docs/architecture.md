@@ -1783,6 +1783,38 @@ No custom metrics pipeline, no dashboards beyond what the platforms provide. Add
 
 ---
 
+### 13.1 What a reader sees when something is missing or broken **[DECIDED 2026-10-03]**
+
+**⚠️ This section's first draft was written from a false measurement, and the correction is kept because the mistake is reusable.** The claim was that a 404 rendered _"nothing at all — not even Next.js's built-in 404"_. **That was an artifact of the probe, not a property of the page.**
+
+**`curl` plus "strip the `<script>` tags" is not what a reader sees.** In the App Router the server-rendered `<body>` is `<div hidden=""></div>`, and the actual content arrives inside the **RSC flight payload** — in those very script tags — to be rendered on hydration. Stripping them and reading what remained produced a confident "blank page" for a page that was never blank. **Production's payload contained `404 | This page could not be found` the whole time**, and the site header — `/albums`, `/search`, `/feed`, `Sign in` — was rendering too, so a second claim, that there was no way onward, was also wrong.
+
+**Any future render probe of this codebase must search the whole response, payload included, rather than the visible body.** That is the durable lesson; the pages below are the smaller half of this entry.
+
+#### What was actually wrong
+
+**Next.js's generic default was appearing inside longplayr's chrome**, and there were no error boundaries at all — no `error.tsx`, no `global-error.tsx`, no `not-found.tsx` — against **24 `notFound()` call sites** already in use across profiles, collections, lists, albums, artists and the admin surface.
+
+**That is a smaller defect than the one first claimed, and it is recorded at its real size.** The not-found page is a polish change: longplayr's own wording and two inline routes onward, replacing a framework string. The **error** boundaries are the substantive half, because nothing stood between an exception and Next's default error page.
+
+#### The not-found page is deliberately uninformative
+
+**This is a security property, not a copy decision.** `admin/page.tsx` calls `notFound()` rather than returning a 403, precisely so a visitor who is not an admin cannot learn the admin surface exists. Four more call sites fire on `profile.status !== 'active'`, where confirming that a suspended account exists would leak a moderation outcome.
+
+**So the page says one generic thing for every cause**, and must continue to. A helpful "we don't have that album" would make an admin probe distinguishable from a missing record by its response body — reintroducing, in the error page, exactly the disclosure `notFound()` was chosen to avoid.
+
+**Per-segment not-found pages are the obvious refinement and are deliberately unbuilt.** An album-specific page offering a search is better for a reader who mistyped a title — but it is also the change most likely to reintroduce the leak by accident, because the useful version of it is the specific version. Anyone adding one must keep the admin and suspended-profile paths on the generic page.
+
+#### `global-error.tsx` cannot use the design tokens
+
+It replaces the root layout, so `globals.css` is not linked and `--color-bg` resolves to nothing. On a dark-ground design that yields black on white — a page that looks broken while reporting a break. **Its ramp values are therefore inlined, and it is the one file in the project where that is correct.**
+
+#### Error tracking is still absent, and this does not supply it
+
+`error.tsx` logs the digest so Vercel's function logs capture something. The probe confirmed the server logs `digest: '4146325540'` for a deliberate throw and the client payload carries the same value, which is what makes a production error findable at all; the file names the line where a reporting call belongs.
+
+**§13's first bullet — "Errors — Sentry or equivalent, on both server and client" — remains unmet**, and this section must not be read as satisfying it. No service aggregates these, nobody is alerted, and a client-side error on a visitor's browser still reaches nobody. What changed is that an error now has a destination for the _reader_. It still has none for the _operator_.
+
 ## 14. Security
 
 - **Auth is delegated** to Supabase — we hash nothing and mint no sessions.
