@@ -1313,6 +1313,31 @@ Proportionate to risk, not uniform coverage.
 - **Authorisation** — since RLS isn't the primary mechanism, application checks are the only barrier and must be tested directly.
 - **One job at a time** — the drain's structural invariant, asserted from _inside_ an executing job by counting `running` rows mid-drain, not inferred from what a drain produced. An in-process test cannot kill its own worker and a throwing runner is not an interruption, so observing the table while work is in flight is the only honest proof (§7).
 
+### A slow end-to-end test is fixed by shortening it, not by retrying it **[DECIDED 2026-10-03]**
+
+**`password-reset.spec.ts` was the single flaky test in three consecutive CI runs** — `37092496425`, `37094175927`, `37095884243` — on three unrelated trees, none of which touches auth or email. F-063.
+
+**Two readings of it were wrong before the CI output was actually read**, and both are kept because each is an easy mistake to repeat:
+
+| Reading                                                                                                       | Why it was wrong                                                                                                                        |
+| ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| A race in `latestLinkFor`, which takes `messages[0]` and might pick a signup confirmation over the reset mail | **The email step passes every time.** The failure is at the _last_ step of the test                                                     |
+| "Merely slow" had already been tried and had not held                                                         | **It is exactly slowness.** What had been tried was `test.slow()`, which only triples Playwright's 30s default — and 90s was not enough |
+
+**The actual error:** `locator.fill: Test timeout of 90000ms exceeded` at line 133 — signing in with the old password, the final assertion. **`playwright.config.ts` sets `workers: 1` and `fullyParallel: false`, so there is no parallel contention to blame.** The test is simply long: nine navigations and two auth round trips.
+
+#### The fix is to remove work, and only then to state a budget
+
+**A third of the test was setup rather than subject.** It drove the entire signup-and-onboarding UI — signup, onboarding, handle claim, profile, four navigations — before the password-reset journey began, and **signup already has its own end-to-end test**. The account is now created through the admin API.
+
+**That also removes the sign-out that followed it, and the replacement is stronger**: the browser never holds a session at all, so nothing downstream can pass because one survived.
+
+**The budget is now `test.setTimeout(180_000)` rather than `test.slow()`** — an explicit number, because the number is the decision. A multiplier of a framework default silently changes meaning if that default moves.
+
+#### What this evidence cannot establish
+
+**A flake fix is not proved by one green run**, and must not be reported as proved by one. What a single run can show is that the test still passes and is faster; only repeated runs can show the flake is gone. **F-063 stays open until several consecutive runs are clean.**
+
 ### Integration isolation is a contract the runner must actually enforce **[2026-08-25]**
 
 The integration project shares one database and its config has always said so — `fileParallelism: false`, with the comment that running these files in parallel would let them see each other's rows. **That project-level setting was demonstrably not sufficient to guarantee the intended isolation**, so `npm run test:integration` now passes `--no-file-parallelism` explicitly. The contract is unchanged; only its enforcement moved to the command, where it is observable.
