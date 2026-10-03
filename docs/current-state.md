@@ -153,7 +153,7 @@
 
 |                  |                                                                               |
 | ---------------- | ----------------------------------------------------------------------------- |
-| Unit + component | **585**                                                                       |
+| Unit + component | **597**                                                                       |
 | Integration      | **846** (need a local database)                                               |
 | Seed             | **1**                                                                         |
 | End-to-end       | **148** (Playwright)                                                          |

@@ -10,6 +10,7 @@
 
 **Unnumbered entries predate the §-numbering convention.** They sit between §87 and §86 in time.
 
+- [§126 — ✅ Search that updates as you type](#126---search-that-updates-as-you-type--gate-cleared-ci-37112549323-completedsuccess-on-0ff8fd7-attempt-1-597-unit-and-component-148-end-to-end-zero-flaky-no-migration-merged-as-pr-71-deployed-and-probed-live) · 504 words
 - [§125 — ✅ Aliases actually reach search](#125---aliases-actually-reach-search--gate-cleared-ci-37109281396-completedsuccess-on-6c2a5fb-attempt-1-585-unit-and-component-148-end-to-end-zero-flaky-no-migration-merged-as-pr-69-backfill-run-against-production) · 547 words
 - [§124 — ✅ A whole test layer that was configured, green and absent](#124---a-whole-test-layer-that-was-configured-green-and-absent--gate-cleared-ci-37101653554-completedsuccess-on-306412e-attempt-1-585-unit-and-component-148-end-to-end-zero-flaky-no-migration-merged-as-pr-67) · 559 words
 - [§123 — ✅ A test that hangs, diagnosed three times as a test that is slow](#123---a-test-that-hangs-diagnosed-three-times-as-a-test-that-is-slow--gate-cleared-ci-37099597106-completedsuccess-on-736ca64-attempt-1-574-unit-148-end-to-end-zero-flaky-90m-no-migration-merged-as-pr-65) · 555 words
@@ -181,6 +182,50 @@
 **PR #56.** Both checks required, strict mode on. **`enforce_admins` is `false` and the repository has exactly one admin**, so the protection is a guard rail the maintainer can step over rather than a mechanism. An earlier sentence said it made the branch rule _"hold mechanically"_, which it does not, and `architecture.md` §12.7 now says the weaker true thing instead.
 
 Verified at **`818cf50`**.
+
+## §126 — ✅ Search that updates as you type — **[GATE CLEARED: CI `37112549323` `completed/success` on `0ff8fd7`, attempt 1, 597 unit and component, 148 end-to-end, **zero flaky**. NO MIGRATION. MERGED AS PR #71. DEPLOYED AND PROBED LIVE.]**
+
+**F-002, decided by the maintainer on 2026-10-03.** The entry raised its own caveat — _"this may have implications for search speed — unsure whether that makes it impractical"_ — and **measurement split the page in two.**
+
+|                        |                                                                               |
+| ---------------------- | ----------------------------------------------------------------------------- |
+| Local catalogue search | **24ms**, `search_albums('radiohead')` on the deployed database, 1,079 albums |
+| The MusicBrainz panel  | a measured **~20s**, and up to **three** requests against one per second      |
+
+**So as-you-type is comfortably practical locally and impossible upstream.** F-002 predicted exactly this: _"a local-catalogue-only as-you-type search and an upstream-reaching one may be different questions."_ They are.
+
+### 📄 The URL stays the state
+
+`SearchField` calls `router.replace` on a debounce and **the page remains a server component**. Holding results in client state would have meant a second implementation of every result row, free to drift from the server's.
+
+**`replace` rather than `push`**, so nine characters leave one history entry. **`scroll: false`**, because a list jumping to the top on each keystroke is worse than pressing enter was. **The form is left in place**, so enter still submits with scripting off.
+
+**The 400ms debounce is sized for the upstream request, not the local one** — at 24ms the catalogue could update far more eagerly. Typed straight through, a query produces one navigation.
+
+### 🔎 A three-character minimum, which as-you-type newly requires
+
+**Before this change a query reached the upstream gate only on enter**, so a one-letter search was deliberate and vanishingly rare. **Now the URL moves whenever typing pauses, and pausing after the first letter is ordinary** — spending up to three rate-limited requests to return records that merely begin with that letter.
+
+**The local search is untouched and still runs from the first character.** The same threshold also gates the signed-out _"sign in to search MusicBrainz"_ message, so the two branches cannot advertise different rules for one capability.
+
+### ⚠️ The cost, recorded rather than buried
+
+**This is strictly more upstream requests than pressing enter was**, for anyone typing in bursts with gaps over 400ms. Bounded by the three-character floor, the debounce, the signed-in requirement, the rate limiter serialising whatever queues, and `searchUpstream` failing soft to an empty list. **Not bounded by a per-session cap — there is none**, and that is the mechanism to add if it ever bites in use.
+
+### 📄 Evidence, including the boundary probed twice
+
+`npm run verify` green from a clean `.next`, exit 0. **Thirteen new tests** — nine on the debounce, the behaviour most likely to regress, and four on the threshold. **No new dependency**: the component tests use `fireEvent`, since `user-event` is not installed.
+
+Probed signed-out against a local production build **and then against production**, with the same result both times:
+
+| Query           | Sign-in offer |
+| --------------- | ------------- |
+| `zz` (2 chars)  | **absent**    |
+| `zzz` (3 chars) | **present**   |
+
+**The first component tests to exercise real interaction**, which §124 made possible four cycles earlier by pinning Node.
+
+Verified at **`0ff8fd7`**, merged at **`6b36098`**.
 
 ## §125 — ✅ Aliases actually reach search — **[GATE CLEARED: CI `37109281396` `completed/success` on `6c2a5fb`, attempt 1, 585 unit and component, 148 end-to-end, **zero flaky**. NO MIGRATION. MERGED AS PR #69. BACKFILL RUN AGAINST PRODUCTION.]**
 
