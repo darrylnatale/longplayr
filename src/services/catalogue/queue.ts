@@ -60,6 +60,23 @@ export const INTERACTIVE_JOB_PRIORITY = 10;
  */
 export const BULK_ARTWORK_PRIORITY = 200;
 
+/**
+ * Aliases nobody is waiting for.
+ *
+ * **Behind bulk artwork, which is already behind everything else.** An alias
+ * changes nothing a reader can see until somebody searches a spelling the
+ * catalogue does not hold, so it is the least urgent work in the queue — and
+ * unlike artwork it **spends the MusicBrainz budget**, one request per artist
+ * against a ceiling of one per second. A request taken for an alias is a
+ * request not taken for an ingest somebody is waiting on.
+ *
+ * **Named rather than reusing `BULK_ARTWORK_PRIORITY`.** The two happen to
+ * share a band today; a constant called *artwork* carrying alias jobs would be
+ * a comment that lies, and the next person to retune artwork would move
+ * aliases without meaning to.
+ */
+export const BULK_ALIAS_PRIORITY = 210;
+
 export async function enqueueJob(
   kind: JobKind,
   targetMbid: string,

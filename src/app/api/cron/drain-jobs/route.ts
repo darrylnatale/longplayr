@@ -5,10 +5,12 @@ import {
   drainJobs,
   enqueueFailedExpansions,
   enqueueMissingArtwork,
+  enqueueMissingArtistAliases,
   enqueueMissingTracklists,
   enqueueStaleTracklists,
   queueDepth,
 } from '@/services/catalogue/jobs';
+import { BULK_ALIAS_PRIORITY } from '@/services/catalogue/queue';
 
 /**
  * Drains the ingestion queue.
@@ -103,6 +105,25 @@ export async function GET(request: NextRequest) {
        */
       staleTracklists: await enqueueStaleTracklists(),
       expansions: await enqueueFailedExpansions(),
+      /*
+       * **Last, smallest, and lowest priority — all three deliberate.**
+       *
+       * **Last** so the sweeps above keep precedence over work nobody is
+       * waiting for. **Lowest priority** because an alias spends the
+       * MusicBrainz budget without changing anything a reader can see until
+       * they search an unusual spelling.
+       *
+       * **And bounded at 25, which is the part that is easy to get wrong.**
+       * A sweep inserts one row per job, serially, so letting this take its
+       * 500 default would have spent seconds of a 45-second drain budget on
+       * inserts alone, on every run, while a backlog lasted. Twenty-five per
+       * run is 300 a day across twelve runs — far more than new artists
+       * arrive — and costs about a second.
+       */
+      artistAliases: await enqueueMissingArtistAliases({
+        limit: 25,
+        priority: BULK_ALIAS_PRIORITY,
+      }),
     };
 
     const summary = await drainJobs(

@@ -807,6 +807,32 @@ The upstream panel asks MusicBrainz for **25** release groups and displays up to
 
 ---
 
+### 7.6 Aliases reach production through the cron, at the lowest priority in the queue **[DECIDED 2026-10-03]**
+
+**§10.5 built alias ingestion and left it inert.** The table, the job kind, the drain case, the sweep and the backfill runner all shipped — and **nothing in production ever called the sweep**, so after a day the deployed database held **352 artists all `pending`, zero alias rows and zero alias jobs ever created.**
+
+**The gap was in the cycle that built it**, under a comment in the cron route reading _"a sweep nobody calls is how a recovery path silently stops being one."_ The sweep was written, tested, and not wired.
+
+**Approved by the maintainer on 2026-10-03** — aliases should be in search — which is the decision that had been carried across three handoffs.
+
+#### Lowest priority, and that is a budget decision rather than a politeness
+
+`BULK_ALIAS_PRIORITY = 210` sits behind `INTERACTIVE_JOB_PRIORITY` (10), `DEFAULT_JOB_PRIORITY` (100) and `BULK_ARTWORK_PRIORITY` (200).
+
+**Behind bulk artwork specifically, which is the part worth justifying.** Artwork is free: Cover Art Archive imposes no rate limit. **An alias costs a MusicBrainz request against a ceiling of one per second**, so a request taken for an alias is a request not taken for an ingest somebody is waiting on. Nothing a reader can see changes until they search a spelling the catalogue does not hold.
+
+**Named rather than reusing the artwork constant.** They share a band today; a constant called _artwork_ carrying alias jobs would be a comment that lies, and the next person retuning artwork would move aliases without intending to.
+
+#### Bounded at 25 per run, which is the easy thing to get wrong
+
+**A sweep inserts one row per job, serially.** Left at its 500 default this would have enqueued all 352 in one cron invocation — **hundreds of serial inserts inside a 45-second drain budget**, on every run until the backlog cleared, spending on bookkeeping the time meant for fetching.
+
+**Twenty-five per run is 300 a day across twelve runs**, far above the rate at which new artists arrive, and costs about a second.
+
+#### Two mechanisms, because one of them does not repeat
+
+**The cron wiring is the durable fix** — without it a newly ingested artist never gets aliases, which is the defect, not the backlog. **The backfill run is a one-off** that makes the existing 352 live immediately rather than over the following day. Neither substitutes for the other.
+
 ### 7.5 An artist-shaped upstream query resolves the artist, then browses them **[DECIDED 2026-10-03]**
 
 **`product-spec.md` §8.10 recorded that the add-to-catalogue panel does not match artist names, and F-018 recorded it failing repeatedly in ordinary use.** Both were blocked from investigation because the local `MUSICBRAINZ_CONTACT` was a placeholder and the panel could not populate. **That blocker went away**, and the question is now settled with live measurements rather than reasoning.
