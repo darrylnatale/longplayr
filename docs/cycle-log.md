@@ -10,6 +10,8 @@
 
 **Unnumbered entries predate the §-numbering convention.** They sit between §87 and §86 in time.
 
+- [§119 — ✅ Letting search find an artist by a name they no longer use](#119---letting-search-find-an-artist-by-a-name-they-no-longer-use--gate-cleared-ci-37056898081-completedsuccess-on-f72787d-attempt-1-574-unit-846-integration-148-end-to-end-zero-flaky-migration-applied-and-confirmed-deployed-and-probed-live-merged-as-pr-57) · 771 words
+- [§118 — ✅ Unblocking the things only the maintainer could unblock](#118---unblocking-the-things-only-the-maintainer-could-unblock--gate-cleared-three-prs-54-55-and-56-each-ci-completedsuccess-no-migration-all-merged) · 415 words
 - [§117 — ✅ The obvious fix to the quadratic slug is wrong twice](#117---the-obvious-fix-to-the-quadratic-slug-is-wrong-twice--ci-skipped-documentation-only-paths-ignore-fires-no-run) · 531 words
 - [§116 — ✅ The artwork backlog is not clearing, it is cleared](#116---the-artwork-backlog-is-not-clearing-it-is-cleared--ci-skipped-documentation-only-paths-ignore-fires-no-run-confirmed-from-gh-run-list) · 399 words
 - [§115 — ✅ What moving every slow test to CI costs, answered](#115---what-moving-every-slow-test-to-ci-costs-answered--ci-skipped-documentation-only-paths-ignore-fires-no-run-confirmed-from-gh-run-list) · 464 words
@@ -145,6 +147,82 @@
 - [§17 — Lessons carried forward](#17--lessons-carried-forward) · 450 words
 
 ---
+
+## §118 — ✅ Unblocking the things only the maintainer could unblock — **[GATE CLEARED: three PRs, #54, #55 and #56, each CI `completed/success`. NO MIGRATION. ALL MERGED.]**
+
+**Not an A–K cycle, and recorded as one entry rather than three.** This was a working session answering the maintainer's question _"what do you need from me to unblock"_, and the three changes it produced are too small to each warrant a checkpoint. They are logged because the record would otherwise skip from §117 to §119 with six merged pull requests unexplained.
+
+### 📄 The repository went public, and CI came back
+
+**The constraint was GitHub Actions minutes on a private repository**, measured in §115 at ~790 of 2,000 minutes across 37 runs in two days. Going public makes Actions unmetered. **Git history was scanned for secrets before the switch and was clean.**
+
+### 🔎 `paths-ignore` had to be reverted, and the reason is the opposite of why it was added
+
+**PR #54 removed the `paths-ignore` filter added in §97's cycle.** The filter saved minutes by firing no run on a documentation-only change — which was correct while minutes were scarce.
+
+**It is incompatible with branch protection**, which was the whole point of going public. **A workflow skipped by a path filter leaves its required checks _pending_ rather than passing**, so a protected branch can never merge a documentation-only pull request at all. The saving and the gate could not both exist.
+
+**So `CI SKIPPED` became unreachable**, and `CLAUDE.md`'s states table now says so while keeping the state documented — §115, §116 and §117 all cite it and their records must stay legible.
+
+### 🔎 The MusicBrainz contact did not survive `db:env`, which was found by watching it happen
+
+**PR #55.** `MUSICBRAINZ_CONTACT` was set to a real URL, and `npm run db:env` **overwrote it back to the placeholder** — in front of the maintainer, immediately after being told the unblocking was done. `write-local-env.mjs` now preserves a non-placeholder value from the environment or from an existing `.env.local`, and prints whether live requests are enabled.
+
+**This is what unblocked F-019**, whose deferral in `architecture.md` §10.4a rested partly on the placeholder refusing live requests. §119 is the cycle it released.
+
+### 📄 Branch protection is on, and the first claim made about it was too strong
+
+**PR #56.** Both checks required, strict mode on. **`enforce_admins` is `false` and the repository has exactly one admin**, so the protection is a guard rail the maintainer can step over rather than a mechanism. An earlier sentence said it made the branch rule _"hold mechanically"_, which it does not, and `architecture.md` §12.7 now says the weaker true thing instead.
+
+Verified at **`818cf50`**.
+
+## §119 — ✅ Letting search find an artist by a name they no longer use — **[GATE CLEARED: CI `37056898081` `completed/success` on `f72787d`, attempt 1, 574 unit, 846 integration, 148 end-to-end, **zero flaky**. MIGRATION APPLIED AND CONFIRMED. DEPLOYED AND PROBED LIVE. MERGED AS PR #57.]**
+
+**F-019's alias half, deferred that same morning in `architecture.md` §10.4a and built that afternoon.** The deferral is preserved and marked superseded rather than rewritten: its reasoning was sound, and **one of its two premises stopped being true** when §118's PR #55 let a real `MUSICBRAINZ_CONTACT` survive `db:env`. Its other premise — that this is a queue-and-ingest cycle with a new job kind, not a search change — **held and was honoured.**
+
+### 🔎 The live response decided what to keep, and refused half of it
+
+**Read from the API before any code was written**, which is the whole reason nothing here is a guessed shape. The artist MusicBrainz now calls _Ye_ returns twelve aliases across four types:
+
+| Type          | Count | Treatment   | Why                                                                                         |
+| ------------- | ----- | ----------- | ------------------------------------------------------------------------------------------- |
+| `Artist name` | 6     | **Kept**    | Former and alternate performing names, `Kanye West` among them                              |
+| `Search hint` | 3     | **Kept**    | **The valuable half.** One is `Kayne West` — a misspelling an upstream editor wrote by hand |
+| `Legal name`  | 2     | **Refused** | Making someone findable by a birth name they do not perform under is not a silent default   |
+| untyped       | 1     | **Refused** | The only one here is `Donda`, an **album title**                                            |
+
+**A curated misspelling is reachable no other way.** §111's phonetic fallback cannot connect `Kayne West` to `Ye` — they do not sound alike — and neither can trigram similarity. A human wrote it down upstream, which is exactly what `Search hint` is for.
+
+### 🔎 The counting bug underneath the ranking
+
+An exact alias scores **tier 2** — below an exact canonical name, above every fuzzy tier — so an alias widens a result set and never outranks the real name.
+
+**The `alias_hits` CTE aggregates to one row per artist before joining**, and that is not tidiness. A direct join multiplies the artist's row by the number of matching aliases and **inflates `album_count` by the same factor**. It presents as a ranking problem and is a counting one, which is the expensive kind to diagnose, so the integration test asserts `album_count` against the real `album_artists` count rather than against a constant.
+
+### 📄 `artists.alias_status`, which the plan did not anticipate
+
+**A STEP D-shaped gap found during implementation.** The enqueue path has to answer _which artists still need aliases_, and nothing on `artists` could. Both column-free mechanisms were wrong:
+
+- **An anti-join against `artist_aliases`** cannot tell _never fetched_ from _fetched, and genuinely has none_ — so every alias-less artist would be re-requested on every sweep, forever, against a shared one-per-second budget.
+- **Inferring it from `ingestion_jobs`**, which `enqueueFailedExpansions` legitimately does and which is durable here, forces the candidate set to come from `artists` and be filtered afterwards, making progress depend on page position once the backfill is underway — the shape `product-spec.md` §8.10 records as a defect.
+
+**So it mirrors `albums.artwork_status` and `releases.tracklist_status` exactly.** One pattern for this question rather than three.
+
+**No grant statements, and that was checked rather than assumed.** `create_catalogue.sql` grants `select` on `artists` at **table** level, so the column is readable the moment it exists; confirmed directly against the local database alongside the absence of any `anon` write privilege on `artist_aliases`.
+
+### ⚠️ A defect STEP G caught, in this cycle's own code
+
+**The first implementation recorded a 404 as `failed`.** `failed` is retryable by the sweep, so an artist MusicBrainz had merged away would be re-queued **indefinitely**, spending a request each pass to re-learn a permanent fact. It is now `absent` — the same treatment `fetchAndStoreTracklist` already applies to a merged-away release. **Both directions are asserted**: a 404 settles, a 503 stays retryable.
+
+**Three migrations, and the split is forced.** A new enum _value_ cannot be used in the transaction that adds it, so the job kind and the function dispatching on it cannot share a file.
+
+### 📄 Evidence, including what was not run
+
+`npm run verify` green from a clean `.next`, exit 0. CI green first attempt. **Alias matching was additionally probed directly against seeded rows** — alias-only query tier 2, `Radiohead` tier 1, `album_count` correct, nonsense query empty — and **live search was probed on production after the function replacement**: three queries, HTTP 200, no error markers.
+
+**No aliases are ingested yet anywhere.** Every artist is `pending`, `artist_aliases` is empty, and `npm run db:backfill:aliases` has not been run against production — so **the feature is deployed and inert**, and nothing in this cycle demonstrates it working on real data. That is the honest limit of this evidence.
+
+Verified at **`f72787d`**, merged at **`e26b6a5`**.
 
 ## §117 — ✅ The obvious fix to the quadratic slug is wrong twice — **[CI SKIPPED: documentation only, `paths-ignore` fires no run.]**
 

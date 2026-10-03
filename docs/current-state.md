@@ -134,35 +134,36 @@
 
 ## Contents
 
-- [1. Current state](#1-current-state) · 4,855 words
-- [2. Completed work](#2-completed-work) · 111 words
-- [3. Real-data validation](#3-real-data-validation) · 389 words
-- [4. Artwork lifecycle](#4-artwork-lifecycle) · 262 words
-- [5. Tracklist lifecycle](#5-tracklist-lifecycle) · 242 words
-- [6. Self-service addition integrity](#6-self-service-addition-integrity) · 100 words
-- [7. Design foundation](#7-design-foundation) · 2,132 words
-- [8. Residual items](#8-residual-items) · 4,453 words
-- [9. The MusicBrainz 503s — resolved, not rate limiting](#9-the-musicbrainz-503s--resolved-not-rate-limiting) · 287 words
-- [10. Other technical state](#10-other-technical-state) · 138 words
-- [11. Open decisions](#11-open-decisions) · 2,089 words
-- [12. Recorded product direction — decided, mostly not implemented](#12-recorded-product-direction--decided-mostly-not-implemented) · 633 words
+- [1. Current state](#1-current-state) · 4,950 words
+- [2. Completed work](#2-completed-work) · 107 words
+- [3. Real-data validation](#3-real-data-validation) · 385 words
+- [4. Artwork lifecycle](#4-artwork-lifecycle) · 258 words
+- [5. Tracklist lifecycle](#5-tracklist-lifecycle) · 238 words
+- [6. Self-service addition integrity](#6-self-service-addition-integrity) · 95 words
+- [7. Design foundation](#7-design-foundation) · 2,128 words
+- [8. Residual items](#8-residual-items) · 4,449 words
+- [9. The MusicBrainz 503s — resolved, not rate limiting](#9-the-musicbrainz-503s--resolved-not-rate-limiting) · 277 words
+- [10. Other technical state](#10-other-technical-state) · 133 words
+- [11. Open decisions](#11-open-decisions) · 2,085 words
+- [12. Recorded product direction — decided, mostly not implemented](#12-recorded-product-direction--decided-mostly-not-implemented) · 623 words
 
 ---
 
 ## 1. Current state
 
-|                  |                                                       |
-| ---------------- | ----------------------------------------------------- |
-| Unit + component | **373**                                               |
-| Integration      | **657** (need a local database)                       |
-| Seed             | **1**                                                 |
-| End-to-end       | **122** (Playwright)                                  |
-| Repository       | <https://github.com/darrylnatale/longplayr> (private) |
-| **Staging app**  | <https://longplayr.vercel.app>                        |
-| **Staging DB**   | `oexuqjpvyeijmlirxtal.supabase.co`                    |
-| Production       | does not exist                                        |
+|                  |                                                                           |
+| ---------------- | ------------------------------------------------------------------------- |
+| Unit + component | **574**                                                                   |
+| Integration      | **846** (need a local database)                                           |
+| Seed             | **1**                                                                     |
+| End-to-end       | **148** (Playwright)                                                      |
+| Repository       | <https://github.com/darrylnatale/longplayr> — **public since 2026-10-02** |
+| **Staging app**  | <https://longplayr.vercel.app>                                            |
+| **Staging DB**   | `oexuqjpvyeijmlirxtal.supabase.co`                                        |
+| Production       | does not exist                                                            |
+| **Branch**       | `main` at `e26b6a5`, nothing open, nothing pending                        |
 
-**[CORRECTED 2026-09-06 — the end-to-end figure is CI #92's on `8f4aa00`, which added five tests; the other three rows are unchanged from the correction below. Earlier notes preserved.] [CORRECTED 2026-09-05 — figures taken from CI #91 on `67949e8`, the first finished run since the previous correction. Earlier note preserved below.] [CORRECTED 2026-09-01]** Three of those four counts had drifted and are now taken from CI #71's own output rather than carried forward. This table read **266 unit, 495 integration, 75 end-to-end** — but §39, written in the same edit, already recorded **272 / 495 / 82**, and only the integration row had been updated. **A checkpoint that disagrees with itself one section later is worse than one that is merely out of date**, which is why the drift is named here rather than quietly overwritten. The current figures are `287 / 509 / 1 / 85`, each a CI-reported total.
+**Every figure above is CI `37056898081`'s own output on `f72787d`, attempt 1, zero flaky** — not carried forward. **The repository went public on 2026-10-02** so Actions minutes are unmetered and branch protection can require both checks; `cycle-log.md` §118 records why both changes were needed together. This table has drifted before — it once disagreed with a section written in the same edit — so it is re-read from a run rather than updated by hand.
 
 ### Staging catalogue
 
@@ -190,14 +191,31 @@ Measured **2026-08-28, after the credit repair** (§33). The **2026-08-25** colu
 
 **163 artists (62.5%) hold exactly one album**, 94 hold two, and 4 hold three — Radiohead, Ye, Lana Del Rey and Various Artists, each of which reached three through a self-service addition rather than the seed. **No artist exceeds 0.8% of the catalogue**, so the seed's anti-concentration device worked; sparsity, not concentration, is the problem. Full analysis in §28.
 
+### Aliases — deployed and inert
+
+**Measured against the deployed database on 2026-10-02, immediately after the merge.**
+
+|                                         |                     |
+| --------------------------------------- | ------------------- |
+| Albums                                  | **1,079**           |
+| Artists                                 | **352**             |
+| `artist_aliases` rows                   | **0**               |
+| Artists with `alias_status = 'pending'` | **352** — every one |
+
+**The feature is live and has ingested nothing**, which is the deliberate state rather than a problem. `db:backfill:aliases` queues by default and drains only under `BACKFILL_DRAIN=true`, and it has not been run against the deployed database. **Until it is, alias matching cannot affect any search result**, because there are no alias rows to match.
+
+**Cost of running it: roughly one request per artist** through the shared one-per-second limiter, so 352 artists is about **six minutes** of budget. That is the whole remaining step for `cycle-log.md` §119 to show a real effect.
+
 ### Artwork
 
-| `artwork_status` | Albums  |                                      |
-| ---------------- | ------- | ------------------------------------ |
-| `found`          | **661** | objects verified present in Storage  |
-| `absent`         | **45**  | Cover Art Archive answered, no cover |
-| `failed`         | **1**   | see §31; one cleared on a later cron |
-| `pending`        | **0**   | the backlog is gone                  |
+**Measured against the deployed database on 2026-10-02**, replacing figures from 2026-08-28.
+
+| `artwork_status` | Albums  |                                                     |
+| ---------------- | ------- | --------------------------------------------------- |
+| `found`          | **993** | objects verified present in Storage                 |
+| `absent`         | **85**  | Cover Art Archive answered, no cover                |
+| `failed`         | **1**   | unchanged since August; one cleared on a later cron |
+| `pending`        | **0**   | the backlog is gone, and has stayed gone            |
 
 Measured **2026-08-28**; `found` and `failed` moved by one on the 2026-08-26 cron, which resolved one exhausted artwork job. The 45 `absent` and the analysis below are the 2026-08-25 measurement and are unchanged. **`absent` is not a failure and was checked rather than trusted**: five of the 45 were queried directly against Cover Art Archive during review and all five returned `404`. A sample of stored covers was also fetched from Supabase Storage — 18 of 18 objects (six albums × 250/500/1200) returned `200`, so `found` reflects bytes on disk, not merely a column value.
 
