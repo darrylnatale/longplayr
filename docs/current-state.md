@@ -134,7 +134,7 @@
 
 ## Contents
 
-- [1. Current state](#1-current-state) · 5,038 words
+- [1. Current state](#1-current-state) · 5,054 words
 - [2. Completed work](#2-completed-work) · 107 words
 - [3. Real-data validation](#3-real-data-validation) · 385 words
 - [4. Artwork lifecycle](#4-artwork-lifecycle) · 258 words
@@ -151,17 +151,18 @@
 
 ## 1. Current state
 
-|                  |                                                                           |
-| ---------------- | ------------------------------------------------------------------------- |
-| Unit + component | **574**                                                                   |
-| Integration      | **846** (need a local database)                                           |
-| Seed             | **1**                                                                     |
-| End-to-end       | **148** (Playwright)                                                      |
-| Repository       | <https://github.com/darrylnatale/longplayr> — **public since 2026-10-02** |
-| **Staging app**  | <https://longplayr.vercel.app>                                            |
-| **Staging DB**   | `oexuqjpvyeijmlirxtal.supabase.co`                                        |
-| Production       | does not exist                                                            |
-| **Branch**       | `main` at `df49422`, nothing open, nothing pending                        |
+|                  |                                                                               |
+| ---------------- | ----------------------------------------------------------------------------- |
+| Unit + component | **585**                                                                       |
+| Integration      | **846** (need a local database)                                               |
+| Seed             | **1**                                                                         |
+| End-to-end       | **148** (Playwright)                                                          |
+| Repository       | <https://github.com/darrylnatale/longplayr> — **public since 2026-10-02**     |
+| **Staging app**  | <https://longplayr.vercel.app>                                                |
+| **Staging DB**   | `oexuqjpvyeijmlirxtal.supabase.co`                                            |
+| Production       | does not exist                                                                |
+| **Node**         | **22 required locally** — `.nvmrc`, `engines`, and a guard in `verify` (§124) |
+| **Branch**       | `main` at `d6c2644`, nothing open, nothing pending                            |
 
 **Every figure above is CI `37056898081`'s own output on `f72787d`, attempt 1, zero flaky** — not carried forward. **The repository went public on 2026-10-02** so Actions minutes are unmetered and branch protection can require both checks; `cycle-log.md` §118 records why both changes were needed together. This table has drifted before — it once disagreed with a section written in the same edit — so it is re-read from a run rather than updated by hand.
 
