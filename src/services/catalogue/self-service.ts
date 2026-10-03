@@ -10,7 +10,12 @@ import { getCurrentProfile, getCurrentUser } from '../profiles';
 import { findHeldAlbum, ingestReleaseGroup, reconcileCredits } from './ingest';
 import { enqueueJob } from './jobs';
 import { INTERACTIVE_JOB_PRIORITY } from './queue';
-import { searchReleaseGroups, type MbReleaseGroup } from './musicbrainz';
+import {
+  browseReleaseGroupsByArtist,
+  searchArtists,
+  searchReleaseGroups,
+  type MbReleaseGroup,
+} from './musicbrainz';
 import { classify } from './scope';
 
 /**
@@ -104,7 +109,27 @@ export async function searchUpstream(query: string, limit = 10): Promise<Upstrea
 
   const admin = createAdminClient();
 
-  const inScope = (result['release-groups'] ?? []).filter((group) => classify(group).inScope);
+  /*
+   * **The artist's own discography, when the query names an artist.** The
+   * release-group index searches *titles*, so `Radiohead` returns records
+   * titled "Radiohead" by other people - measured, `architecture.md` §7.5.
+   * Resolving the artist and browsing them returns the actual discography.
+   *
+   * **Placed first because that is what was asked for**, and merged rather
+   * than substituted so a query that is both an artist and a title loses
+   * nothing. If this path finds nothing, behaviour is exactly as before.
+   */
+  const byArtist = await discographyFor(query);
+
+  const merged: MbReleaseGroup[] = [];
+  const seenMbid = new Set<string>();
+  for (const group of [...byArtist, ...(result['release-groups'] ?? [])]) {
+    if (!group?.id || seenMbid.has(group.id)) continue;
+    seenMbid.add(group.id);
+    merged.push(group);
+  }
+
+  const inScope = merged.filter((group) => classify(group).inScope);
   if (inScope.length === 0) return [];
 
   // Hide anything we already hold; it is in the local results above.
@@ -128,6 +153,41 @@ export async function searchUpstream(query: string, limit = 10): Promise<Upstrea
       year: group['first-release-date']?.slice(0, 4) ?? null,
       primaryType: group['primary-type'] ?? null,
     }));
+}
+
+/**
+ * The discography behind an artist-shaped query, or nothing.
+ *
+ * **Two requests, and only when the name matches exactly.** MusicBrainz scores
+ * `Radiohead` at 100 for the query `Radiohead` and `On a Friday` - genuinely
+ * the pre-1991 group - at 64. Browsing the weaker match would silently answer
+ * a different question than the one typed, so the gate is **score 100 and
+ * case-insensitive name equality**, not score alone.
+ *
+ * **Never throws.** An upstream failure here must leave the title search's
+ * results exactly as they were, the same contract `searchUpstream` already has.
+ *
+ * `architecture.md` §7.5.
+ */
+async function discographyFor(query: string): Promise<MbReleaseGroup[]> {
+  const wanted = query.trim().toLowerCase();
+  if (!wanted) return [];
+
+  try {
+    const { artists } = await searchArtists(query, 3);
+    const exact = (artists ?? []).find(
+      (artist) => artist.score === 100 && artist.name?.trim().toLowerCase() === wanted,
+    );
+    if (!exact) return [];
+
+    // One page. `browseAllReleaseGroupsByArtist` walks every page, which is
+    // right for discography expansion and wrong here — a prolific artist would
+    // cost several serialised requests on an interactive search.
+    const body = await browseReleaseGroupsByArtist(exact.id);
+    return body['release-groups'] ?? [];
+  } catch {
+    return [];
+  }
 }
 
 /** Remaining additions allowed for a user in each window. */

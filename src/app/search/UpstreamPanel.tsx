@@ -115,9 +115,17 @@ export async function UpstreamPanel({
     // answer: no empty panel, and no "nothing found upstream" notice.
     if (!nothingLocal) return null;
 
+    /*
+     * **This used to say "search for the artist instead", which pointed at the
+     * case that worked worst.** An artist name alone was measured returning
+     * records *titled* after the artist rather than records by them
+     * (`architecture.md` §7.5). An artist-only query is now handled properly,
+     * so the advice that is left is the one that genuinely helps a search that
+     * found nothing: add the artist to a title you already have.
+     */
     return (
       <p className="mx-auto max-w-[46ch] text-center text-sm text-text-muted">
-        Try a different spelling, or search for the artist instead.
+        Try a different spelling, or add the artist&rsquo;s name to the album title.
       </p>
     );
   }
