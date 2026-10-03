@@ -527,7 +527,9 @@ There is no notifications link anywhere on the mobile version. Unclear whether t
 
 ### F-018 — the upstream "add to catalogue" search shows five results and cannot be expanded
 
-**2026-09-05 · search, catalogue · TRIAGED — PARTLY ADDRESSED, STILL OPEN**
+**2026-09-05 · search, catalogue · CLOSED — BOTH NAMED ITEMS DELIVERED 2026-10-03 (§122)**
+
+> **Closed at triage, 2026-10-03.** The two items this entry left open are both done. **"Show more" was already built** — `splitCandidates` and the `<details>` expander reveal every candidate already fetched, at no extra upstream cost; establishing that was part of §122 and stopped it being built twice. **Artist matching shipped in §122**, and the live measurement it was blocked on **refuted the fix this entry assumed**: field-qualified `artist:Radiohead` returns bootleg live dates ahead of the real albums, because all 387 score 100. Resolving the artist and browsing by MBID is what works. `architecture.md` §7.5.
 
 **One of at least two mechanisms is repaired; the entry does not close.** `abb3adc` (CI #94) separated fetch depth from display limit — `UPSTREAM_FETCH_DEPTH = 25`, `UPSTREAM_RESULTS = 10` — so the panel no longer shows four candidates because a `limit * 2` pool was filtered twice. **Still open:** whether the panel gets a "show more", and §8.10's **artist-matching** half, which is blocked on verifying field-qualified syntax against the live API. **Which mechanism caused the failures observed in use is unestablished**, and cannot be established locally or in CI because the placeholder contact prevents the panel populating. **Destination of the part that shipped:** `product-spec.md` §8.10, `cycle-log.md` §58.
 
@@ -1570,7 +1572,9 @@ Get your password wrong and **both fields empty**, so you retype your address as
 
 ### F-063 — a test that hangs, diagnosed three times as a test that is slow
 
-**2026-10-03 · testing, CI, auth · NEW — SPECIFIC, NOT THE GENERAL FLAKE PATTERN**
+**2026-10-03 · testing, CI, auth · FIX SHIPPED 2026-10-03 (§123) — OPEN PENDING CONFIRMATION**
+
+> **Root cause found and fixed; the entry stays open on purpose.** Four consecutive clean end-to-end runs since the fix — `37099597106`, `37100607899`, `37101653554`, `37102756540` — and that is **not yet proof**: run `37097152623` passed clean while the defect was still present, so clean runs are weak evidence here. **Close it after a further stretch of clean runs, not on these four.**
 
 **`tests/e2e/password-reset.spec.ts:89` — "a forgotten password can be reset from the emailed link" — was the single flaky test in CI `37092496425`, `37094175927` _and_ `37095884243`**: **three consecutive runs**, on three unrelated trees — error boundaries, the stale-tracklist sweep, upstream artist search. **None of them touches auth, email or that path.**
 
@@ -1635,7 +1639,9 @@ Get your password wrong and **both fields empty**, so you retype your address as
 
 ### F-061 — a tracklist fetched before full release is never updated afterwards
 
-**2026-10-02 · album page, catalogue · NEW**
+**2026-10-02 · album page, catalogue · CLOSED — DELIVERED 2026-10-03 (§121)**
+
+> **Closed. `enqueueStaleTracklists` refetches any tracklist captured before its album's release date**, which is a factual predicate rather than a staleness window — so §8.9's open question about revisiting settled data is untouched. **The investigation refuted two of this entry's three hypotheses**: the release group holds exactly one release, so re-selecting the representative release was not the issue; and the obvious detector, stored tracks below the declared `track_count`, finds **zero**, because that count was captured in the same stale fetch. `architecture.md` §7.4.
 
 An album added a few weeks ago, **before it was released**, held only **three tracks** because that was all upstream had. **The album has since come out, and the page still shows three tracks.** `https://longplayr.vercel.app/albums/popstar`
 

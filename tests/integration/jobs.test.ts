@@ -22,6 +22,7 @@ import { fetchAndStoreArtistAliases } from '@/services/catalogue/aliases';
 import { ARTWORK_BUCKET } from '@/services/catalogue/artwork';
 import { sleep } from '@/services/catalogue/rate-limiter';
 import {
+  BULK_ALIAS_PRIORITY,
   BULK_ARTWORK_PRIORITY,
   DEFAULT_JOB_PRIORITY,
   INTERACTIVE_JOB_PRIORITY,
@@ -1713,5 +1714,39 @@ describe('enqueueStaleTracklists pages rather than truncating', () => {
     const result = await enqueueStaleTracklists({ admin, maxPages: 0 });
     expect(result.truncated).toBe(true);
     expect(result.candidates).toBe(0);
+  });
+});
+
+/**
+ * Alias jobs are the least urgent thing in the queue.
+ *
+ * **Asserted against the other bands rather than against a literal**, because
+ * what matters is the ordering, not the number. `claim_job` orders by
+ * `priority asc, id asc`, so a lower number is claimed first.
+ */
+describe('alias jobs never outrank work somebody is waiting for', () => {
+  it('sits behind interactive, default and bulk artwork', () => {
+    expect(BULK_ALIAS_PRIORITY).toBeGreaterThan(INTERACTIVE_JOB_PRIORITY);
+    expect(BULK_ALIAS_PRIORITY).toBeGreaterThan(DEFAULT_JOB_PRIORITY);
+    // Behind bulk artwork too: artwork is free to fetch, an alias spends the
+    // one-request-per-second MusicBrainz budget.
+    expect(BULK_ALIAS_PRIORITY).toBeGreaterThan(BULK_ARTWORK_PRIORITY);
+  });
+
+  it('is claimed after an ordinary job queued earlier', async () => {
+    // **Ordering, proved through the real claim function rather than by
+    // comparing constants.** A lower `id` would win on `id asc` alone, so the
+    // alias job is inserted *first* — if priority were ignored it would be
+    // claimed first too.
+    await enqueueJob('fetch_artist_aliases', MBID_A, { admin, priority: BULK_ALIAS_PRIORITY });
+    await enqueueJob('fetch_tracklist', MBID_B, { admin });
+
+    const { data } = await admin
+      .from('ingestion_jobs')
+      .select('kind, priority')
+      .order('priority', { ascending: true })
+      .order('id', { ascending: true });
+
+    expect(data!.map((row) => row.kind)).toEqual(['fetch_tracklist', 'fetch_artist_aliases']);
   });
 });
