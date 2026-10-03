@@ -1272,6 +1272,41 @@ The distributions **materially overlap**, so no global threshold separates them.
 
 ---
 
+### 10.7 Search updates as you type; the upstream panel is rationed **[DECIDED 2026-10-03]**
+
+**F-002 asked for search that does not need the enter key, and raised its own caveat**: _"this may have implications for search speed — unsure whether that makes it impractical."_ **Measured, and the caveat belongs to one half of the page only.**
+
+|                        |                                                                                       |
+| ---------------------- | ------------------------------------------------------------------------------------- |
+| Local catalogue search | **24ms** — `search_albums('radiohead')` on the deployed database, 1,079 albums        |
+| The MusicBrainz panel  | a measured **~20s**, and up to **three** requests against a ceiling of one per second |
+
+**So as-you-type is comfortably practical locally and impossible upstream**, which is the shape of everything below. F-002 flagged exactly this split — _"a local-catalogue-only as-you-type search and an upstream-reaching one may be different questions"_ — and it is the right one.
+
+#### The URL is the state, not a client-side result list
+
+`SearchField` is a client component that calls `router.replace` on a debounce; **the page stays a server component**. The alternative — holding results in client state — would mean a second implementation of every result row, free to drift from the server's.
+
+**`replace` rather than `push`**, so typing nine characters leaves one history entry rather than nine. **`scroll: false`**, because a list that jumps to the top on every keystroke is worse than pressing enter was. **The `<form action="/search">` is left in place**, so with scripting off enter still submits exactly as before.
+
+#### The 400ms debounce is sized for the upstream request, not the local one
+
+**The catalogue could update far more eagerly at 24ms.** What costs is the MusicBrainz panel the same render triggers. At 400ms, a query typed straight through produces **one** navigation.
+
+#### A minimum query length, which as-you-type newly requires
+
+**`MIN_UPSTREAM_QUERY_LENGTH = 3`.** Before this change a query reached the upstream gate only when somebody pressed enter, so a one-character search was deliberate and vanishingly rare. **Now the URL moves whenever typing pauses for 400ms, and pausing after the first letter is an ordinary thing to do** — which would spend up to three rate-limited requests to return records that merely begin with that letter.
+
+**The local search is untouched and still runs from the first character.** The same threshold also gates the signed-out _"sign in to search MusicBrainz"_ message, so the two branches do not advertise different rules for one capability.
+
+#### ⚠️ The cost, stated rather than buried
+
+**This is strictly more upstream requests than pressing enter was.** Someone typing in bursts with gaps longer than 400ms will trigger the panel more than once, where enter triggered it exactly once.
+
+**What bounds it**: the three-character floor, the 400ms debounce, the signed-in requirement, the rate limiter serialising whatever is queued, and `searchUpstream` failing soft to an empty list. **What does not bound it is a hard per-session cap, and there isn't one** — if the request rate ever becomes a problem in use, that is the mechanism to add.
+
+---
+
 ## 11. Environments and deployment
 
 **Decision: local → shared staging → production.** **[DECIDED — E7]**
