@@ -1568,7 +1568,7 @@ Get your password wrong and **both fields empty**, so you retype your address as
 
 **Phase 6 has no open decision blocking any slice**, and **F-011, F-040, F-052, F-053 and F-054 are closed.** `docs/legal-obligations.md` was also written, discharging §10.4's precondition as researched.
 
-### F-063 — one named end-to-end test flaked in three consecutive CI runs, and its mitigation did not hold
+### F-063 — a test that hangs, diagnosed three times as a test that is slow
 
 **2026-10-03 · testing, CI, auth · NEW — SPECIFIC, NOT THE GENERAL FLAKE PATTERN**
 
@@ -1577,6 +1577,16 @@ Get your password wrong and **both fields empty**, so you retype your address as
 **This is what separates it from F-044.** That entry records the test _environment_ failing more often than the code — load-driven, varying failure sets, different tests each time. **This is the same test, named, three times running, on changes that cannot reach it.**
 
 **It is the fourth recorded occurrence, and the second mitigation attempt.** The test already carries a comment recording a flake on CI `36002992296` and already calls `test.slow()` for it. **So "it is merely slow" has been tried and has not held.**
+
+**⚠️ ROOT CAUSE FOUND 2026-10-03, after two wrong diagnoses recorded in this entry.** `login/page.tsx` ends with `if (await getCurrentUser()) redirect('/')`. The test clicked **Sign out** and navigated straight to `/login` **without waiting for the sign-out to take effect** — so when the session cookie had not cleared, `/login` redirected to `/`, which has no email field, and `getByLabel('Email').fill()` waited for an element that would never appear. CI's call log says it plainly: `waiting for getByLabel('Email')`.
+
+**It is a race, and it was diagnosed as slowness three times.** The decisive evidence was the third attempt: the test timed out at **180s after a third of its work had been removed**. A shortened test that exceeds three minutes is hanging, not running slowly — and **every timeout increase made the symptom last longer rather than fixing it.**
+
+**The fix waits on the header's Sign in link, not on the URL**, because sign-out and the redirect both land on `/`; the URL is identical in the passing and failing cases.
+
+**Still open until several consecutive runs are clean.** One green run proves nothing here — run `37097152623` passed with **no** flake at all while the defect was still present.
+
+---
 
 **⚠️ The hypothesis first recorded here was wrong, and is kept so it is not tried again.** It guessed that `latestLinkFor` taking **`messages[0]`** could pick a signup confirmation instead of the reset mail. **The CI output refutes it**: the email step passes every time.
 

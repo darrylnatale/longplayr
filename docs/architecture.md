@@ -1313,30 +1313,37 @@ Proportionate to risk, not uniform coverage.
 - **Authorisation** — since RLS isn't the primary mechanism, application checks are the only barrier and must be tested directly.
 - **One job at a time** — the drain's structural invariant, asserted from _inside_ an executing job by counting `running` rows mid-drain, not inferred from what a drain produced. An in-process test cannot kill its own worker and a throwing runner is not an interruption, so observing the table while work is in flight is the only honest proof (§7).
 
-### A slow end-to-end test is fixed by shortening it, not by retrying it **[DECIDED 2026-10-03]**
+### Three timeout increases failed because the test was hanging, not slow **[DECIDED 2026-10-03]**
 
-**`password-reset.spec.ts` was the single flaky test in three consecutive CI runs** — `37092496425`, `37094175927`, `37095884243` — on three unrelated trees, none of which touches auth or email. F-063.
+**`password-reset.spec.ts` was the single flaky test in four CI runs out of five** — `37092496425`, `37094175927`, `37095884243` and `37098260070` — on four unrelated trees, none of which touches auth or email. F-063.
 
-**Two readings of it were wrong before the CI output was actually read**, and both are kept because each is an easy mistake to repeat:
+#### Three wrong diagnoses, kept because each is easy to repeat
 
-| Reading                                                                                                       | Why it was wrong                                                                                                                        |
-| ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| A race in `latestLinkFor`, which takes `messages[0]` and might pick a signup confirmation over the reset mail | **The email step passes every time.** The failure is at the _last_ step of the test                                                     |
-| "Merely slow" had already been tried and had not held                                                         | **It is exactly slowness.** What had been tried was `test.slow()`, which only triples Playwright's 30s default — and 90s was not enough |
+| Diagnosis                                                                                                    | Why it was wrong                                                  |
+| ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------- |
+| A race in `latestLinkFor`, taking `messages[0]` and picking a signup confirmation over the reset mail        | **The email step passes every time.** The failure is always later |
+| "Merely slow" — the original author's reading, mitigated with `test.slow()`                                  | 30s → 90s changed nothing                                         |
+| "Still merely slow" — this project's second reading, mitigated by removing four navigations and setting 180s | **It timed out at 180s anyway, after being made shorter**         |
 
-**The actual error:** `locator.fill: Test timeout of 90000ms exceeded` at line 133 — signing in with the old password, the final assertion. **`playwright.config.ts` sets `workers: 1` and `fullyParallel: false`, so there is no parallel contention to blame.** The test is simply long: nine navigations and two auth round trips.
+**The third failure is the one that gives the answer.** A test that exceeds three minutes _having had a third of its work removed_ is not running slowly. It is waiting for something that is never going to happen.
 
-#### The fix is to remove work, and only then to state a budget
+#### The actual cause: a sign-out race against a redirect
 
-**A third of the test was setup rather than subject.** It drove the entire signup-and-onboarding UI — signup, onboarding, handle claim, profile, four navigations — before the password-reset journey began, and **signup already has its own end-to-end test**. The account is now created through the admin API.
+`login/page.tsx` ends with `if (await getCurrentUser()) redirect('/')`.
 
-**That also removes the sign-out that followed it, and the replacement is stronger**: the browser never holds a session at all, so nothing downstream can pass because one survived.
+The test clicked **Sign out** and navigated straight to `/login`. **If the session cookie has not cleared yet, `/login` redirects to `/`** — which has no email field — so `getByLabel('Email').fill(...)` waits for an element that will never appear, and keeps waiting until the whole budget is gone. The CI call log says exactly this: `waiting for getByLabel('Email')`.
 
-**The budget is now `test.setTimeout(180_000)` rather than `test.slow()`** — an explicit number, because the number is the decision. A multiplier of a framework default silently changes meaning if that default moves.
+**So every timeout increase made the symptom worse rather than better**, which is the signature worth recognising: a raised timeout that does not fix a flake is evidence the wait is unbounded, not evidence the budget is still too small.
 
-#### What this evidence cannot establish
+#### Why the fix waits on the header, not the URL
 
-**A flake fix is not proved by one green run**, and must not be reported as proved by one. What a single run can show is that the test still passes and is faster; only repeated runs can show the flake is gone. **F-063 stays open until several consecutive runs are clean.**
+**Sign out lands on `/`, and the redirect being guarded against also lands on `/`.** The URL is identical in the passing and failing cases and cannot distinguish them. The wait is therefore on the header's **Sign in** link appearing — the state change itself rather than a side effect of it.
+
+**The timeout is now 120s and is headroom rather than a mechanism.** A budget this test cannot use is CI time spent three times over, once per retry, whenever something genuinely breaks.
+
+#### What this evidence still cannot establish
+
+**A flake fix is not proved by one green run**, and must not be reported as proved by one. **F-063 stays open until several consecutive runs are clean** — the more so here, since one earlier run passed with no flake at all while the defect was still present.
 
 ### Integration isolation is a contract the runner must actually enforce **[2026-08-25]**
 

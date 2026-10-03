@@ -95,6 +95,29 @@ async function createAccount(user: ReturnType<typeof uniqueUser>) {
   if (profileError) throw profileError;
 }
 
+/**
+ * Signs out, and waits until it has actually taken effect.
+ *
+ * **This is the fix for F-063, and the race it closes is not a slow one.**
+ * `login/page.tsx` does `if (await getCurrentUser()) redirect('/')`. Clicking
+ * sign out and navigating straight to `/login` is therefore a race: if the
+ * session cookie has not cleared yet, `/login` redirects to `/`, which has no
+ * email field, and the next `fill` waits for an element that will never
+ * appear — **until the test's whole budget is gone.**
+ *
+ * **That is why raising the timeout never helped.** A longer budget only makes
+ * the hang last longer; the test timed out at 30s, then at 90s under
+ * `test.slow()`, then at 180s after the journey was shortened.
+ *
+ * **Waiting on the header rather than on the URL**, because sign out lands on
+ * `/` and so does the redirect this is guarding against — the URL is identical
+ * in the passing and failing cases and cannot tell them apart.
+ */
+async function signOut(page: Page) {
+  await page.getByRole('button', { name: 'Sign out' }).first().click();
+  await expect(page.getByRole('link', { name: 'Sign in' }).first()).toBeVisible(NAV);
+}
+
 /** Signs in through the UI, which this test does need to exercise. */
 async function signIn(page: Page, email: string, password: string) {
   await page.goto('/login');
@@ -113,21 +136,24 @@ test.afterAll(async () => {
 
 test('a forgotten password can be reset from the emailed link', async ({ page }) => {
   /*
-   * **The longest journey in this suite, and an explicit budget rather than a
-   * multiplier.** `test.slow()` triples Playwright's 30s default to 90s, and
-   * 90s was not enough: this test was the single flaky test in three
-   * consecutive CI runs, timing out at its *last* step with
-   * `locator.fill: Test timeout of 90000ms exceeded` (F-063).
+   * **An explicit budget, and it is headroom rather than the fix.**
    *
-   * **The budget is stated as a number because the number is the decision.**
-   * A multiplier of a framework default silently changes meaning if that
-   * default ever moves.
+   * **Three timeout increases failed to fix this test, because the problem was
+   * never duration** — it was the sign-out race `signOut` now closes. It timed
+   * out at Playwright's 30s default, then at 90s under `test.slow()`, then at
+   * **180s** even after a third of the journey was removed. A test that
+   * exceeds three minutes having been shortened is hanging, not running
+   * slowly, and each increase only made the hang longer.
    *
-   * **Four navigations were also removed rather than merely paid for**: the
-   * account is now created through the admin API instead of by driving the
-   * signup UI, which has its own test. Setup is not the subject.
+   * **120s is generous for what remains** — the account is created through the
+   * admin API rather than by driving four navigations of signup UI — and it is
+   * bounded on purpose: a budget this test cannot use is CI time spent three
+   * times over, once per retry, whenever something genuinely breaks.
+   *
+   * Stated as a number rather than as `test.slow()`, because a multiplier of a
+   * framework default silently changes meaning if that default moves.
    */
-  test.setTimeout(180_000);
+  test.setTimeout(120_000);
 
   const user = uniqueUser();
   await createAccount(user);
@@ -157,7 +183,7 @@ test('a forgotten password can be reset from the emailed link', async ({ page })
   await expect(page).toHaveURL('/', NAV);
 
   // The real assertion: the new password works and the old one does not.
-  await page.getByRole('button', { name: 'Sign out' }).first().click();
+  await signOut(page);
 
   await signIn(page, user.email, user.password);
   // The real message, read from the action rather than guessed at — a regex
