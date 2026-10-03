@@ -10,6 +10,7 @@
 
 **Unnumbered entries predate the §-numbering convention.** They sit between §87 and §86 in time.
 
+- [§122 — ✅ Finding an artist's albums when you search their name](#122---finding-an-artists-albums-when-you-search-their-name--gate-cleared-ci-37095884243-completedsuccess-on-17d6053-attempt-1-574-unit-147-end-to-end-1-flaky-no-migration-merged-as-pr-63) · 597 words
 - [§121 — ✅ Refetching a tracklist captured before the album existed](#121---refetching-a-tracklist-captured-before-the-album-existed--gate-cleared-ci-37094175927-completedsuccess-on-fc20700-attempt-1-574-unit-147-end-to-end-1-flaky-no-migration-merged-as-pr-61) · 597 words
 - [§120 — ✅ Somewhere to land when a page is missing](#120---somewhere-to-land-when-a-page-is-missing--gate-cleared-ci-37092496425-completedsuccess-on-504e142-attempt-1-574-unit-147-end-to-end-1-flaky-no-migration-deployed-and-probed-live-merged-as-pr-59) · 718 words
 - [§119 — ✅ Letting search find an artist by a name they no longer use](#119---letting-search-find-an-artist-by-a-name-they-no-longer-use--gate-cleared-ci-37056898081-completedsuccess-on-f72787d-attempt-1-574-unit-846-integration-148-end-to-end-zero-flaky-migration-applied-and-confirmed-deployed-and-probed-live-merged-as-pr-57) · 771 words
@@ -177,6 +178,52 @@
 **PR #56.** Both checks required, strict mode on. **`enforce_admins` is `false` and the repository has exactly one admin**, so the protection is a guard rail the maintainer can step over rather than a mechanism. An earlier sentence said it made the branch rule _"hold mechanically"_, which it does not, and `architecture.md` §12.7 now says the weaker true thing instead.
 
 Verified at **`818cf50`**.
+
+## §122 — ✅ Finding an artist's albums when you search their name — **[GATE CLEARED: CI `37095884243` `completed/success` on `17d6053`, attempt 1, 574 unit, 147 end-to-end, **1 flaky**. NO MIGRATION. MERGED AS PR #63.]**
+
+**F-018's remaining half, blocked for a month and unblocked by §118.** The entry says plainly that the question _"cannot be established locally or in CI because the placeholder contact prevents the panel populating"_. A real `MUSICBRAINZ_CONTACT` surviving `db:env` removed that, so this cycle is **measurement rather than reasoning**.
+
+### 🔎 Three approaches measured, and the obvious one is the worst
+
+Searching `Radiohead` against the live API:
+
+| Approach                                                                       | What comes back                                                                                           |
+| ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| **Bare title search** — today's behaviour                                      | Release groups **titled** "Radiohead", credited to X-Dream, In Rainbows, Blarg, Wesley Willis             |
+| **`artist:Radiohead`** — the one-line fix `product-spec.md` §8.10 contemplated | Radiohead's own records, but **bootleg live dates first**. All 387 score **100**, so there is no tiebreak |
+| **Resolve the artist, then browse by MBID**                                    | _OK Computer_, _Kid A_, _The Bends_, _In Rainbows_, _Hail to the Thief_, _Pablo Honey_…                   |
+
+**The middle row is the finding worth keeping.** It looks like the fix, it is one line, and it makes the panel worse. **Free text was never the problem either** — `kid a radiohead` returns _Kid A_ at 100 against 91 for the next candidate. **Only an artist name alone was broken.**
+
+### 📄 The confidence gate, and why score alone is not it
+
+**Score 100 _and_ case-insensitive name equality.** Searching `Radiohead` also returns **`On a Friday` at 64** — genuinely the pre-1991 group. Browsing it would silently answer a different question than the one typed, and MusicBrainz awards 100 generously enough that the name check carries real weight.
+
+**Merged rather than substituted**, so a query that is both an artist and a title loses nothing; both sources pass the existing scope and already-held filters and dedupe by MBID. **If the artist path finds nothing or throws, behaviour is exactly as before** — asserted directly.
+
+**Two requests normally, three on an artist-shaped query.** Affordable only here: the panel is a measured ~20 seconds already, streams inside its own `<Suspense>`, and blocks nothing on the page.
+
+### 📄 The empty state had been advising the broken path
+
+It read _"search for the artist instead"_ — **the case that worked worst**. It now suggests adding the artist's name to the album title, which is the shape measured to work.
+
+### 📄 One half of F-018 was already built
+
+The "show more" question the entry leaves open is **shipped**: `splitCandidates`, the `<details>` expander and `ALL_SHOWN` reveal everything already fetched at no extra upstream cost. Establishing that was part of this cycle and stopped it from building the same thing twice.
+
+### 📄 Evidence, and what could not be checked
+
+`npm run verify` green from a clean `.next`, exit 0. **Ten integration tests added**, including both negative gates, scope and held filtering on the new source, dedupe, and the containment guarantee.
+
+**Two breakages were caught by inspection rather than by CI**, saving a round trip: the existing fetch-depth assertions would have counted the artist probe's own limit, and an end-to-end test asserted the old empty-state copy.
+
+**⚠️ The deployed panel itself was not probed, and that is stated rather than omitted.** `shouldOfferFallback` requires a signed-in session, so an anonymous `curl` can never render it. The mechanism is verified by the integration suite on CI and by direct live-API measurement; **the rendered panel on production is unverified by this cycle.**
+
+### ⚠️ Third consecutive run, same flaky test
+
+`password-reset.spec.ts:89` again — **three CI runs in a row, on three unrelated trees**. F-063 updated; it is now the fourth recorded occurrence and `test.slow()` has not held.
+
+Verified at **`17d6053`**, merged at **`184762b`**.
 
 ## §121 — ✅ Refetching a tracklist captured before the album existed — **[GATE CLEARED: CI `37094175927` `completed/success` on `fc20700`, attempt 1, 574 unit, 147 end-to-end, **1 flaky**. NO MIGRATION. MERGED AS PR #61.]**
 
