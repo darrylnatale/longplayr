@@ -134,7 +134,7 @@
 
 ## Contents
 
-- [1. Current state](#1-current-state) · 4,950 words
+- [1. Current state](#1-current-state) · 5,038 words
 - [2. Completed work](#2-completed-work) · 107 words
 - [3. Real-data validation](#3-real-data-validation) · 385 words
 - [4. Artwork lifecycle](#4-artwork-lifecycle) · 258 words
@@ -161,7 +161,7 @@
 | **Staging app**  | <https://longplayr.vercel.app>                                            |
 | **Staging DB**   | `oexuqjpvyeijmlirxtal.supabase.co`                                        |
 | Production       | does not exist                                                            |
-| **Branch**       | `main` at `e26b6a5`, nothing open, nothing pending                        |
+| **Branch**       | `main` at `9fd2089`, nothing open, nothing pending                        |
 
 **Every figure above is CI `37056898081`'s own output on `f72787d`, attempt 1, zero flaky** — not carried forward. **The repository went public on 2026-10-02** so Actions minutes are unmetered and branch protection can require both checks; `cycle-log.md` §118 records why both changes were needed together. This table has drifted before — it once disagreed with a section written in the same edit — so it is re-read from a run rather than updated by hand.
 
@@ -202,7 +202,9 @@ Measured **2026-08-28, after the credit repair** (§33). The **2026-08-25** colu
 | `artist_aliases` rows                   | **0**               |
 | Artists with `alias_status = 'pending'` | **352** — every one |
 
-**The feature is live and has ingested nothing**, which is the deliberate state rather than a problem. `db:backfill:aliases` queues by default and drains only under `BACKFILL_DRAIN=true`, and it has not been run against the deployed database. **Until it is, alias matching cannot affect any search result**, because there are no alias rows to match.
+**The feature is live on the deployed database and has ingested nothing there**, which is the deliberate state rather than a problem.
+
+**The pipeline itself is proven, locally, against the live MusicBrainz API.** A bounded drain over the 8 fixture artists returned **4 `stored` and 4 `absent`, zero `failed`** — JAY-Z 11 aliases, Kanye West 8, Radiohead 5, Various Artists 63 — and search then resolved **`Ye` → Kanye West** and **`Hova` → JAY-Z**, both tier 2. `Hova` shares no text with its artist's name, so no fuzzy or phonetic tier could have reached it. **What remains unproven is the deployed backfill, not the mechanism.** `db:backfill:aliases` queues by default and drains only under `BACKFILL_DRAIN=true`, and it has not been run against the deployed database. **Until it is, alias matching cannot affect any search result**, because there are no alias rows to match.
 
 **Cost of running it: roughly one request per artist** through the shared one-per-second limiter, so 352 artists is about **six minutes** of budget. That is the whole remaining step for `cycle-log.md` §119 to show a real effect.
 
