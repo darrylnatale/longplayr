@@ -133,7 +133,9 @@ Two parts to it:
 
 ### F-002 — search should autocomplete as you type
 
-**2026-08-30 · search · NEW**
+**2026-08-30 · search · CLOSED — DELIVERED 2026-10-03 (§126)**
+
+> **Closed. The caveat this entry raised was the right one, and measurement split it.** The catalogue search is **24ms**; the MusicBrainz panel is **~20s** and up to three requests against one per second. So the local half updates as you type and the upstream half is rationed behind a 400ms debounce and a **three-character minimum** — which as-you-type newly requires, because pausing after the first letter is ordinary where pressing enter after it was not. **F-020 is not reopened**: nothing here needed a different search engine. `architecture.md` §10.7.
 
 You shouldn't have to press enter to search. It should update as you type, the way the Spotify app does.
 
