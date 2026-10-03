@@ -1568,15 +1568,15 @@ Get your password wrong and **both fields empty**, so you retype your address as
 
 **Phase 6 has no open decision blocking any slice**, and **F-011, F-040, F-052, F-053 and F-054 are closed.** `docs/legal-obligations.md` was also written, discharging §10.4's precondition as researched.
 
-### F-063 — one named end-to-end test has now flaked three times, and its mitigation did not hold
+### F-063 — one named end-to-end test flaked in three consecutive CI runs, and its mitigation did not hold
 
 **2026-10-03 · testing, CI, auth · NEW — SPECIFIC, NOT THE GENERAL FLAKE PATTERN**
 
-**`tests/e2e/password-reset.spec.ts:89` — "a forgotten password can be reset from the emailed link" — was the single flaky test in CI `37092496425` _and_ CI `37094175927`**, back to back, on **two unrelated trees** (error boundaries; the stale-tracklist sweep). Neither change touches auth, email or that path.
+**`tests/e2e/password-reset.spec.ts:89` — "a forgotten password can be reset from the emailed link" — was the single flaky test in CI `37092496425`, `37094175927` _and_ `37095884243`**: **three consecutive runs**, on three unrelated trees — error boundaries, the stale-tracklist sweep, upstream artist search. **None of them touches auth, email or that path.**
 
-**This is what separates it from F-044.** That entry records the test _environment_ failing more often than the code — load-driven, varying failure sets, different tests each time. **This is the same test, named, twice running, on changes that cannot reach it.**
+**This is what separates it from F-044.** That entry records the test _environment_ failing more often than the code — load-driven, varying failure sets, different tests each time. **This is the same test, named, three times running, on changes that cannot reach it.**
 
-**It is the third recorded occurrence, and the second mitigation attempt.** The test already carries a comment recording a flake on CI `36002992296` and already calls `test.slow()` for it. **So "it is merely slow" has been tried and has not held.**
+**It is the fourth recorded occurrence, and the second mitigation attempt.** The test already carries a comment recording a flake on CI `36002992296` and already calls `test.slow()` for it. **So "it is merely slow" has been tried and has not held.**
 
 **An unverified hypothesis worth checking first, recorded so the next attempt does not start from scratch.** `latestLinkFor` polls Mailpit and takes **`messages[0]`**, assuming the newest message for that address. If more than one mail can exist for the address at that moment — a signup confirmation alongside the reset — **both contain a `verify` URL and the matcher cannot tell them apart**, so the test would follow the wrong link and fail at the next navigation. The polling budget itself looks adequate at 30 × 500ms.
 
