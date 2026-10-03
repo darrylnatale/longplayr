@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { shouldOfferFallback } from './fallback';
+import { MIN_UPSTREAM_QUERY_LENGTH, shouldOfferFallback } from './fallback';
 
 /**
  * The rule deciding whether the MusicBrainz fallback is offered.
@@ -83,5 +83,37 @@ describe('the decision is query and session alone', () => {
     for (const [query, isSignedIn, expected] of cases) {
       expect(shouldOfferFallback({ query, isSignedIn }), `${query}/${isSignedIn}`).toBe(expected);
     }
+  });
+});
+
+/**
+ * The minimum length, added when search began updating as you type (F-002).
+ *
+ * **Before as-you-type this threshold would have been wrong.** A query only
+ * reached here on enter, so a one-character search was deliberate and rare.
+ * Now the URL moves whenever typing pauses, and pausing after the first letter
+ * is ordinary.
+ */
+describe('MIN_UPSTREAM_QUERY_LENGTH', () => {
+  it('refuses a one- and two-character query from a signed-in reader', () => {
+    // **The case the threshold exists for.** Each of these would otherwise
+    // spend up to three requests against a one-per-second ceiling to return
+    // records that merely start with the letter.
+    expect(shouldOfferFallback({ query: 'r', isSignedIn: true })).toBe(false);
+    expect(shouldOfferFallback({ query: 'ra', isSignedIn: true })).toBe(false);
+  });
+
+  it('allows the query exactly at the threshold', () => {
+    expect(shouldOfferFallback({ query: 'rad', isSignedIn: true })).toBe(true);
+  });
+
+  it('counts the trimmed length, not the typed one', () => {
+    // Two characters padded to five is still a two-character search.
+    expect(shouldOfferFallback({ query: '  ra  ', isSignedIn: true })).toBe(false);
+    expect(shouldOfferFallback({ query: '  rad  ', isSignedIn: true })).toBe(true);
+  });
+
+  it('is three, asserted so a change to it is a decision rather than a drift', () => {
+    expect(MIN_UPSTREAM_QUERY_LENGTH).toBe(3);
   });
 });

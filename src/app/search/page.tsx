@@ -9,7 +9,8 @@ import { SectionHeader } from '@/components/SectionHeader';
 import { getCurrentUser } from '@/services/profiles';
 import { searchCatalogue } from '@/services/search';
 
-import { shouldOfferFallback } from './fallback';
+import { MIN_UPSTREAM_QUERY_LENGTH, shouldOfferFallback } from './fallback';
+import { SearchField } from './SearchField';
 import { UpstreamPanel, UpstreamPending } from './UpstreamPanel';
 import { albumPath, artistPath } from '@/lib/paths';
 
@@ -88,7 +89,13 @@ export default async function SearchPage({ searchParams }: PageProps<'/search'>)
   // empty catalogue. This carried the same `< 5` gate and loses it for the same
   // reason: otherwise the two branches disagree about when a fallback would
   // have existed at all.
-  const fallbackUnavailable = Boolean(query) && !user;
+  /*
+   * **The same length threshold as the offer itself.** Otherwise a signed-out
+   * visitor is invited to sign in and search MusicBrainz after one character,
+   * while a signed-in one gets nothing until three — the two branches
+   * advertising different rules for the same capability.
+   */
+  const fallbackUnavailable = query.trim().length >= MIN_UPSTREAM_QUERY_LENGTH && !user;
 
   return (
     <Container variant="content">
@@ -100,14 +107,7 @@ export default async function SearchPage({ searchParams }: PageProps<'/search'>)
           <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-text-muted">
             <SearchIcon />
           </span>
-          <input
-            id="q"
-            name="q"
-            defaultValue={query}
-            placeholder="Search albums, artists, people"
-            autoFocus
-            className="w-full rounded-md border border-border bg-surface py-3 pl-11 pr-4 text-base text-text outline-none transition-colors placeholder:text-text-faint focus:border-accent-dim"
-          />
+          <SearchField initialQuery={query} />
         </div>
       </form>
 
