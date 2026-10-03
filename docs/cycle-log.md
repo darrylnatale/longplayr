@@ -10,6 +10,7 @@
 
 **Unnumbered entries predate the §-numbering convention.** They sit between §87 and §86 in time.
 
+- [§121 — ✅ Refetching a tracklist captured before the album existed](#121---refetching-a-tracklist-captured-before-the-album-existed--gate-cleared-ci-37094175927-completedsuccess-on-fc20700-attempt-1-574-unit-147-end-to-end-1-flaky-no-migration-merged-as-pr-61) · 597 words
 - [§120 — ✅ Somewhere to land when a page is missing](#120---somewhere-to-land-when-a-page-is-missing--gate-cleared-ci-37092496425-completedsuccess-on-504e142-attempt-1-574-unit-147-end-to-end-1-flaky-no-migration-deployed-and-probed-live-merged-as-pr-59) · 718 words
 - [§119 — ✅ Letting search find an artist by a name they no longer use](#119---letting-search-find-an-artist-by-a-name-they-no-longer-use--gate-cleared-ci-37056898081-completedsuccess-on-f72787d-attempt-1-574-unit-846-integration-148-end-to-end-zero-flaky-migration-applied-and-confirmed-deployed-and-probed-live-merged-as-pr-57) · 771 words
 - [§118 — ✅ Unblocking the things only the maintainer could unblock](#118---unblocking-the-things-only-the-maintainer-could-unblock--gate-cleared-three-prs-54-55-and-56-each-ci-completedsuccess-no-migration-all-merged) · 415 words
@@ -176,6 +177,46 @@
 **PR #56.** Both checks required, strict mode on. **`enforce_admins` is `false` and the repository has exactly one admin**, so the protection is a guard rail the maintainer can step over rather than a mechanism. An earlier sentence said it made the branch rule _"hold mechanically"_, which it does not, and `architecture.md` §12.7 now says the weaker true thing instead.
 
 Verified at **`818cf50`**.
+
+## §121 — ✅ Refetching a tracklist captured before the album existed — **[GATE CLEARED: CI `37094175927` `completed/success` on `fc20700`, attempt 1, 574 unit, 147 end-to-end, **1 flaky**. NO MIGRATION. MERGED AS PR #61.]**
+
+**F-061, arriving with a concrete case.** An album added in August held **three tracks**, because that was all MusicBrainz had before release. It came out on 2026-09-25 and the page still showed three.
+
+### 🔎 Two of three plausible diagnoses were wrong
+
+| Hypothesis                                                                           | Result                                                                                                                                                                                  |
+| ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The representative release is wrong — a pre-release version alongside a finished one | **No.** The release group holds **exactly one release**; there is nothing to re-select                                                                                                  |
+| A re-fetch would not be enough                                                       | **No.** The **same MBID** now returns **16 tracks** against 3 stored. `writeTracklist` replaces wholesale and also refreshes `track_count`, `format` and `label`                        |
+| Stored tracks `<` declared `track_count` detects it                                  | **No, and this is the trap.** `track_count` was captured in the same stale fetch — it reads **3** for an album that now has 16, so the check finds **zero** while looking like it works |
+
+### 📄 Not a staleness rule, and that is the whole care taken
+
+**`found` stays terminal.** The predicate does not ask how old the data is; it asks whether the data was captured **before the thing it describes was finished**. That has a factual answer rather than a tuning parameter, so `product-spec.md` §8.9's open question survives untouched — the thing `architecture.md` warned would otherwise be "answered by accident".
+
+**Self-clearing, so no new state.** `recordTracklistStatus` writes `tracklist_updated_at = now()` on every attempt, so one refresh moves the row out permanently. **No migration and no way to loop.**
+
+**Imprecise dates under-trigger and can never over-trigger.** 272 albums store `year` or `month` precision as 1 January or the 1st — always earlier than the true release — so the comparison misses real cases and manufactures none. **That asymmetry is the right way round**, which is why no precision filter was added.
+
+### ⚠️ A defect in this cycle's own first implementation, caught at review
+
+**It read 100 albums and filtered in JavaScript** — making detection depend on page position, the §8.10 defect **its own comment claimed to avoid**.
+
+**Raising the limit would not have fixed it and would have been worse.** PostgREST caps a response at 1,000 rows against a catalogue of 1,079, so a large limit **truncates silently** and reports a confident zero having never looked.
+
+It now **pages to exhaustion** and returns `scanned` and `truncated`; `maxPages` is a loop guard rather than a work limit, so a capped sweep can never be mistaken for a clean one.
+
+### ⚠️ A finding this cycle exposed and did not fix
+
+**The same end-to-end test flaked in this run and the previous one** — `password-reset.spec.ts:89`, on two unrelated trees, neither touching auth or email. **It is the third recorded occurrence and `test.slow()`, the previous mitigation, has not held.** Filed as **F-063**, with the unverified `messages[0]` ordering hypothesis recorded so the next attempt does not start cold. **Distinct from F-044**, which is about varying failures under load; this is one named test, twice running.
+
+### 📄 Also carried forward, unresolved by choice
+
+**`enqueueMissingArtistAliases` is not called by the cron**, under a comment in that very file reading _"a sweep nobody calls is how a recovery path silently stops being one"_ — a gap in §119's own work. **Wiring it is the same decision as running the production backfill**, which changes search results for real visitors, so both wait on the maintainer rather than being taken quietly.
+
+**Blast radius today is one album.** The rule is the lasting value: every album added before its release date reaches this state. `architecture.md` §7.4.
+
+Verified at **`fc20700`**, merged at **`6e13f1f`**.
 
 ## §120 — ✅ Somewhere to land when a page is missing — **[GATE CLEARED: CI `37092496425` `completed/success` on `504e142`, attempt 1, 574 unit, 147 end-to-end, **1 flaky**. NO MIGRATION. DEPLOYED AND PROBED LIVE. MERGED AS PR #59.]**
 

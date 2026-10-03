@@ -1568,6 +1568,24 @@ Get your password wrong and **both fields empty**, so you retype your address as
 
 **Phase 6 has no open decision blocking any slice**, and **F-011, F-040, F-052, F-053 and F-054 are closed.** `docs/legal-obligations.md` was also written, discharging §10.4's precondition as researched.
 
+### F-063 — one named end-to-end test has now flaked three times, and its mitigation did not hold
+
+**2026-10-03 · testing, CI, auth · NEW — SPECIFIC, NOT THE GENERAL FLAKE PATTERN**
+
+**`tests/e2e/password-reset.spec.ts:89` — "a forgotten password can be reset from the emailed link" — was the single flaky test in CI `37092496425` _and_ CI `37094175927`**, back to back, on **two unrelated trees** (error boundaries; the stale-tracklist sweep). Neither change touches auth, email or that path.
+
+**This is what separates it from F-044.** That entry records the test _environment_ failing more often than the code — load-driven, varying failure sets, different tests each time. **This is the same test, named, twice running, on changes that cannot reach it.**
+
+**It is the third recorded occurrence, and the second mitigation attempt.** The test already carries a comment recording a flake on CI `36002992296` and already calls `test.slow()` for it. **So "it is merely slow" has been tried and has not held.**
+
+**An unverified hypothesis worth checking first, recorded so the next attempt does not start from scratch.** `latestLinkFor` polls Mailpit and takes **`messages[0]`**, assuming the newest message for that address. If more than one mail can exist for the address at that moment — a signup confirmation alongside the reset — **both contain a `verify` URL and the matcher cannot tell them apart**, so the test would follow the wrong link and fail at the next navigation. The polling budget itself looks adequate at 30 × 500ms.
+
+**Why it matters more than an ordinary flake.** It is **auth-adjacent**, and `architecture.md` §12 lists authorisation as a place where application checks are the only barrier. A test that is habitually retried into green is the one most likely to stop reporting a real regression — which is the exact argument `CLAUDE.md` makes for never reclassifying a red run.
+
+**Not fixed here.** Both runs passed on retry and both cycles merged legitimately; the flake is recorded in `cycle-log.md` §120 and §121 rather than rounded away.
+
+**Related:** F-044 (the general pattern), `architecture.md` §12.
+
 ### F-062 — the `component` test project has never been able to run, and nobody could have noticed
 
 **2026-10-03 · development process, testing · NEW — FOUND BY A CYCLE THAT WAS NOT LOOKING FOR IT**
