@@ -807,6 +807,38 @@ The upstream panel asks MusicBrainz for **25** release groups and displays up to
 
 ---
 
+### 7.5 An artist-shaped upstream query resolves the artist, then browses them **[DECIDED 2026-10-03]**
+
+**`product-spec.md` §8.10 recorded that the add-to-catalogue panel does not match artist names, and F-018 recorded it failing repeatedly in ordinary use.** Both were blocked from investigation because the local `MUSICBRAINZ_CONTACT` was a placeholder and the panel could not populate. **That blocker went away**, and the question is now settled with live measurements rather than reasoning.
+
+#### Three approaches measured against the live API, and the obvious one is the worst
+
+Searching `Radiohead`, 2026-10-03:
+
+| Approach                                                             | What comes back                                                                                                                                                           |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Bare title search** — what the panel does today                    | Release groups **titled** "Radiohead", credited to X-Dream, In Rainbows, Blarg and Wesley Willis. Mostly not Radiohead                                                    |
+| **`artist:Radiohead`** — field-qualified, the fix §8.10 contemplated | Radiohead's own release groups, but **bootleg live dates first**. All 387 score **100**, so there is no tiebreak and the famous albums do not surface                     |
+| **Resolve the artist, then browse by MBID**                          | _Hail to the Thief_, _In Rainbows_, _The King of Limbs_, _OK Computer_, _The Bends_, _A Moon Shaped Pool_, _Amnesiac_, _Pablo Honey_, _Kid A_. **The actual discography** |
+
+**The field-qualified result is the important one, because it is what a reasonable person would try first.** It looks like the fix, it is one line, and it makes the panel worse. Recorded so the next person does not spend a cycle rediscovering it.
+
+**Free-text already handles title-plus-artist well** and is not the problem: `kid a radiohead` returns _Kid A_ by Radiohead at score 100, ahead of the next candidate at 91. **The failure is specifically an artist name alone.**
+
+#### The rule, and when the second path is taken
+
+**The artist path is taken only on a high-confidence match: score 100 _and_ case-insensitive name equality.** Searching `Radiohead` returns `Radiohead` at 100 and `On a Friday` — genuinely a pre-1991 Radiohead — at 64. **The weaker match is correctly not treated as the artist**, because browsing it would silently answer a different question than the one typed.
+
+**Cost is two requests normally and three on an artist-shaped query**, against a ceiling of one per second. That is affordable here and nowhere else: the panel is already a measured ~20 seconds, renders inside its own `<Suspense>` boundary, and blocks nothing on the page.
+
+**Both sources go through the existing scope and already-held filters, and merge deduplicated by MBID.** On an exact artist match the discography leads, because that is what was asked for; otherwise the title results stand unchanged, so **no query that works today changes**.
+
+#### The empty state was advising the broken path
+
+It read _"Try a different spelling, or search for the artist instead."_ **Searching for the artist was the case that worked worst**, so the guidance was pointing at the failure. Corrected alongside the mechanism.
+
+---
+
 ## 7a. Upstream payload capture
 
 **Decision: keep every upstream response verbatim, beside the columns mapped out of it. [DECIDED 2026-08-21]**

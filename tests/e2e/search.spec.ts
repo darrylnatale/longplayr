@@ -176,7 +176,7 @@ test('a signed-in search with no local matches states that immediately', async (
   // Once upstream resolves to nothing, the advice arrives from the streamed
   // component rather than from the empty state.
   await expect(
-    page.getByText('Try a different spelling, or search for the artist instead.'),
+    page.getByText(/Try a different spelling, or add the artist.s name to the album title\./),
   ).toBeVisible();
 });
 

@@ -541,6 +541,37 @@ export const MAX_BROWSE_PAGES = 20;
  * which is the whole basis of progressive hydration
  * (`docs/architecture.md` §7).
  */
+/** One artist as the search index returns it. */
+export type MbArtistMatch = {
+  id: string;
+  name: string;
+  score?: number;
+  disambiguation?: string;
+};
+
+export type MbArtistSearchResult = {
+  artists?: MbArtistMatch[];
+};
+
+/**
+ * Searches the artist index by name.
+ *
+ * **Exists so the add-to-catalogue panel can tell an artist-shaped query from a
+ * title-shaped one** - see `architecture.md` section 7.5. The release-group
+ * index's default field is the *title*, so searching an artist's name there
+ * returns records titled after them rather than records by them.
+ *
+ * **Verified against the live API on 2026-10-03.** `Radiohead` returns
+ * `Radiohead` at score 100 and `On a Friday` - genuinely the pre-1991 group -
+ * at 64, which is the gap the caller's confidence rule relies on.
+ */
+export function searchArtists(query: string, limit = 5): Promise<MbArtistSearchResult> {
+  return request<MbArtistSearchResult>('/artist', {
+    query,
+    limit: String(limit),
+  });
+}
+
 export function browseReleaseGroupsByArtist(
   artistMbid: string,
   offset = 0,

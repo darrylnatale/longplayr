@@ -167,8 +167,19 @@ function stubMusicBrainz(groups: (MbReleaseGroup & { score?: number })[]) {
       return realFetch(input as RequestInfo, init);
     }
 
-    const limit = Number(new URL(target).searchParams.get('limit'));
-    requested.push(limit);
+    const url = new URL(target);
+    const limit = Number(url.searchParams.get('limit'));
+
+    /*
+     * **Only the release-group search is recorded.** `searchUpstream` also
+     * probes the artist index now (`architecture.md` §7.5), and these tests are
+     * about release-group *fetch depth* — counting the artist probe's own limit
+     * here would make the depth assertions below say something they do not
+     * mean. The artist path is inert under this stub anyway: it answers every
+     * path with `release-groups`, so the artist search finds no `artists` key
+     * and gives up without browsing.
+     */
+    if (!url.pathname.endsWith('/artist')) requested.push(limit);
 
     return new Response(JSON.stringify({ 'release-groups': groups.slice(0, limit), count: 312 }), {
       status: 200,
@@ -367,4 +378,217 @@ describe('edges', () => {
 
     await expect(searchUpstream('candidate', 10)).resolves.toEqual([]);
   });
+});
+
+// ---------------------------------------------------------------------------
+// Artist-shaped queries — F-018, `architecture.md` §7.5
+// ---------------------------------------------------------------------------
+
+/**
+ * A stub that tells the three MusicBrainz endpoints apart.
+ *
+ * `stubMusicBrainz` above answers every path with `release-groups`, which is
+ * why the artist path stays inert for every test written before this one — the
+ * artist search sees no `artists` key and gives up. That is the intended
+ * behaviour and worth knowing rather than discovering.
+ */
+function stubArtistAware(opts: {
+  artists?: { id: string; name: string; score: number }[];
+  discography?: (MbReleaseGroup & { score?: number })[];
+  titleResults?: (MbReleaseGroup & { score?: number })[];
+}) {
+  const calls: string[] = [];
+  const realFetch = globalThis.fetch.bind(globalThis);
+
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const target = typeof input === 'string' ? input : input.toString();
+    if (!target.includes('musicbrainz.org')) return realFetch(input as RequestInfo, init);
+
+    const url = new URL(target);
+    const body = (() => {
+      if (url.pathname.endsWith('/artist')) {
+        calls.push('artist-search');
+        return { artists: opts.artists ?? [] };
+      }
+      // Browse is distinguished from search by carrying an `artist` parameter.
+      if (url.searchParams.has('artist')) {
+        calls.push('browse');
+        return { 'release-groups': opts.discography ?? [] };
+      }
+      calls.push('title-search');
+      return { 'release-groups': opts.titleResults ?? [], count: 1 };
+    })();
+
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  });
+
+  return { calls };
+}
+
+const ARTIST_MBID = '1a2b3c4d-0002-4000-8000-000000000001';
+
+/** An album by the searched-for artist, which a title search would never find. */
+function discographyAlbum(position: number): MbReleaseGroup & { score?: number } {
+  return {
+    id: `1a2b3c4d-0003-4000-8000-${String(position).padStart(12, '0')}`,
+    title: `Real Album ${position}`,
+    'primary-type': 'Album',
+    'first-release-date': `199${position}-01-01`,
+    'artist-credit': [{ name: 'Radiohead' }],
+  } as MbReleaseGroup & { score?: number };
+}
+
+describe('an artist-shaped query reaches the artist, not records named after them', () => {
+  it("returns the artist's own albums when the name matches exactly", async () => {
+    // **The whole complaint in F-018.** Measured live, a bare `Radiohead`
+    // search returns release groups *titled* "Radiohead" by X-Dream, Blarg and
+    // Wesley Willis. Only resolving the artist reaches the real discography.
+    stubArtistAware({
+      artists: [{ id: ARTIST_MBID, name: 'Radiohead', score: 100 }],
+      discography: [discographyAlbum(1), discographyAlbum(2)],
+      titleResults: [group(11)],
+    });
+
+    const results = await searchUpstream('Radiohead');
+    expect(results.map((r) => r.title)).toContain('Real Album 1');
+  });
+
+  it('puts the discography ahead of records merely titled after the artist', async () => {
+    stubArtistAware({
+      artists: [{ id: ARTIST_MBID, name: 'Radiohead', score: 100 }],
+      discography: [discographyAlbum(1)],
+      titleResults: [group(11)],
+    });
+
+    const results = await searchUpstream('Radiohead');
+    expect(results[0].title).toBe('Real Album 1');
+  });
+
+  it('keeps the title results too, rather than replacing them', async () => {
+    // A query can be both an artist and a title. Substituting would lose the
+    // other half; merging loses nothing.
+    stubArtistAware({
+      artists: [{ id: ARTIST_MBID, name: 'Radiohead', score: 100 }],
+      discography: [discographyAlbum(1)],
+      titleResults: [group(11), group(12)],
+    });
+
+    const results = await searchUpstream('Radiohead');
+    expect(results).toHaveLength(3);
+  });
+
+  it('does not browse a weaker match, even a genuinely related one', async () => {
+    // **Measured: `Radiohead` returns `On a Friday` at 64** — really the
+    // pre-1991 Radiohead. Browsing it would answer a different question than
+    // the one typed, so score alone is not the gate.
+    const { calls } = stubArtistAware({
+      artists: [{ id: ARTIST_MBID, name: 'On a Friday', score: 64 }],
+      discography: [discographyAlbum(1)],
+      titleResults: [group(11)],
+    });
+
+    const results = await searchUpstream('Radiohead');
+    expect(calls).not.toContain('browse');
+    expect(results.map((r) => r.title)).not.toContain('Real Album 1');
+  });
+
+  it('does not browse a score-100 match whose name is different', async () => {
+    // Score 100 alone is not enough: MusicBrainz awards it generously, and a
+    // different name means a different question.
+    const { calls } = stubArtistAware({
+      artists: [{ id: ARTIST_MBID, name: 'Radiohead Tribute Band', score: 100 }],
+      discography: [discographyAlbum(1)],
+      titleResults: [group(11)],
+    });
+
+    await searchUpstream('Radiohead');
+    expect(calls).not.toContain('browse');
+  });
+
+  it('matches the name case- and whitespace-insensitively', async () => {
+    const { calls } = stubArtistAware({
+      artists: [{ id: ARTIST_MBID, name: 'Radiohead', score: 100 }],
+      discography: [discographyAlbum(1)],
+      titleResults: [],
+    });
+
+    await searchUpstream('  radiohead  ');
+    expect(calls).toContain('browse');
+  });
+
+  it('still filters the discography for scope', async () => {
+    // A browse returns everything credited to the artist, singles included.
+    // The scope filter is not bypassed just because the source changed.
+    stubArtistAware({
+      artists: [{ id: ARTIST_MBID, name: 'Radiohead', score: 100 }],
+      discography: [
+        { ...discographyAlbum(1), 'primary-type': 'Single' } as MbReleaseGroup,
+        discographyAlbum(2),
+      ],
+      titleResults: [],
+    });
+
+    const results = await searchUpstream('Radiohead');
+    expect(results.map((r) => r.title)).toEqual(['Real Album 2']);
+  });
+
+  it('still hides albums the catalogue already holds', async () => {
+    const held = discographyAlbum(1);
+    const { error } = await admin.from('albums').insert({
+      mbid: held.id,
+      title: held.title,
+      display_credit: 'Radiohead',
+      primary_type: 'album',
+    });
+    if (error) throw error;
+
+    stubArtistAware({
+      artists: [{ id: ARTIST_MBID, name: 'Radiohead', score: 100 }],
+      discography: [held, discographyAlbum(2)],
+      titleResults: [],
+    });
+
+    const results = await searchUpstream('Radiohead');
+    expect(results.map((r) => r.title)).toEqual(['Real Album 2']);
+  });
+
+  it('deduplicates a record both paths return', async () => {
+    const shared = discographyAlbum(1);
+    stubArtistAware({
+      artists: [{ id: ARTIST_MBID, name: 'Radiohead', score: 100 }],
+      discography: [shared],
+      titleResults: [shared],
+    });
+
+    const results = await searchUpstream('Radiohead');
+    expect(results).toHaveLength(1);
+  });
+
+  // A thrown network error goes through the real retry policy — three attempts
+  // with 2s and 4s between them — on top of the title search's own pacing. The
+  // file's 15s budget is tight for that; this one test gets its own.
+  it(
+    'leaves the title results untouched when the artist lookup fails',
+    { timeout: 25_000 },
+    async () => {
+      // **The containment guarantee.** No query that works today may change
+      // because a second, optional upstream path errored.
+      const realFetch = globalThis.fetch.bind(globalThis);
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+        const target = typeof input === 'string' ? input : input.toString();
+        if (!target.includes('musicbrainz.org')) return realFetch(input as RequestInfo, init);
+        if (new URL(target).pathname.endsWith('/artist')) throw new Error('artist index down');
+        return new Response(JSON.stringify({ 'release-groups': [group(11)], count: 1 }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      });
+
+      const results = await searchUpstream('Radiohead');
+      expect(results.map((r) => r.title)).toEqual(['Candidate 11']);
+    },
+  );
 });
