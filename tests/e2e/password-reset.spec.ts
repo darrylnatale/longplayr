@@ -63,19 +63,67 @@ async function latestLinkFor(email: string): Promise<string> {
   throw new Error(`No reset email arrived for ${email}`);
 }
 
-async function signUp(page: Page, user: ReturnType<typeof uniqueUser>) {
+/**
+ * Creates the account this test needs, without driving the signup UI.
+ *
+ * **Setup, not subject.** This test is about resetting a password; signing up
+ * has its own end-to-end test and does not need proving twice. Driving the
+ * signup form cost **four navigations** — signup, onboarding, handle claim,
+ * profile — before the journey under test began, and that is a third of a
+ * test that was timing out at 90 seconds on its total budget (F-063).
+ *
+ * **`email_confirm` is set so the account is immediately usable.** The flow
+ * under test starts from a user who already has a password and has forgotten
+ * it, not from an unconfirmed signup.
+ */
+async function createAccount(user: ReturnType<typeof uniqueUser>) {
   createdEmails.push(user.email);
 
-  await page.goto('/signup');
-  await page.getByLabel('Email').fill(user.email);
-  await page.getByLabel('Password', { exact: true }).fill(user.password);
-  await page.getByLabel('Confirm password').fill(user.password);
-  await page.getByRole('button', { name: 'Create account' }).click();
+  const { data, error } = await admin.auth.admin.createUser({
+    email: user.email,
+    password: user.password,
+    email_confirm: true,
+  });
+  if (error) throw error;
 
-  await expect(page).toHaveURL('/onboarding', NAV);
-  await page.getByLabel('Handle').fill(user.handle);
-  await page.getByRole('button', { name: 'Claim handle' }).click();
-  await expect(page).toHaveURL(`/${user.handle}`, NAV);
+  // The handle is claimed directly for the same reason: the onboarding journey
+  // is another test's subject. A profile row is still needed, because the app
+  // sends a user without one to `/onboarding`.
+  const { error: profileError } = await admin
+    .from('profiles')
+    .insert({ id: data.user!.id, handle: user.handle });
+  if (profileError) throw profileError;
+}
+
+/**
+ * Signs out, and waits until it has actually taken effect.
+ *
+ * **This is the fix for F-063, and the race it closes is not a slow one.**
+ * `login/page.tsx` does `if (await getCurrentUser()) redirect('/')`. Clicking
+ * sign out and navigating straight to `/login` is therefore a race: if the
+ * session cookie has not cleared yet, `/login` redirects to `/`, which has no
+ * email field, and the next `fill` waits for an element that will never
+ * appear — **until the test's whole budget is gone.**
+ *
+ * **That is why raising the timeout never helped.** A longer budget only makes
+ * the hang last longer; the test timed out at 30s, then at 90s under
+ * `test.slow()`, then at 180s after the journey was shortened.
+ *
+ * **Waiting on the header rather than on the URL**, because sign out lands on
+ * `/` and so does the redirect this is guarding against — the URL is identical
+ * in the passing and failing cases and cannot tell them apart.
+ */
+async function signOut(page: Page) {
+  await page.getByRole('button', { name: 'Sign out' }).first().click();
+  await expect(page.getByRole('link', { name: 'Sign in' }).first()).toBeVisible(NAV);
+}
+
+/** Signs in through the UI, which this test does need to exercise. */
+async function signIn(page: Page, email: string, password: string) {
+  await page.goto('/login');
+  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Password', { exact: true }).fill(password);
+  await page.getByRole('button', { name: 'Sign in' }).click();
 }
 
 test.afterAll(async () => {
@@ -87,24 +135,32 @@ test.afterAll(async () => {
 });
 
 test('a forgotten password can be reset from the emailed link', async ({ page }) => {
-  // **The longest journey in this suite, and the default 30s is genuinely too
-  // short for it.** Signup, handle claim, sign out, request, an email round
-  // trip through Mailpit, the link, the reset, sign out, a rejected sign-in and
-  // an accepted one — nine navigations and two auth round trips.
-  //
-  // **Recorded as a real duration rather than absorbed by a retry.** It went
-  // flaky on CI run `36002992296` — one attempt timing out at the sign-out,
-  // passing on retry — and a retry that hides a test which is merely slow is
-  // how a genuinely broken one later gets ignored.
-  test.slow();
+  /*
+   * **An explicit budget, and it is headroom rather than the fix.**
+   *
+   * **Three timeout increases failed to fix this test, because the problem was
+   * never duration** — it was the sign-out race `signOut` now closes. It timed
+   * out at Playwright's 30s default, then at 90s under `test.slow()`, then at
+   * **180s** even after a third of the journey was removed. A test that
+   * exceeds three minutes having been shortened is hanging, not running
+   * slowly, and each increase only made the hang longer.
+   *
+   * **120s is generous for what remains** — the account is created through the
+   * admin API rather than by driving four navigations of signup UI — and it is
+   * bounded on purpose: a budget this test cannot use is CI time spent three
+   * times over, once per retry, whenever something genuinely breaks.
+   *
+   * Stated as a number rather than as `test.slow()`, because a multiplier of a
+   * framework default silently changes meaning if that default moves.
+   */
+  test.setTimeout(120_000);
 
   const user = uniqueUser();
-  await signUp(page, user);
+  await createAccount(user);
 
-  // Sign out, so nothing below succeeds merely because a session survived.
-  await page.getByRole('button', { name: 'Sign out' }).first().click();
-  await expect(page).toHaveURL('/', NAV);
-
+  // **No sign-out is needed, and that is stronger than signing out.** The
+  // account was created server-side, so this browser has never held a session
+  // and nothing below can succeed because one survived.
   await page.goto('/login');
   await page.getByRole('link', { name: 'Forgot your password?' }).click();
   await expect(page).toHaveURL('/forgot-password', NAV);
@@ -127,12 +183,9 @@ test('a forgotten password can be reset from the emailed link', async ({ page })
   await expect(page).toHaveURL('/', NAV);
 
   // The real assertion: the new password works and the old one does not.
-  await page.getByRole('button', { name: 'Sign out' }).first().click();
+  await signOut(page);
 
-  await page.goto('/login');
-  await page.getByLabel('Email').fill(user.email);
-  await page.getByLabel('Password', { exact: true }).fill(user.password);
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  await signIn(page, user.email, user.password);
   // The real message, read from the action rather than guessed at — a regex
   // that matched nothing would make this assertion pass for the wrong reason.
   await expect(page.getByText('Those details did not match an account.')).toBeVisible(NAV);
@@ -159,8 +212,7 @@ test('a forgotten password can be reset from the emailed link', async ({ page })
 
 test('a reset link cannot be used twice', async ({ page }) => {
   const user = uniqueUser();
-  await signUp(page, user);
-  await page.getByRole('button', { name: 'Sign out' }).first().click();
+  await createAccount(user);
 
   await page.goto('/forgot-password');
   await page.getByLabel('Email').fill(user.email);

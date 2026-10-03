@@ -1568,7 +1568,7 @@ Get your password wrong and **both fields empty**, so you retype your address as
 
 **Phase 6 has no open decision blocking any slice**, and **F-011, F-040, F-052, F-053 and F-054 are closed.** `docs/legal-obligations.md` was also written, discharging §10.4's precondition as researched.
 
-### F-063 — one named end-to-end test flaked in three consecutive CI runs, and its mitigation did not hold
+### F-063 — a test that hangs, diagnosed three times as a test that is slow
 
 **2026-10-03 · testing, CI, auth · NEW — SPECIFIC, NOT THE GENERAL FLAKE PATTERN**
 
@@ -1578,7 +1578,23 @@ Get your password wrong and **both fields empty**, so you retype your address as
 
 **It is the fourth recorded occurrence, and the second mitigation attempt.** The test already carries a comment recording a flake on CI `36002992296` and already calls `test.slow()` for it. **So "it is merely slow" has been tried and has not held.**
 
-**An unverified hypothesis worth checking first, recorded so the next attempt does not start from scratch.** `latestLinkFor` polls Mailpit and takes **`messages[0]`**, assuming the newest message for that address. If more than one mail can exist for the address at that moment — a signup confirmation alongside the reset — **both contain a `verify` URL and the matcher cannot tell them apart**, so the test would follow the wrong link and fail at the next navigation. The polling budget itself looks adequate at 30 × 500ms.
+**⚠️ ROOT CAUSE FOUND 2026-10-03, after two wrong diagnoses recorded in this entry.** `login/page.tsx` ends with `if (await getCurrentUser()) redirect('/')`. The test clicked **Sign out** and navigated straight to `/login` **without waiting for the sign-out to take effect** — so when the session cookie had not cleared, `/login` redirected to `/`, which has no email field, and `getByLabel('Email').fill()` waited for an element that would never appear. CI's call log says it plainly: `waiting for getByLabel('Email')`.
+
+**It is a race, and it was diagnosed as slowness three times.** The decisive evidence was the third attempt: the test timed out at **180s after a third of its work had been removed**. A shortened test that exceeds three minutes is hanging, not running slowly — and **every timeout increase made the symptom last longer rather than fixing it.**
+
+**The fix waits on the header's Sign in link, not on the URL**, because sign-out and the redirect both land on `/`; the URL is identical in the passing and failing cases.
+
+**Still open until several consecutive runs are clean.** One green run proves nothing here — run `37097152623` passed with **no** flake at all while the defect was still present.
+
+---
+
+**⚠️ The hypothesis first recorded here was wrong, and is kept so it is not tried again.** It guessed that `latestLinkFor` taking **`messages[0]`** could pick a signup confirmation instead of the reset mail. **The CI output refutes it**: the email step passes every time.
+
+**The actual failure, from CI `37095884243`:** `locator.fill: Test timeout of 90000ms exceeded` at **`password-reset.spec.ts:133`** — the _final_ section, signing in with the old password to prove it no longer works. **The test gets almost to the end and runs out of its total budget.**
+
+**So it is exactly "merely slow", and the earlier reading of the evidence was wrong too.** `test.slow()` triples Playwright's 30s default to 90s, and that is simply not enough. `playwright.config.ts` sets `workers: 1` with `fullyParallel: false`, so there is **no parallel contention** to blame — the test is inherently long: nine navigations and two auth round trips.
+
+**The cheapest real saving is that a third of it is setup, not subject.** `signUp` drives the entire signup-and-onboarding UI — four navigations — before the password-reset journey begins, and signup already has its own dedicated test. Creating the user through the admin API removes that.
 
 **Why it matters more than an ordinary flake.** It is **auth-adjacent**, and `architecture.md` §12 lists authorisation as a place where application checks are the only barrier. A test that is habitually retried into green is the one most likely to stop reporting a real regression — which is the exact argument `CLAUDE.md` makes for never reclassifying a red run.
 

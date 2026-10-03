@@ -1313,6 +1313,38 @@ Proportionate to risk, not uniform coverage.
 - **Authorisation** — since RLS isn't the primary mechanism, application checks are the only barrier and must be tested directly.
 - **One job at a time** — the drain's structural invariant, asserted from _inside_ an executing job by counting `running` rows mid-drain, not inferred from what a drain produced. An in-process test cannot kill its own worker and a throwing runner is not an interruption, so observing the table while work is in flight is the only honest proof (§7).
 
+### Three timeout increases failed because the test was hanging, not slow **[DECIDED 2026-10-03]**
+
+**`password-reset.spec.ts` was the single flaky test in four CI runs out of five** — `37092496425`, `37094175927`, `37095884243` and `37098260070` — on four unrelated trees, none of which touches auth or email. F-063.
+
+#### Three wrong diagnoses, kept because each is easy to repeat
+
+| Diagnosis                                                                                                    | Why it was wrong                                                  |
+| ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------- |
+| A race in `latestLinkFor`, taking `messages[0]` and picking a signup confirmation over the reset mail        | **The email step passes every time.** The failure is always later |
+| "Merely slow" — the original author's reading, mitigated with `test.slow()`                                  | 30s → 90s changed nothing                                         |
+| "Still merely slow" — this project's second reading, mitigated by removing four navigations and setting 180s | **It timed out at 180s anyway, after being made shorter**         |
+
+**The third failure is the one that gives the answer.** A test that exceeds three minutes _having had a third of its work removed_ is not running slowly. It is waiting for something that is never going to happen.
+
+#### The actual cause: a sign-out race against a redirect
+
+`login/page.tsx` ends with `if (await getCurrentUser()) redirect('/')`.
+
+The test clicked **Sign out** and navigated straight to `/login`. **If the session cookie has not cleared yet, `/login` redirects to `/`** — which has no email field — so `getByLabel('Email').fill(...)` waits for an element that will never appear, and keeps waiting until the whole budget is gone. The CI call log says exactly this: `waiting for getByLabel('Email')`.
+
+**So every timeout increase made the symptom worse rather than better**, which is the signature worth recognising: a raised timeout that does not fix a flake is evidence the wait is unbounded, not evidence the budget is still too small.
+
+#### Why the fix waits on the header, not the URL
+
+**Sign out lands on `/`, and the redirect being guarded against also lands on `/`.** The URL is identical in the passing and failing cases and cannot distinguish them. The wait is therefore on the header's **Sign in** link appearing — the state change itself rather than a side effect of it.
+
+**The timeout is now 120s and is headroom rather than a mechanism.** A budget this test cannot use is CI time spent three times over, once per retry, whenever something genuinely breaks.
+
+#### What this evidence still cannot establish
+
+**A flake fix is not proved by one green run**, and must not be reported as proved by one. **F-063 stays open until several consecutive runs are clean** — the more so here, since one earlier run passed with no flake at all while the defect was still present.
+
 ### Integration isolation is a contract the runner must actually enforce **[2026-08-25]**
 
 The integration project shares one database and its config has always said so — `fileParallelism: false`, with the comment that running these files in parallel would let them see each other's rows. **That project-level setting was demonstrably not sufficient to guarantee the intended isolation**, so `npm run test:integration` now passes `--no-file-parallelism` explicitly. The contract is unchanged; only its enforcement moved to the command, where it is observable.
