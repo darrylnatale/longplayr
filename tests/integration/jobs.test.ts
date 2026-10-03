@@ -10,6 +10,7 @@ import {
   enqueueFailedExpansions,
   enqueueMissingArtwork,
   enqueueMissingArtistAliases,
+  enqueueStaleTracklists,
   queueDepth,
   reclaimStaleJobs,
 } from '@/services/catalogue/jobs';
@@ -1504,5 +1505,213 @@ describe('alias fetch treats a vanished artist as absence', () => {
       candidates: 1,
       queued: 1,
     });
+  });
+});
+
+/**
+ * Refreshing a tracklist captured before the album came out - F-061,
+ * `architecture.md` §7.4.
+ *
+ * **The question under test is which rows the predicate selects**, because the
+ * obvious alternative selects none. `releases.track_count` was captured in the
+ * same stale fetch, so "stored tracks fewer than declared" reads 3 against 3
+ * for an album that now has sixteen upstream - a check that looks like it works
+ * and finds nothing.
+ */
+describe('enqueueStaleTracklists', () => {
+  const ALBUM = '0b0e4f1e-8888-4000-8000-00000000cccc';
+  const RELEASE = '0b0e4f1e-8888-4000-8000-00000000dddd';
+
+  async function seedAlbum(opts: {
+    firstRelease: string | null;
+    tracklistStatus: 'found' | 'pending' | 'failed';
+    tracklistUpdatedAt: string;
+  }) {
+    const { data: album, error } = await admin
+      .from('albums')
+      .insert({
+        mbid: ALBUM,
+        title: 'Popstar',
+        display_credit: 'Some Artist',
+        primary_type: 'album',
+        first_release_date: opts.firstRelease,
+        first_release_date_precision: opts.firstRelease ? 'day' : null,
+      })
+      .select('id')
+      .single();
+    if (error) throw error;
+
+    const { data: release, error: relError } = await admin
+      .from('releases')
+      .insert({
+        mbid: RELEASE,
+        album_id: album!.id,
+        title: 'Popstar',
+        tracklist_status: opts.tracklistStatus,
+        tracklist_updated_at: opts.tracklistUpdatedAt,
+        track_count: 3,
+      })
+      .select('id')
+      .single();
+    if (relError) throw relError;
+
+    const { error: repError } = await admin
+      .from('albums')
+      .update({ representative_release_id: release!.id })
+      .eq('id', album!.id);
+    if (repError) throw repError;
+  }
+
+  it('queues a tracklist fetched before the album was released', async () => {
+    // The real case: added in August, released 25 September.
+    await seedAlbum({
+      firstRelease: '2026-09-25',
+      tracklistStatus: 'found',
+      tracklistUpdatedAt: '2026-08-25T19:05:49Z',
+    });
+
+    expect(await enqueueStaleTracklists({ admin })).toMatchObject({ candidates: 1, queued: 1 });
+  });
+
+  it('leaves a tracklist fetched after release alone', async () => {
+    // **The containment assertion.** If this queued, the sweep would be a
+    // general staleness rule over every settled tracklist in the catalogue -
+    // the open question §7.4 refuses to answer by accident.
+    await seedAlbum({
+      firstRelease: '2026-09-25',
+      tracklistStatus: 'found',
+      tracklistUpdatedAt: '2026-09-26T10:00:00Z',
+    });
+
+    expect(await enqueueStaleTracklists({ admin })).toMatchObject({ candidates: 0, queued: 0 });
+  });
+
+  it('is self-clearing: a refreshed tracklist stops matching', async () => {
+    await seedAlbum({
+      firstRelease: '2026-09-25',
+      tracklistStatus: 'found',
+      tracklistUpdatedAt: '2026-08-25T19:05:49Z',
+    });
+    expect(await enqueueStaleTracklists({ admin })).toMatchObject({ candidates: 1 });
+
+    // What `recordTracklistStatus` does on every attempt.
+    await admin
+      .from('releases')
+      .update({ tracklist_updated_at: new Date().toISOString() })
+      .eq('mbid', RELEASE);
+
+    expect(await enqueueStaleTracklists({ admin })).toMatchObject({ candidates: 0, queued: 0 });
+  });
+
+  it('ignores a tracklist that was never successfully fetched', async () => {
+    // `pending` and `failed` belong to `enqueueMissingTracklists`. Queuing them
+    // here would double-queue every unfetched release in the catalogue.
+    await seedAlbum({
+      firstRelease: '2026-09-25',
+      tracklistStatus: 'pending',
+      tracklistUpdatedAt: '2026-08-25T19:05:49Z',
+    });
+
+    expect(await enqueueStaleTracklists({ admin })).toMatchObject({ candidates: 0, queued: 0 });
+  });
+
+  it('ignores an album with no release date to compare against', async () => {
+    await seedAlbum({
+      firstRelease: null,
+      tracklistStatus: 'found',
+      tracklistUpdatedAt: '2026-08-25T19:05:49Z',
+    });
+
+    expect(await enqueueStaleTracklists({ admin })).toMatchObject({ candidates: 0, queued: 0 });
+  });
+
+  it('does not double-queue when a fetch is already outstanding', async () => {
+    await seedAlbum({
+      firstRelease: '2026-09-25',
+      tracklistStatus: 'found',
+      tracklistUpdatedAt: '2026-08-25T19:05:49Z',
+    });
+    await enqueueJob('fetch_tracklist', RELEASE, { admin });
+
+    expect(await enqueueStaleTracklists({ admin })).toMatchObject({ candidates: 1, queued: 0 });
+  });
+
+  it('would find nothing by the declared track count, which is why that is not the test', async () => {
+    // Documents the trap rather than the fix. `track_count` is 3 because it was
+    // captured in the same stale fetch; upstream now says 16. Any detector
+    // built on it reports a healthy catalogue.
+    await seedAlbum({
+      firstRelease: '2026-09-25',
+      tracklistStatus: 'found',
+      tracklistUpdatedAt: '2026-08-25T19:05:49Z',
+    });
+
+    const { data } = await admin
+      .from('releases')
+      .select('track_count')
+      .eq('mbid', RELEASE)
+      .single();
+    const stored = 3; // what writeTracklist actually inserted at the time
+
+    expect(data!.track_count).toBe(stored); // equal, so "stored < declared" is false
+    expect(await enqueueStaleTracklists({ admin })).toMatchObject({ candidates: 1 });
+  });
+});
+
+/**
+ * The paging contract, added after the first implementation got it wrong.
+ *
+ * **It read 100 albums and filtered in JavaScript**, so whether a stale
+ * tracklist was found depended on where its album fell in the page - the
+ * defect its own comment claimed to avoid.
+ */
+describe('enqueueStaleTracklists pages rather than truncating', () => {
+  it('reports a complete scan, so a caller can tell a clean sweep from a capped one', async () => {
+    const result = await enqueueStaleTracklists({ admin });
+
+    // `truncated` is the honest signal. A sweep that stopped at its page guard
+    // must never be indistinguishable from one that found nothing.
+    expect(result.truncated).toBe(false);
+    expect(result.scanned).toBeGreaterThanOrEqual(0);
+  });
+
+  it('says so when the page guard stops it early', async () => {
+    const { data: album, error } = await admin
+      .from('albums')
+      .insert({
+        mbid: '0b0e4f1e-9999-4000-8000-00000000eeee',
+        title: 'Anything',
+        display_credit: 'Someone',
+        primary_type: 'album',
+        first_release_date: '2026-09-25',
+        first_release_date_precision: 'day',
+      })
+      .select('id')
+      .single();
+    if (error) throw error;
+
+    const { data: release, error: relError } = await admin
+      .from('releases')
+      .insert({
+        mbid: '0b0e4f1e-9999-4000-8000-00000000ffff',
+        album_id: album!.id,
+        title: 'Anything',
+        tracklist_status: 'found',
+        tracklist_updated_at: '2026-08-01T00:00:00Z',
+      })
+      .select('id')
+      .single();
+    if (relError) throw relError;
+
+    await admin
+      .from('albums')
+      .update({ representative_release_id: release!.id })
+      .eq('id', album!.id);
+
+    // maxPages 0 means it never reads a page at all, which must report
+    // `truncated` rather than a confident zero.
+    const result = await enqueueStaleTracklists({ admin, maxPages: 0 });
+    expect(result.truncated).toBe(true);
+    expect(result.candidates).toBe(0);
   });
 });

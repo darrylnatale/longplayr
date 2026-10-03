@@ -6,6 +6,7 @@ import {
   enqueueFailedExpansions,
   enqueueMissingArtwork,
   enqueueMissingTracklists,
+  enqueueStaleTracklists,
   queueDepth,
 } from '@/services/catalogue/jobs';
 
@@ -93,6 +94,14 @@ export async function GET(request: NextRequest) {
     const swept = {
       artwork: await enqueueMissingArtwork(),
       tracklists: await enqueueMissingTracklists(),
+      /*
+       * **Separate from the line above, and that is the point.** That sweep is
+       * recovery over `pending` and `failed`; this one re-opens a `found`
+       * tracklist captured before its album was released. Keeping them as two
+       * calls keeps recovery and refresh distinguishable — `architecture.md`
+       * §7.4.
+       */
+      staleTracklists: await enqueueStaleTracklists(),
       expansions: await enqueueFailedExpansions(),
     };
 
