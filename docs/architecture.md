@@ -769,6 +769,44 @@ The upstream panel asks MusicBrainz for **25** release groups and displays up to
 
 **This does not close F-033.** That entry's unexplained observation — a job that sat `running` for 69 minutes — had no established mechanism and still has none. **What changes is that the next occurrence leaves a record**, which is the precondition for explaining it.
 
+### 7.4 A tracklist captured before the album existed is refetched; age alone is not **[DECIDED 2026-10-03]**
+
+**`found` is otherwise terminal, and stays that way.** `TRACKLIST_RETRYABLE` is `['pending', 'failed']` because a sweep over `succeeded` work is a **refresh policy**, which `product-spec.md` §8.9 records as undecided. **That general question is still open and this does not answer it.**
+
+**What this answers is narrower and factual: the tracklist was captured before the album came out.** F-061's case is an album added in August whose upstream release then held three tracks; it came out on 2026-09-25 and the page still showed three.
+
+#### The investigation, because two of the three plausible diagnoses were wrong
+
+| Hypothesis                                                                                   | Result                                                                                                                                                                                                |
+| -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The representative release is the wrong one — a pre-release version alongside a finished one | **No.** The release group holds **exactly one release**; there is nothing else to select                                                                                                              |
+| A re-fetch would not be enough                                                               | **No.** The **same release MBID** now returns **16 tracks**; we stored 3. `writeTracklist` replaces wholesale, and also refreshes `track_count`, `format` and `label`                                 |
+| Stored tracks `<` the release's declared `track_count` detects it                            | **No, and this is the trap.** `track_count` was captured in the same stale fetch — it says **3** for an album that now has 16, so that check finds **zero** affected rows while looking like it works |
+
+#### The predicate, and why it is not a staleness rule in disguise
+
+**`tracklist_status = 'found'` and `tracklist_updated_at < first_release_date`.** It does not ask how old the data is. It asks whether the data was captured before the thing it describes was finished — a question with a factual answer, not a tuning parameter.
+
+**It is self-clearing, which is what makes it safe without new state.** `recordTracklistStatus` writes `tracklist_updated_at = now()` on **every** attempt, so one successful refresh moves the row permanently out of the candidate set. **No migration, no new column, and no way to loop** — the failure mode a staleness window would have had to be designed against.
+
+**Imprecise dates under-trigger and can never over-trigger.** 272 albums hold `year` or `month` precision, stored as 1 January or the 1st of the month — always **earlier** than the true release date. So the comparison misses some genuine cases and produces no false ones. **That asymmetry is the right way round** and is why no precision filter is applied.
+
+#### It pages to exhaustion, and the first implementation did not
+
+**The comparison is between two columns on two tables**, which PostgREST cannot express as a filter, so it happens in application code. **The first version read 100 albums and filtered afterwards** — making whether an affected album is found depend on where it fell in the page, the defect §8.10 records, in the very function whose comment claimed to avoid it.
+
+**Raising the limit is not the fix.** PostgREST caps a response at 1,000 rows and the catalogue already holds 1,079, so a large limit **truncates silently** — the worst available failure here, because the sweep would report zero candidates having never looked at the rest.
+
+**So it pages until a short page ends it**, and returns `scanned` and `truncated` alongside the counts. `maxPages` is a loop guard rather than a work limit: if it is ever reached, `truncated` says so, so a capped sweep can never be mistaken for a clean one. At 1,079 albums over a four-column projection this is two requests, once per cron invocation.
+
+**When this stops being adequate**, the answer is an RPC doing the comparison in SQL — deliberately not built now, because it is a migration for a scan that currently costs two reads.
+
+**Kept separate from `enqueueMissingTracklists` on purpose.** That sweep is recovery; this one is refresh. Merging them would put the two on one `where` clause, which is exactly how the open question gets answered by accident.
+
+**Blast radius today is one album.** The rule is what has lasting value: every album added before its release date reaches this state, and the catalogue grows.
+
+---
+
 ## 7a. Upstream payload capture
 
 **Decision: keep every upstream response verbatim, beside the columns mapped out of it. [DECIDED 2026-08-21]**

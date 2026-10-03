@@ -448,6 +448,124 @@ export async function enqueueMissingTracklists(
   return { candidates: mbids.length, queued };
 }
 
+/**
+ * Queues a re-fetch for any tracklist captured before its album came out.
+ *
+ * **Deliberately not a staleness rule, and kept out of
+ * `enqueueMissingTracklists` for that reason.** That sweep is *recovery* over
+ * `pending` and `failed`. This one re-opens a `found` tracklist, which is a
+ * *refresh* - and whether settled data should be revisited on age is an open
+ * product question (`product-spec.md` section 8.9, `architecture.md` 7.4). Put
+ * on one `where` clause, the two become indistinguishable and that question
+ * gets answered by accident.
+ *
+ * **The predicate does not ask how old the data is.** It asks whether the data
+ * was captured before the thing it describes was finished - an album added
+ * before release, whose upstream tracklist then held three tracks and now holds
+ * sixteen. That has a factual answer rather than a tuning parameter.
+ *
+ * **It is self-clearing, which is what makes it safe with no new state.**
+ * `recordTracklistStatus` writes `tracklist_updated_at = now()` on every
+ * attempt, so one successful refresh moves the row permanently out of this set.
+ *
+ * **Imprecise release dates under-trigger and can never over-trigger.** A
+ * `year` or `month` precision date is stored as 1 January or the 1st, always
+ * *earlier* than the true release - so the comparison misses some real cases
+ * and produces no false ones. That asymmetry is the right way round, which is
+ * why no precision filter is applied.
+ */
+export async function enqueueStaleTracklists(
+  options: { maxPages?: number; priority?: number; admin?: Admin } = {},
+): Promise<{ candidates: number; queued: number; scanned: number; truncated: boolean }> {
+  const admin = options.admin ?? createAdminClient();
+  const maxPages = options.maxPages ?? 20;
+
+  type Rep = { mbid: string; tracklist_status: string; tracklist_updated_at: string | null };
+
+  /*
+   * **Paged to exhaustion rather than bounded by a limit, and the first version
+   * of this got it wrong.** The comparison is between two columns on two
+   * tables, which PostgREST cannot express as a filter, so it has to happen
+   * here - and filtering *after* a bounded read is the defect §8.10 records:
+   * whether an affected album is found would depend on where it fell in the
+   * page.
+   *
+   * **Raising the limit does not fix it.** PostgREST caps a response at 1,000
+   * rows and the catalogue already holds more, so a large limit truncates
+   * silently - the worst available failure, because the sweep would report
+   * zero candidates while never having looked.
+   *
+   * So it pages until a short page ends it. The projection is four columns and
+   * this runs once per cron invocation; at 1,079 albums that is two requests.
+   * **`maxPages` is a guard against an infinite loop, not a work limit** - if
+   * it is ever hit, `truncated` says so rather than the caller inferring a
+   * clean sweep.
+   */
+  const PAGE = 1000;
+  const mbids: string[] = [];
+  let scanned = 0;
+  let truncated = true;
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const from = page * PAGE;
+    const { data, error } = await admin
+      .from('albums')
+      .select(
+        'first_release_date, releases!albums_representative_release_fk(mbid, tracklist_status, tracklist_updated_at)',
+      )
+      .not('representative_release_id', 'is', null)
+      .not('first_release_date', 'is', null)
+      .order('mbid', { ascending: true })
+      .range(from, from + PAGE - 1);
+
+    if (error) throw error;
+
+    const rows = data ?? [];
+    scanned += rows.length;
+
+    for (const row of rows) {
+      const release = row.releases as Rep | null;
+      if (!release || release.tracklist_status !== 'found') continue;
+      if (!release.tracklist_updated_at || !row.first_release_date) continue;
+      /*
+       * Date-only comparison. `tracklist_updated_at` is a timestamp and
+       * `first_release_date` a date, so the timestamp is truncated rather than
+       * the date being widened to midnight - which would make an album fetched
+       * later the same day as its release look stale.
+       */
+      if (release.tracklist_updated_at.slice(0, 10) < row.first_release_date) {
+        mbids.push(release.mbid);
+      }
+    }
+
+    if (rows.length < PAGE) {
+      truncated = false;
+      break;
+    }
+  }
+
+  if (mbids.length === 0) return { candidates: 0, queued: 0, scanned, truncated };
+
+  const { data: existing, error: jobsError } = await admin
+    .from('ingestion_jobs')
+    .select('target_mbid')
+    .eq('kind', 'fetch_tracklist')
+    .in('status', ['pending', 'running'])
+    .in('target_mbid', mbids);
+
+  if (jobsError) throw jobsError;
+  const outstanding = new Set((existing ?? []).map((job) => job.target_mbid));
+
+  let queued = 0;
+  for (const mbid of mbids) {
+    if (outstanding.has(mbid)) continue;
+    await enqueueJob('fetch_tracklist', mbid, { admin, priority: options.priority });
+    queued += 1;
+  }
+
+  return { candidates: mbids.length, queued, scanned, truncated };
+}
+
 /** Alias states that warrant another attempt. `stored` and `absent` are settled. */
 const ALIAS_RETRYABLE: Database['public']['Enums']['alias_status'][] = ['pending', 'failed'];
 
