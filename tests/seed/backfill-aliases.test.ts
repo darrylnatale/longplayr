@@ -4,6 +4,7 @@ import { describe, it } from 'vitest';
 import type { Database } from '@/lib/supabase/database.types';
 import { aliasCoverage } from '@/services/catalogue/aliases';
 import { drainJobs, enqueueMissingArtistAliases, queueDepth } from '@/services/catalogue/jobs';
+import { BULK_ALIAS_PRIORITY } from '@/services/catalogue/queue';
 
 /**
  * Artist alias backfill. **Not a test** - a utility run explicitly.
@@ -48,7 +49,18 @@ describe('backfill artist aliases', () => {
     console.info(`\n${format('Before', before)}\n`);
 
     const limit = process.env.BACKFILL_LIMIT ? Number(process.env.BACKFILL_LIMIT) : undefined;
-    const { candidates, queued } = await enqueueMissingArtistAliases({ admin, limit });
+    /*
+     * **The same priority the cron uses, and that was a defect once.** Without
+     * it this enqueued at `DEFAULT_JOB_PRIORITY`, so a 352-job backfill would
+     * have outranked bulk artwork and competed with ordinary ingest — the
+     * opposite of what `architecture.md` §7.6 decided about alias work being
+     * the least urgent thing in the queue. Found by running it.
+     */
+    const { candidates, queued } = await enqueueMissingArtistAliases({
+      admin,
+      limit,
+      priority: BULK_ALIAS_PRIORITY,
+    });
 
     console.info(
       `  Candidates (pending or failed)  ${candidates}\n` +

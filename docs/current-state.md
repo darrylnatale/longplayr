@@ -134,7 +134,7 @@
 
 ## Contents
 
-- [1. Current state](#1-current-state) · 5,054 words
+- [1. Current state](#1-current-state) · 4,997 words
 - [2. Completed work](#2-completed-work) · 107 words
 - [3. Real-data validation](#3-real-data-validation) · 385 words
 - [4. Artwork lifecycle](#4-artwork-lifecycle) · 258 words
@@ -192,22 +192,22 @@ Measured **2026-08-28, after the credit repair** (§33). The **2026-08-25** colu
 
 **163 artists (62.5%) hold exactly one album**, 94 hold two, and 4 hold three — Radiohead, Ye, Lana Del Rey and Various Artists, each of which reached three through a self-service addition rather than the seed. **No artist exceeds 0.8% of the catalogue**, so the seed's anti-concentration device worked; sparsity, not concentration, is the problem. Full analysis in §28.
 
-### Aliases — deployed and inert
+### Aliases — live
 
-**Measured against the deployed database on 2026-10-02, immediately after the merge.**
+**Measured on the deployed database on 2026-10-03, immediately after the backfill.**
 
-|                                         |                     |
-| --------------------------------------- | ------------------- |
-| Albums                                  | **1,079**           |
-| Artists                                 | **352**             |
-| `artist_aliases` rows                   | **0**               |
-| Artists with `alias_status = 'pending'` | **352** — every one |
+|                       |                                                      |
+| --------------------- | ---------------------------------------------------- |
+| Artists               | **352**                                              |
+| `alias_status`        | **182 stored, 170 absent, 0 pending, 0 failed**      |
+| `artist_aliases` rows | **890**, of which **262** are curated `search_hint`s |
+| Failed alias jobs     | **0**                                                |
 
-**The feature is live on the deployed database and has ingested nothing there**, which is the deliberate state rather than a problem.
+**`absent` at roughly half is a real result rather than a shortfall**: MusicBrainz answered and held nothing §10.5 keeps — `Legal name` and untyped aliases are refused on privacy and noise grounds. That state is settled and never retried.
 
-**The pipeline itself is proven, locally, against the live MusicBrainz API.** A bounded drain over the 8 fixture artists returned **4 `stored` and 4 `absent`, zero `failed`** — JAY-Z 11 aliases, Kanye West 8, Radiohead 5, Various Artists 63 — and search then resolved **`Ye` → Kanye West** and **`Hova` → JAY-Z**, both tier 2. `Hova` shares no text with its artist's name, so no fuzzy or phonetic tier could have reached it. **What remains unproven is the deployed backfill, not the mechanism.** `db:backfill:aliases` queues by default and drains only under `BACKFILL_DRAIN=true`, and it has not been run against the deployed database. **Until it is, alias matching cannot affect any search result**, because there are no alias rows to match.
+**Verified on the live site**, not only in SQL: `Kanye West` → **Ye**, `Kayne West` → **Ye**, `Hova` → **JAŸ-Z**, `Jay Z` → **JAŸ-Z**, all tier 2, none of which matched anything before. `Hova` shares no text with its artist's name and `JAŸ-Z` carries a diaeresis, so neither was reachable by any fuzzy or phonetic tier.
 
-**Cost of running it: roughly one request per artist** through the shared one-per-second limiter, so 352 artists is about **six minutes** of budget. That is the whole remaining step for `cycle-log.md` §119 to show a real effect.
+**New artists are handled by the cron**, which calls the sweep at `BULK_ALIAS_PRIORITY` bounded to 25 per run — `architecture.md` §7.6.
 
 ### Artwork
 
