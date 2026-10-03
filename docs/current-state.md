@@ -161,7 +161,7 @@
 | **Staging app**  | <https://longplayr.vercel.app>                                            |
 | **Staging DB**   | `oexuqjpvyeijmlirxtal.supabase.co`                                        |
 | Production       | does not exist                                                            |
-| **Branch**       | `main` at `184762b`, nothing open, nothing pending                        |
+| **Branch**       | `main` at `df49422`, nothing open, nothing pending                        |
 
 **Every figure above is CI `37056898081`'s own output on `f72787d`, attempt 1, zero flaky** — not carried forward. **The repository went public on 2026-10-02** so Actions minutes are unmetered and branch protection can require both checks; `cycle-log.md` §118 records why both changes were needed together. This table has drifted before — it once disagreed with a section written in the same edit — so it is re-read from a run rather than updated by hand.
 

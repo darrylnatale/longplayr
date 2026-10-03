@@ -10,6 +10,7 @@
 
 **Unnumbered entries predate the §-numbering convention.** They sit between §87 and §86 in time.
 
+- [§123 — ✅ A test that hangs, diagnosed three times as a test that is slow](#123---a-test-that-hangs-diagnosed-three-times-as-a-test-that-is-slow--gate-cleared-ci-37099597106-completedsuccess-on-736ca64-attempt-1-574-unit-148-end-to-end-zero-flaky-90m-no-migration-merged-as-pr-65) · 555 words
 - [§122 — ✅ Finding an artist's albums when you search their name](#122---finding-an-artists-albums-when-you-search-their-name--gate-cleared-ci-37095884243-completedsuccess-on-17d6053-attempt-1-574-unit-147-end-to-end-1-flaky-no-migration-merged-as-pr-63) · 597 words
 - [§121 — ✅ Refetching a tracklist captured before the album existed](#121---refetching-a-tracklist-captured-before-the-album-existed--gate-cleared-ci-37094175927-completedsuccess-on-fc20700-attempt-1-574-unit-147-end-to-end-1-flaky-no-migration-merged-as-pr-61) · 597 words
 - [§120 — ✅ Somewhere to land when a page is missing](#120---somewhere-to-land-when-a-page-is-missing--gate-cleared-ci-37092496425-completedsuccess-on-504e142-attempt-1-574-unit-147-end-to-end-1-flaky-no-migration-deployed-and-probed-live-merged-as-pr-59) · 718 words
@@ -178,6 +179,46 @@
 **PR #56.** Both checks required, strict mode on. **`enforce_admins` is `false` and the repository has exactly one admin**, so the protection is a guard rail the maintainer can step over rather than a mechanism. An earlier sentence said it made the branch rule _"hold mechanically"_, which it does not, and `architecture.md` §12.7 now says the weaker true thing instead.
 
 Verified at **`818cf50`**.
+
+## §123 — ✅ A test that hangs, diagnosed three times as a test that is slow — **[GATE CLEARED: CI `37099597106` `completed/success` on `736ca64`, attempt 1, 574 unit, **148 end-to-end, zero flaky**, 9.0m. NO MIGRATION. MERGED AS PR #65.]**
+
+**F-063.** `password-reset.spec.ts` was the single flaky test in **four CI runs out of five** — `37092496425`, `37094175927`, `37095884243`, `37098260070` — on four unrelated trees, **none of which touches auth or email**.
+
+### ⚠️ This cycle produced a wrong diagnosis, shipped it, and was corrected by CI
+
+**That sequence is the record, and it is not tidied away.** The first commit on the branch concluded the test was _slow_ and shortened it. CI then timed it out at **180000ms — three minutes — after a third of its work had been removed.**
+
+| Diagnosis                                                           | Mitigation                     | Outcome                                     |
+| ------------------------------------------------------------------- | ------------------------------ | ------------------------------------------- |
+| A race in `latestLinkFor` picking a signup mail over the reset mail | —                              | **Wrong.** The email step passes every time |
+| "Merely slow" — the original author's reading                       | `test.slow()`, 30s → 90s       | **No effect**                               |
+| "Still merely slow" — this cycle's STEP B                           | four navigations removed, 180s | **Timed out at 180s anyway**                |
+
+**The third failure is what gave the answer.** A shortened test that still exceeds three minutes is not running slowly; it is waiting for something that will never arrive.
+
+### 🔎 The actual cause: a sign-out raced against a redirect
+
+`login/page.tsx` ends with `if (await getCurrentUser()) redirect('/')`.
+
+The test clicked **Sign out** and navigated straight to `/login` **without waiting for it to take effect**. With the session cookie not yet cleared, `/login` redirected to `/` — which has no email field — so `getByLabel('Email').fill()` waited for an element that would never appear. CI's call log says it outright: `waiting for getByLabel('Email')`.
+
+**So every timeout increase lengthened the hang rather than fixing it**, and that is the generalisable lesson: **a raised timeout that does not fix a flake is evidence the wait is unbounded, not that the budget is still too small.**
+
+### 📄 Why the wait is on the header rather than the URL
+
+**Sign-out lands on `/`. The redirect being guarded against also lands on `/`.** The URL is identical in the passing and failing cases and cannot tell them apart, so the wait is on the **Sign in** link appearing — the state change itself rather than a side effect of it.
+
+**The budget is now 120s and is headroom, not a mechanism.** A budget this test cannot use is CI time spent three times over, once per retry, on every genuine failure.
+
+**The account-creation change from the wrong diagnosis was kept.** Creating the user through the admin API rather than driving four navigations of signup UI is a real improvement — signup has its own end-to-end test — it simply was not the fix.
+
+### 📄 Evidence, and what it does not establish
+
+`npm run verify` green from a clean `.next`, exit 0. CI green attempt 1 with **148 passed and zero flaky**, in **9.0m** against 10.5–13.2m on the preceding runs — consistent with the shortened journey.
+
+**⚠️ One green run does not prove a flake fixed, and this is not reported as proof.** **F-063 stays open** until several consecutive runs are clean. The reason is concrete rather than cautious: run `37097152623` passed with **no flake at all while the defect was still present**, so a single clean run is exactly the evidence that already misled this project once.
+
+Verified at **`736ca64`**, merged at **`df49422`**.
 
 ## §122 — ✅ Finding an artist's albums when you search their name — **[GATE CLEARED: CI `37095884243` `completed/success` on `17d6053`, attempt 1, 574 unit, 147 end-to-end, **1 flaky**. NO MIGRATION. MERGED AS PR #63.]**
 
