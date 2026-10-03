@@ -1568,6 +1568,31 @@ Get your password wrong and **both fields empty**, so you retype your address as
 
 **Phase 6 has no open decision blocking any slice**, and **F-011, F-040, F-052, F-053 and F-054 are closed.** `docs/legal-obligations.md` was also written, discharging §10.4's precondition as researched.
 
+### F-062 — the `component` test project has never been able to run, and nobody could have noticed
+
+**2026-10-03 · development process, testing · NEW — FOUND BY A CYCLE THAT WAS NOT LOOKING FOR IT**
+
+**`vitest.config.mts` has defined a `component` project since Phase 0** — jsdom, `@testing-library/react`, a setup file, `include: ['src/**/*.test.tsx']`. **It matches zero files, and always has.** `@testing-library/react`, `@testing-library/jest-dom` and `jsdom` are all installed.
+
+**It does not work.** Adding the repository's first `.test.tsx` fails before any test runs:
+
+> `require() of ES Module @exodus/bytes/encoding-lite.js from html-encoding-sniffer/lib/html-encoding-sniffer.js not supported`
+
+**jsdom 29.1.1 depends on `@exodus/bytes@1.15.1`, which is `"type": "module"`, and `html-encoding-sniffer` requires it from CommonJS.** Nothing in this repository is at fault.
+
+**Two fixes were tried and neither worked**, which is the part worth recording so the next attempt does not repeat them:
+
+| Attempt                                                 | Result                                             |
+| ------------------------------------------------------- | -------------------------------------------------- |
+| Bump `jsdom` to `^30` (pulls `html-encoding-sniffer@7`) | **Same error.** The require is unchanged           |
+| `--pool=threads` instead of forks                       | **Same error.** It is not a pool-isolation problem |
+
+**Untried and most likely to work: `happy-dom` instead of jsdom.** It is ESM-native. That adds a dependency and swaps the DOM implementation, so it is a decision rather than a fix to apply quietly.
+
+**Why this matters more than it looks.** The gap is invisible by construction — a project with no files always passes, so the suite is green and the capability is absent. **Any presentational assertion is currently unwritable**, which is why §13.1's not-found page ships with its security property verified by render probe rather than by a test that would fail if somebody made the page more helpful.
+
+**Related:** F-044 (the test environment fails more often than the code does), `architecture.md` §13.1.
+
 ### F-061 — a tracklist fetched before full release is never updated afterwards
 
 **2026-10-02 · album page, catalogue · NEW**
