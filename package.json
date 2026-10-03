@@ -2,6 +2,9 @@
   "name": "longplayr",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -20,7 +23,7 @@
     "db:env": "node scripts/write-local-env.mjs",
     "db:types": "node scripts/check-env.mjs && node scripts/gen-types.mjs",
     "db:pending": "node scripts/check-migrations-deployed.mjs",
-    "verify": "npm run format:check && npm run lint && node scripts/check-privileges.mjs && npm run typecheck && npm run test && npm run build",
+    "verify": "node scripts/check-node.mjs && npm run format:check && npm run lint && node scripts/check-privileges.mjs && npm run typecheck && npm run test && npm run build",
     "verify:full": "npm run verify && npm run test:integration && npm run db:seed:fixtures && npm run test:e2e",
     "db:seed:fixtures": "node scripts/check-env.mjs && node scripts/with-websocket.mjs vitest run --project seed tests/seed/seed-fixtures.test.ts",
     "db:seed:catalogue": "node scripts/with-websocket.mjs vitest run --project seed tests/seed/seed-catalogue.test.ts",

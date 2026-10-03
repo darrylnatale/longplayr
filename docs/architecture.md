@@ -1345,6 +1345,32 @@ The test clicked **Sign out** and navigated straight to `/login`. **If the sessi
 
 **A flake fix is not proved by one green run**, and must not be reported as proved by one. **F-063 stays open until several consecutive runs are clean** — the more so here, since one earlier run passed with no flake at all while the defect was still present.
 
+### The Node version is pinned, because an unpinned one broke a whole test layer silently **[DECIDED 2026-10-03]**
+
+**The `component` vitest project was configured in Phase 0 and matched no file until 2026-10-03.** jsdom, `@testing-library/react` and `@testing-library/jest-dom` were all installed and wired to a setup file. **A project matching no files always passes**, so the suite was green and the capability was absent — and nobody could have noticed, because noticing required writing the first component test.
+
+#### Writing it surfaced two faults, neither of which was the obvious one
+
+**First, the runtime.** The test failed before running at all:
+
+> `Failed to start forks worker` … `require() of ES Module @exodus/bytes/encoding-lite.js`
+
+**Two reasonable fixes were tried against that and neither could have worked** — bumping jsdom to 30, and switching the pool from forks to threads. **Nothing was wrong with the dependency or the pool.** `require(esm)` is unflagged only from **Node 22.12**; this machine ran **20.17**. **CI already ran Node 22**, so the layer would have worked there all along, and **nothing in the repository pinned a version** for either.
+
+**Second, cleanup.** With the runtime right, the second test in the file failed with _"Found multiple elements"_ against correct markup. `@testing-library/react` registers its own `afterEach(cleanup)` **only when a global `afterEach` exists**, and this project does not set Vitest's `globals: true`. Every `render` was accumulating in one document. `tests/setup/component.ts` now calls `cleanup` explicitly.
+
+#### What is pinned, and why a guard as well
+
+`.nvmrc` and a `package.json#engines` floor of `>=22` state the requirement. **Neither of them fails a build**, which is why `scripts/check-node.mjs` runs first in `verify`: it names Node, names jsdom, names 22.12 and says what to run.
+
+**The boundary it checks is 22.12 rather than 22**, because `require(esm)` landed in the minor — a major-version check would wave through 22.0 to 22.11 and leave exactly the failure this replaces. **An unparseable version string is treated as silence rather than as a problem**, so the guard cannot become an outage on a working machine it did not anticipate.
+
+**This is the §112 pattern applied to the runtime**: an environment failure that named everything except its cause.
+
+#### The cost, stated plainly
+
+**`npm run verify` now requires Node 22 on the development machine.** It exited `1` on Node 20 and `0` on Node 22, measured. That is a real demand on the maintainer, made deliberately: CI has been on 22 since it was written, Supabase's client already warns that Node 20 is deprecated, and the alternative is a test layer that cannot be used.
+
 ### Integration isolation is a contract the runner must actually enforce **[2026-08-25]**
 
 The integration project shares one database and its config has always said so — `fileParallelism: false`, with the comment that running these files in parallel would let them see each other's rows. **That project-level setting was demonstrably not sufficient to guarantee the intended isolation**, so `npm run test:integration` now passes `--no-file-parallelism` explicitly. The contract is unchanged; only its enforcement moved to the command, where it is observable.
