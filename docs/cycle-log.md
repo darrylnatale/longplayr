@@ -10,6 +10,7 @@
 
 **Unnumbered entries predate the §-numbering convention.** They sit between §87 and §86 in time.
 
+- [§124 — ✅ A whole test layer that was configured, green and absent](#124---a-whole-test-layer-that-was-configured-green-and-absent--gate-cleared-ci-37101653554-completedsuccess-on-306412e-attempt-1-585-unit-and-component-148-end-to-end-zero-flaky-no-migration-merged-as-pr-67) · 559 words
 - [§123 — ✅ A test that hangs, diagnosed three times as a test that is slow](#123---a-test-that-hangs-diagnosed-three-times-as-a-test-that-is-slow--gate-cleared-ci-37099597106-completedsuccess-on-736ca64-attempt-1-574-unit-148-end-to-end-zero-flaky-90m-no-migration-merged-as-pr-65) · 555 words
 - [§122 — ✅ Finding an artist's albums when you search their name](#122---finding-an-artists-albums-when-you-search-their-name--gate-cleared-ci-37095884243-completedsuccess-on-17d6053-attempt-1-574-unit-147-end-to-end-1-flaky-no-migration-merged-as-pr-63) · 597 words
 - [§121 — ✅ Refetching a tracklist captured before the album existed](#121---refetching-a-tracklist-captured-before-the-album-existed--gate-cleared-ci-37094175927-completedsuccess-on-fc20700-attempt-1-574-unit-147-end-to-end-1-flaky-no-migration-merged-as-pr-61) · 597 words
@@ -179,6 +180,42 @@
 **PR #56.** Both checks required, strict mode on. **`enforce_admins` is `false` and the repository has exactly one admin**, so the protection is a guard rail the maintainer can step over rather than a mechanism. An earlier sentence said it made the branch rule _"hold mechanically"_, which it does not, and `architecture.md` §12.7 now says the weaker true thing instead.
 
 Verified at **`818cf50`**.
+
+## §124 — ✅ A whole test layer that was configured, green and absent — **[GATE CLEARED: CI `37101653554` `completed/success` on `306412e`, attempt 1, **585 unit and component**, 148 end-to-end, **zero flaky**. NO MIGRATION. MERGED AS PR #67.]**
+
+**F-062.** The `component` vitest project was configured in **Phase 0** — jsdom, `@testing-library/react`, `@testing-library/jest-dom`, a setup file, an `include` glob — and **matched no file until 2026-10-03**.
+
+**A project matching no files always passes.** So the suite was green, the capability was absent, and nobody could have noticed, because noticing required writing the first component test. **That is the finding; the fixes below are smaller than it.**
+
+### 🔎 Two faults, and the obvious diagnosis was wrong for both
+
+**The runtime.** The first component test failed before running, with a worker crash naming an ESM `require` deep inside jsdom. **§120 had already tried two fixes against that** — bumping jsdom to 30, switching the pool from forks to threads — **and neither could have worked.** Nothing was wrong with the dependency or the pool.
+
+**`require(esm)` is unflagged only from Node 22.12. This machine runs 20.17. CI has run Node 22 since CI was written** — so the layer would have worked there all along — **and nothing in the repository pinned a version for either.** No dependency was added or changed; happy-dom was never needed.
+
+**Cleanup.** With the runtime right, the _second_ test in a file failed with "Found multiple elements" against correct markup. `@testing-library/react` registers its own `afterEach(cleanup)` **only when a global `afterEach` exists**, and this project does not set `globals: true`, so every `render` accumulated in one document.
+
+### 📄 Pinned, and guarded, because pinning does not fail a build
+
+`.nvmrc` and `engines: ">=22"` state the requirement; **neither of them stops anything**, so `scripts/check-node.mjs` runs first in `verify` and names Node, jsdom and 22.12 along with what to run.
+
+**It checks the minor rather than the major**, because 22.0 through 22.11 would pass a major-version check and still fail in exactly the way it replaces. **An unparseable version string is silence, not a block** — a guard that refuses to run on a string it did not anticipate is an outage on somebody's working machine.
+
+**This is §112's pattern applied to the runtime**: an environment failure that named everything except its cause.
+
+### ⚠️ What this cycle costs the maintainer
+
+**`npm run verify` now requires Node 22 on the development machine** — measured at exit `1` on Node 20 and `0` on Node 22. **That is a real demand and it is deliberate**: CI has been on 22 throughout, the Supabase client already warns that Node 20 is deprecated, and the alternative is a configured test layer nobody can use. **Until `nvm use` is run, local verification will not pass.**
+
+### 📄 The test that closes an earlier cycle's gap
+
+The one §120 had to drop: that the not-found page **never names why it was reached**. `admin/page.tsx` uses `notFound()` rather than a 403 so a non-admin cannot learn the admin surface exists, and four call sites fire on a suspended profile. **Those assertions exist to fail when somebody makes the page friendlier**, which was previously guarded by nothing but a comment.
+
+### 📄 F-063 accumulating evidence, still not closed
+
+**Three consecutive end-to-end runs with zero flaky** since §123's sign-out fix — `37099597106`, `37100607899`, `37101653554`. **F-063 nonetheless remains open**, on its own stated terms: an earlier run passed clean while the defect was still present, so clean runs are weak evidence here and three is where the counting starts rather than ends.
+
+Verified at **`306412e`**, merged at **`d6c2644`**.
 
 ## §123 — ✅ A test that hangs, diagnosed three times as a test that is slow — **[GATE CLEARED: CI `37099597106` `completed/success` on `736ca64`, attempt 1, 574 unit, **148 end-to-end, zero flaky**, 9.0m. NO MIGRATION. MERGED AS PR #65.]**
 
