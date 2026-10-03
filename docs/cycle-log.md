@@ -10,6 +10,7 @@
 
 **Unnumbered entries predate the §-numbering convention.** They sit between §87 and §86 in time.
 
+- [§125 — ✅ Aliases actually reach search](#125---aliases-actually-reach-search--gate-cleared-ci-37109281396-completedsuccess-on-6c2a5fb-attempt-1-585-unit-and-component-148-end-to-end-zero-flaky-no-migration-merged-as-pr-69-backfill-run-against-production) · 547 words
 - [§124 — ✅ A whole test layer that was configured, green and absent](#124---a-whole-test-layer-that-was-configured-green-and-absent--gate-cleared-ci-37101653554-completedsuccess-on-306412e-attempt-1-585-unit-and-component-148-end-to-end-zero-flaky-no-migration-merged-as-pr-67) · 559 words
 - [§123 — ✅ A test that hangs, diagnosed three times as a test that is slow](#123---a-test-that-hangs-diagnosed-three-times-as-a-test-that-is-slow--gate-cleared-ci-37099597106-completedsuccess-on-736ca64-attempt-1-574-unit-148-end-to-end-zero-flaky-90m-no-migration-merged-as-pr-65) · 555 words
 - [§122 — ✅ Finding an artist's albums when you search their name](#122---finding-an-artists-albums-when-you-search-their-name--gate-cleared-ci-37095884243-completedsuccess-on-17d6053-attempt-1-574-unit-147-end-to-end-1-flaky-no-migration-merged-as-pr-63) · 597 words
@@ -180,6 +181,52 @@
 **PR #56.** Both checks required, strict mode on. **`enforce_admins` is `false` and the repository has exactly one admin**, so the protection is a guard rail the maintainer can step over rather than a mechanism. An earlier sentence said it made the branch rule _"hold mechanically"_, which it does not, and `architecture.md` §12.7 now says the weaker true thing instead.
 
 Verified at **`818cf50`**.
+
+## §125 — ✅ Aliases actually reach search — **[GATE CLEARED: CI `37109281396` `completed/success` on `6c2a5fb`, attempt 1, 585 unit and component, 148 end-to-end, **zero flaky**. NO MIGRATION. MERGED AS PR #69. BACKFILL RUN AGAINST PRODUCTION.]**
+
+**§119 built alias ingestion and left it inert.** Table, job kind, drain case, sweep and backfill runner all shipped — and **nothing in production ever called the sweep.** A day later the deployed database held **352 artists all `pending`, zero alias rows, and zero alias jobs ever created.**
+
+**The gap was in the cycle that built it**, under a comment in the cron route reading _"a sweep nobody calls is how a recovery path silently stops being one."_ Written, tested, not wired.
+
+**Unblocked by the maintainer on 2026-10-03** — aliases should be in search — a decision carried across three handoffs because wiring the sweep and running the backfill both change what real visitors see.
+
+### 📄 Lowest priority in the queue, which is a budget decision
+
+`BULK_ALIAS_PRIORITY = 210`, behind interactive (10), default (100) and bulk artwork (200). **Behind artwork specifically**: Cover Art Archive imposes no rate limit, so artwork is free, while **an alias spends a MusicBrainz request against one per second** — a request taken for an alias is one not taken for an ingest somebody is waiting on.
+
+**Bounded at 25 per cron run.** A sweep inserts one row per job serially, so the 500 default would have spent seconds of a 45-second drain budget on inserts alone, every run, while a backlog lasted.
+
+### ⚠️ A defect found by running it, not by reading it
+
+**The backfill runner enqueued at `DEFAULT_JOB_PRIORITY`**, because it passed no priority at all — so a 352-job backfill would have outranked bulk artwork and competed with ordinary ingest, exactly contradicting the decision made one file away. **Found by queueing five jobs against production and looking at the rows**, which is the only reason it was caught before the full run. The five were corrected in place and the runner now passes the band explicitly.
+
+### 📄 What the backfill produced, measured on production
+
+|                     |                                                      |
+| ------------------- | ---------------------------------------------------- |
+| Artists             | **352** — `pending` **0**, `failed` **0**            |
+| `stored` / `absent` | **182** / **170**                                    |
+| Alias rows          | **890**, of which **262** are curated `search_hint`s |
+| Failed jobs         | **0**                                                |
+
+**`absent` at 170 of 352 is a real result rather than a shortfall** — it means MusicBrainz answered and held nothing §10.5 keeps, which is settled and never retried.
+
+### 🔎 Verified on the live site, not just in SQL
+
+| Query                                    | Finds     | Tier |
+| ---------------------------------------- | --------- | ---- |
+| `Kanye West`                             | **Ye**    | 2    |
+| `Kayne West` _(the curated misspelling)_ | **Ye**    | 2    |
+| `Hova`                                   | **JAŸ-Z** | 2    |
+| `Jay Z`                                  | **JAŸ-Z** | 2    |
+
+**None of these matched anything before.** Two are worth separating out: `Hova` shares no text at all with its artist's name, so no fuzzy or phonetic tier could ever have reached it — and **`JAŸ-Z` carries a diaeresis**, so the plain spelling `Jay Z` never matched the canonical name either. `https://longplayr.vercel.app/search?q=Kanye+West` returns `/artists/ye`.
+
+### 📄 Also corrected: three stale state lines from this project's own cycles
+
+**F-018** and **F-061** were delivered and still read as open; **F-063**'s fix shipped, though that entry deliberately stays open pending more clean runs. Triage found them, not a reader.
+
+Verified at **`6c2a5fb`**, merged at **`89c639d`**.
 
 ## §124 — ✅ A whole test layer that was configured, green and absent — **[GATE CLEARED: CI `37101653554` `completed/success` on `306412e`, attempt 1, **585 unit and component**, 148 end-to-end, **zero flaky**. NO MIGRATION. MERGED AS PR #67.]**
 
