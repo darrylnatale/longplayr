@@ -10,6 +10,7 @@
 
 **Unnumbered entries predate the §-numbering convention.** They sit between §87 and §86 in time.
 
+- [§120 — ✅ Somewhere to land when a page is missing](#120---somewhere-to-land-when-a-page-is-missing--gate-cleared-ci-37092496425-completedsuccess-on-504e142-attempt-1-574-unit-147-end-to-end-1-flaky-no-migration-deployed-and-probed-live-merged-as-pr-59) · 718 words
 - [§119 — ✅ Letting search find an artist by a name they no longer use](#119---letting-search-find-an-artist-by-a-name-they-no-longer-use--gate-cleared-ci-37056898081-completedsuccess-on-f72787d-attempt-1-574-unit-846-integration-148-end-to-end-zero-flaky-migration-applied-and-confirmed-deployed-and-probed-live-merged-as-pr-57) · 771 words
 - [§118 — ✅ Unblocking the things only the maintainer could unblock](#118---unblocking-the-things-only-the-maintainer-could-unblock--gate-cleared-three-prs-54-55-and-56-each-ci-completedsuccess-no-migration-all-merged) · 415 words
 - [§117 — ✅ The obvious fix to the quadratic slug is wrong twice](#117---the-obvious-fix-to-the-quadratic-slug-is-wrong-twice--ci-skipped-documentation-only-paths-ignore-fires-no-run) · 531 words
@@ -175,6 +176,57 @@
 **PR #56.** Both checks required, strict mode on. **`enforce_admins` is `false` and the repository has exactly one admin**, so the protection is a guard rail the maintainer can step over rather than a mechanism. An earlier sentence said it made the branch rule _"hold mechanically"_, which it does not, and `architecture.md` §12.7 now says the weaker true thing instead.
 
 Verified at **`818cf50`**.
+
+## §120 — ✅ Somewhere to land when a page is missing — **[GATE CLEARED: CI `37092496425` `completed/success` on `504e142`, attempt 1, 574 unit, 147 end-to-end, **1 flaky**. NO MIGRATION. DEPLOYED AND PROBED LIVE. MERGED AS PR #59.]**
+
+**The app had no `error.tsx`, no `global-error.tsx` and no `not-found.tsx`**, against **24 `notFound()` call sites** already in use across profiles, collections, lists, albums, artists and the admin surface.
+
+### ⚠️ The finding this cycle opened on was wrong, and the correction is the more useful half
+
+**STEP A claimed a 404 rendered _"nothing at all"_** — not even Next.js's built-in page. **It was an artifact of the probe.** `curl`, with the `<script>` tags stripped, is not what a reader sees: in the App Router the server-rendered `<body>` is `<div hidden=""></div>` and the content arrives in the **RSC flight payload**, inside those very tags, rendered on hydration.
+
+**Production's payload held `404 | This page could not be found` the whole time**, and the site header was rendering with it — so a second claim, that there was no way onward, was wrong too.
+
+**The durable lesson is in `architecture.md` §13.1, not in the pages**: any render probe of this codebase must search the whole response, payload included. The same mistake would misread every streamed page here.
+
+### 📄 What was actually wrong, at its real size
+
+**A framework string inside longplayr's chrome, and no error boundary of any kind.** The not-found page is therefore a **polish change**; the **error** boundaries are the substantive half, because nothing stood between an exception and Next's default error page.
+
+### 📄 The not-found page never names the cause, and that is a security property
+
+`admin/page.tsx` calls `notFound()` rather than returning a 403 **so a non-admin cannot learn the admin surface exists**, and four further call sites fire on a profile that is not `active`, where naming the cause leaks a moderation outcome. **One generic message serves every case.**
+
+**Per-segment not-found pages are deliberately unbuilt.** The useful version is the specific version, which is exactly how that disclosure comes back.
+
+### 🔎 A defect the cycle exposed and did not fix
+
+**The `component` vitest project has been configured since Phase 0, has never matched a file, and cannot run.** jsdom 29's `html-encoding-sniffer` does a CommonJS `require()` of ESM-only `@exodus/bytes`. **Bumping to jsdom 30 and switching to the threads pool both failed**; the bump was reverted, so the cycle changes no dependency. Filed as **F-062** with both dead ends recorded.
+
+**It is invisible by construction** — a project matching no files always passes — and it means **no presentational assertion is currently writable**. The security property above therefore ships verified by probe rather than by a test that would fail if somebody made the page friendlier.
+
+### 📄 Evidence
+
+`npm run verify` green from a clean `.next`, exit 0, 574 tests. Verified against a **local production build** with a temporary throwing route, removed before commit:
+
+| Probe          | Result                                                                                                                                                                                                                               |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/albums/nope` | HTTP 404 carrying longplayr's wording; Next's default string gone                                                                                                                                                                    |
+| `/boom-probe`  | HTTP 500; server logged `digest: '4146325540'`, client payload carried the same value, and the chunk containing "Something went wrong" is **referenced in the response payload** — so the boundary is wired and renders on hydration |
+
+**Error tracking is still absent and this did not supply it.** §13's first bullet stays unmet: nothing aggregates the digest and nobody is alerted.
+
+### 📄 Two things found while looking at something else
+
+**`CLAUDE.md` was wrong about Phase 6 for the third time.** It says slice 3 — reporting, the admin queue, the audit trail, statements of reasons — "is what remains". **It is built**: `reports` and `moderation_actions` are deployed, the latter carrying `ground`, `statement`, `acknowledged_at` and `report_id`.
+
+**F-019's pipeline was proven end to end against the live API**, locally: 8 artists, 4 `stored` and 4 `absent`, **zero failed**. `Ye` → Kanye West and **`Hova` → JAY-Z**, both tier 2 — the second shares no text with its artist's name at all, so no fuzzy or phonetic tier could reach it. **Production remains un-backfilled by choice**, so none of this is live for visitors yet.
+
+**One flaky end-to-end test, recorded rather than rounded away.** The run passed on attempt 1 with 147 passing and 1 flaky — the known machine-load pattern F-044 tracks, not a signal about this change, which touches no tested path.
+
+**Confirmed live after the merge**: `https://longplayr.vercel.app/albums/nope` returns HTTP 404 carrying longplayr's wording, with Next's default string absent.
+
+Verified at **`504e142`**, merged at **`9fd2089`**.
 
 ## §119 — ✅ Letting search find an artist by a name they no longer use — **[GATE CLEARED: CI `37056898081` `completed/success` on `f72787d`, attempt 1, 574 unit, 846 integration, 148 end-to-end, **zero flaky**. MIGRATION APPLIED AND CONFIRMED. DEPLOYED AND PROBED LIVE. MERGED AS PR #57.]**
 
