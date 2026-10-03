@@ -1602,9 +1602,15 @@ Get your password wrong and **both fields empty**, so you retype your address as
 
 **Related:** F-044 (the general pattern), `architecture.md` §12.
 
-### F-062 — the `component` test project has never been able to run, and nobody could have noticed
+### F-062 — the `component` test project works fine, on the Node version CI uses and this machine did not
 
-**2026-10-03 · development process, testing · NEW — FOUND BY A CYCLE THAT WAS NOT LOOKING FOR IT**
+**2026-10-03 · development process, testing · CLOSED — FIXED 2026-10-03, SAME DAY (§124)**
+
+**⚠️ RESOLVED, and this entry's original diagnosis was wrong.** The project is not broken. **jsdom needs Node ≥ 22.12**, because it reaches an ESM-only dependency through a CommonJS `require` — unflagged only from that version. **CI already ran Node 22. This machine ran Node 20.17, and nothing in the repository pinned either.** Under Node 22 the first component test passed on the first attempt.
+
+**So both fixes this entry recorded as dead ends were dead ends for the right reason and the wrong one.** Bumping jsdom and switching the pool both failed because **neither the dependency nor the pool was ever the problem** — the runtime was, and nothing named it.
+
+**Fixed by pinning rather than by swapping anything**: `.nvmrc`, a `package.json#engines` floor, and `scripts/check-node.mjs` in the `verify` chain so the failure names its own cause instead of surfacing as a vitest worker crash. **happy-dom was not needed.**
 
 **`vitest.config.mts` has defined a `component` project since Phase 0** — jsdom, `@testing-library/react`, a setup file, `include: ['src/**/*.test.tsx']`. **It matches zero files, and always has.** `@testing-library/react`, `@testing-library/jest-dom` and `jsdom` are all installed.
 
